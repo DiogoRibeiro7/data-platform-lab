@@ -13,3 +13,12 @@ export {
   deduplicate,
   runPipeline,
 } from "./csv-pipeline.js";
+
+export {
+  fetchPage,
+  fetchAllPages,
+  transformPosts,
+  saveRaw,
+  saveProcessed,
+  runApiPipeline,
+} from "./api-pipeline.js";
