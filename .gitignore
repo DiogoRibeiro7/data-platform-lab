@@ -1,0 +1,98 @@
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+.venv/
+venv/
+env/
+.python-version
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# =============================================================================
+# JavaScript / Node.js
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.yarn/cache
+.yarn/unplugged
+.pnp.*
+dist/
+coverage/
+
+# =============================================================================
+# IDEs and editors
+# =============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# =============================================================================
+# Logs
+# =============================================================================
+*.log
+logs/
+
+# =============================================================================
+# Environment and secrets
+# =============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# =============================================================================
+# Data outputs (keep sample data, ignore generated outputs)
+# =============================================================================
+data/raw/*
+data/bronze/*
+data/silver/*
+data/gold/*
+data/staging/*
+data/checkpoints/*
+data/manifests/*
+!data/raw/.gitkeep
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/gold/.gitkeep
+!data/staging/.gitkeep
+!data/checkpoints/.gitkeep
+!data/manifests/.gitkeep
+
+# =============================================================================
+# OS files
+# =============================================================================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# =============================================================================
+# Misc
+# =============================================================================
+*.sqlite
+*.db
+*.parquet
+*.arrow
+tmp/
+temp/
+settings.local.json
