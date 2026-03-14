@@ -31,7 +31,7 @@ Each module lives under both `python/` and `javascript/`. The goal is **not** to
 
 ## Repository Structure
 
-```
+```text
 data-platform-lab/
 ├── README.md              # this file
 ├── LICENSE                 # MIT license
@@ -87,16 +87,14 @@ data-platform-lab/
 
 ```bash
 cd python
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+poetry install
 ```
 
 ### JavaScript
 
 ```bash
 cd javascript
-npm install
+yarn install
 ```
 
 ### SQL

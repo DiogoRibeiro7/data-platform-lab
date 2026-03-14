@@ -4,6 +4,7 @@
   "description": "Hands-on data engineering lab exercises",
   "type": "module",
   "license": "MIT",
+  "packageManager": "yarn@4.6.0",
   "scripts": {
     "test": "node --test tests/**/*.test.js"
   },

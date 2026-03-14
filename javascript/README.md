@@ -5,12 +5,12 @@ JavaScript implementation of the data platform lab modules.
 ## Setup
 
 ```bash
-npm install
+yarn install
 ```
 
 ## Project Layout
 
-```
+```text
 javascript/
 ├── package.json
 ├── src/
@@ -30,7 +30,7 @@ javascript/
 ## Running Tests
 
 ```bash
-npm test
+yarn test
 ```
 
 ## Modules
