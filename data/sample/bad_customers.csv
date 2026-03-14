@@ -1,0 +1,13 @@
+customer_id,first_name,last_name,email,city,country,created_at
+,Maria,Santos,maria.santos@example.com,Lisbon,Portugal,2024-01-10
+C101,Pedro,,pedro.duarte@example.com,Porto,Portugal,2024-02-14
+C102,Ana,Lima,not-an-email,Faro,Portugal,2024-03-20
+C103,Rui,Mendes,rui.mendes@example.com,,Portugal,2024-04-15
+C104,Sofia,Cardoso,sofia.cardoso@example.com,Lisbon,,15/05/2024
+C105,Tiago,Ribeiro,tiago.ribeiro@example.com,Braga,Portugal,2024-06-31
+C106,marta,gomes,marta.gomes@example.com,coimbra,portugal,2024-07-01
+C103,Rui,Mendes,rui.mendes@example.com,,Portugal,2024-04-15
+C107,Nuno,Rodrigues,nuno.rodrigues@example.com,Aveiro,Portugal,
+C108,,,,,,
+C109,Vera,Pinto,vera.pinto@example.com,Lisbon,Portugal,2024-13-01
+C110,Carlos,Santos,carlos.santos@example.com,Lisbon,Portugal,2024-09-01

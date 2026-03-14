@@ -1,0 +1,8 @@
+customer_id,first_name,last_name,email,city,country,active
+C001,Alice,Martins,alice.martins@example.com,Lisbon,Portugal,true
+C002,Bob,Silva,bob.silva@example.com,Porto,Portugal,true
+C003,Carla,Ferreira,carla.ferreira@example.com,Berlin,Germany,true
+C004,David,Nunes,david.nunes@example.com,Madrid,Spain,true
+C005,Eva,Costa,eva.costa@example.com,Lisbon,Portugal,true
+C006,Frank,Oliveira,frank.oliveira@example.com,Amsterdam,Netherlands,true
+C007,Grace,Sousa,grace.sousa@example.com,Paris,France,true

@@ -1,0 +1,16 @@
+{"sensor_id": "sensor-01", "type": "temperature", "value": 22.5, "unit": "celsius", "location": "warehouse-A", "timestamp": "2024-06-01T08:00:00Z"}
+{"sensor_id": "sensor-01", "type": "temperature", "value": 22.8, "unit": "celsius", "location": "warehouse-A", "timestamp": "2024-06-01T08:05:00Z"}
+{"sensor_id": "sensor-01", "type": "temperature", "value": 23.1, "unit": "celsius", "location": "warehouse-A", "timestamp": "2024-06-01T08:10:00Z"}
+{"sensor_id": "sensor-02", "type": "temperature", "value": 18.3, "unit": "celsius", "location": "warehouse-B", "timestamp": "2024-06-01T08:00:00Z"}
+{"sensor_id": "sensor-02", "type": "temperature", "value": 18.1, "unit": "celsius", "location": "warehouse-B", "timestamp": "2024-06-01T08:05:00Z"}
+{"sensor_id": "sensor-03", "type": "humidity", "value": 45.2, "unit": "percent", "location": "warehouse-A", "timestamp": "2024-06-01T08:00:00Z"}
+{"sensor_id": "sensor-03", "type": "humidity", "value": 46.0, "unit": "percent", "location": "warehouse-A", "timestamp": "2024-06-01T08:05:00Z"}
+{"sensor_id": "sensor-03", "type": "humidity", "value": 91.7, "unit": "percent", "location": "warehouse-A", "timestamp": "2024-06-01T08:10:00Z"}
+{"sensor_id": "sensor-01", "type": "temperature", "value": -40.0, "unit": "celsius", "location": "warehouse-A", "timestamp": "2024-06-01T08:15:00Z"}
+{"sensor_id": "sensor-04", "type": "pressure", "value": 1013.25, "unit": "hPa", "location": "warehouse-C", "timestamp": "2024-06-01T08:00:00Z"}
+{"sensor_id": "sensor-04", "type": "pressure", "value": 1013.30, "unit": "hPa", "location": "warehouse-C", "timestamp": "2024-06-01T08:05:00Z"}
+{"sensor_id": "sensor-01", "type": "temperature", "value": 23.5, "unit": "celsius", "location": "warehouse-A", "timestamp": "2024-06-01T08:20:00Z"}
+{"sensor_id": "sensor-01", "type": "temperature", "value": 23.5, "unit": "celsius", "location": "warehouse-A", "timestamp": "2024-06-01T08:20:00Z"}
+{"sensor_id": "sensor-02", "type": "temperature", "value": null, "unit": "celsius", "location": "warehouse-B", "timestamp": "2024-06-01T08:10:00Z"}
+{"sensor_id": "sensor-05", "type": "temperature", "value": 21.0, "unit": "fahrenheit", "location": "warehouse-A", "timestamp": "2024-06-01T08:00:00Z"}
+{"sensor_id": "sensor-03", "type": "humidity", "value": 47.5, "unit": "percent", "location": "warehouse-A", "timestamp": "2024-06-01T08:15:00Z"}

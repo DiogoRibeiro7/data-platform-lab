@@ -1,0 +1,20 @@
+{"event_id": "evt-001", "type": "page_view", "user_id": "C001", "page": "/products/P001", "timestamp": "2024-06-01T10:23:45Z"}
+{"event_id": "evt-002", "type": "page_view", "user_id": "C001", "page": "/products/P002", "timestamp": "2024-06-01T10:24:12Z"}
+{"event_id": "evt-003", "type": "add_to_cart", "user_id": "C001", "product_id": "P001", "quantity": 2, "timestamp": "2024-06-01T10:25:00Z"}
+{"event_id": "evt-004", "type": "checkout", "user_id": "C001", "order_id": "ORD-001", "timestamp": "2024-06-01T10:30:00Z"}
+{"event_id": "evt-005", "type": "page_view", "user_id": "C002", "page": "/products/P002", "timestamp": "2024-06-03T14:00:00Z"}
+{"event_id": "evt-006", "type": "add_to_cart", "user_id": "C002", "product_id": "P002", "quantity": 1, "timestamp": "2024-06-03T14:05:30Z"}
+{"event_id": "evt-007", "type": "checkout", "user_id": "C002", "order_id": "ORD-002", "timestamp": "2024-06-03T14:10:00Z"}
+{"event_id": "evt-008", "type": "page_view", "user_id": "C003", "page": "/categories/electronics", "timestamp": "2024-06-05T09:00:00Z"}
+{"event_id": "evt-009", "type": "page_view", "user_id": "C003", "page": "/products/P002", "timestamp": "2024-06-05T09:02:15Z"}
+{"event_id": "evt-010", "type": "page_view", "user_id": "C003", "page": "/products/P003", "timestamp": "2024-06-05T09:03:45Z"}
+{"event_id": "evt-011", "type": "add_to_cart", "user_id": "C003", "product_id": "P002", "quantity": 1, "timestamp": "2024-06-05T09:05:00Z"}
+{"event_id": "evt-012", "type": "add_to_cart", "user_id": "C003", "product_id": "P003", "quantity": 1, "timestamp": "2024-06-05T09:05:30Z"}
+{"event_id": "evt-013", "type": "checkout", "user_id": "C003", "order_id": "ORD-003", "timestamp": "2024-06-05T09:10:00Z"}
+{"event_id": "evt-014", "type": "page_view", "user_id": null, "page": "/", "timestamp": "2024-06-06T12:00:00Z"}
+{"event_id": "evt-015", "type": "page_view", "user_id": "C005", "page": "/products/P001", "timestamp": "2024-06-10T16:30:00Z"}
+{"event_id": "evt-016", "type": "checkout", "user_id": "C005", "order_id": "ORD-004", "timestamp": "2024-06-10T16:45:00Z"}
+{"event_id": "evt-005", "type": "page_view", "user_id": "C002", "page": "/products/P002", "timestamp": "2024-06-03T14:00:00Z"}
+{"event_id": "evt-017", "type": "page_view", "user_id": "C006", "page": "/products/P003", "timestamp": "2024-06-20T11:00:00Z"}
+{"event_id": "evt-018", "type": "add_to_cart", "user_id": "C006", "product_id": "P003", "quantity": 1, "timestamp": "2024-06-20T11:02:00Z"}
+{"event_id": "evt-019", "type": "remove_from_cart", "user_id": "C006", "product_id": "P003", "timestamp": "2024-06-20T11:10:00Z"}
