@@ -192,7 +192,7 @@ Each exercise lives in a module directory under `src/` (e.g., `python/src/data_p
 - [ ] Build orchestration runner with checkpoint support
 - [ ] Add streaming simulation exercises
 - [ ] Write SQL exercises for warehouse patterns (CTEs, window functions, slowly changing dimensions)
-- [ ] Set up GitHub Actions CI for both Python and JavaScript
+- [x] Set up GitHub Actions CI for both Python and JavaScript
 - [ ] Add architecture diagrams and exercise guides to `docs/`
 - [ ] Implement the end-to-end benchmark lab
 

@@ -1,0 +1,39 @@
+name: JavaScript
+
+on:
+  push:
+    paths:
+      - "javascript/**"
+      - ".github/workflows/javascript.yml"
+  pull_request:
+    paths:
+      - "javascript/**"
+      - ".github/workflows/javascript.yml"
+
+defaults:
+  run:
+    working-directory: javascript
+
+jobs:
+  check:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable || yarn install
+
+      - name: ESLint
+        run: yarn lint
+
+      - name: Tests
+        run: yarn test
