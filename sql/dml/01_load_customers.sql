@@ -1,0 +1,21 @@
+-- Load customer data matching data/sample/customers.csv.
+--
+-- Includes all raw data issues:
+--   C003 is duplicated (INSERT OR IGNORE keeps the first)
+--   C004 has a NULL email
+--   C010 has lowercase "portugal"
+--   C012 has uppercase "ITALY"
+
+INSERT OR IGNORE INTO customers (customer_id, first_name, last_name, email, city, country, created_at) VALUES
+    ('C001', 'Alice',  'Martins',  'alice.martins@example.com',  'Lisbon',    'Portugal',    '2024-01-15'),
+    ('C002', 'Bob',    'Silva',    'bob.silva@example.com',      'Porto',     'Portugal',    '2024-02-20'),
+    ('C003', 'Carla',  'Ferreira', 'carla.ferreira@example.com', 'Berlin',    'Germany',     '2024-03-10'),
+    ('C004', 'David',  'Nunes',    NULL,                         'Madrid',    'Spain',       '2024-04-05'),
+    ('C005', 'Eva',    'Costa',    'eva.costa@example.com',      'Lisbon',    'Portugal',    '2024-05-12'),
+    ('C006', 'Frank',  'Oliveira', 'frank.oliveira@example.com', 'Amsterdam', 'Netherlands', '2024-06-01'),
+    ('C007', 'Grace',  'Sousa',    'grace.sousa@example.com',    'Paris',     'France',      '2024-07-22'),
+    ('C008', 'Hugo',   'Pereira',  'hugo.pereira@example.com',   'Berlin',    'Germany',     '2024-08-30'),
+    ('C009', 'Irene',  'Lopes',    'irene.lopes@example.com',    'Rome',      'Italy',       '2024-09-14'),
+    ('C010', 'João',   'Almeida',  'joao.almeida@example.com',   'Lisbon',    'portugal',    '2024-10-01'),
+    ('C011', 'Klaus',  'Weber',    'klaus.weber@example.com',    'Munich',    'Germany',     '2024-11-18'),
+    ('C012', 'Lucia',  'Rossi',    'lucia.rossi@example.com',    'Rome',      'ITALY',       '2024-12-03');

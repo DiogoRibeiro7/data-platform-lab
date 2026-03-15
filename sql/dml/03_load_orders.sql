@@ -1,0 +1,22 @@
+-- Load order data matching data/sample/orders.csv.
+--
+-- Includes raw data issues:
+--   ORD-008 references customer C099 (does not exist)
+--   ORD-009 has date in YYYY/MM/DD format
+
+INSERT OR IGNORE INTO orders (order_id, customer_id, order_date, status, total, shipping_country) VALUES
+    ('ORD-001', 'C001', '2024-06-01', 'completed', 59.98,  'Portugal'),
+    ('ORD-002', 'C002', '2024-06-03', 'completed', 89.50,  'Portugal'),
+    ('ORD-003', 'C003', '2024-06-05', 'completed', 133.49, 'Germany'),
+    ('ORD-004', 'C005', '2024-06-10', 'completed', 29.99,  'Portugal'),
+    ('ORD-005', 'C004', '2024-06-15', 'shipped',   349.99, 'Spain'),
+    ('ORD-006', 'C001', '2024-06-18', 'completed', 16.50,  'Portugal'),
+    ('ORD-007', 'C006', '2024-06-20', 'cancelled', 45.00,  'Netherlands'),
+    ('ORD-008', 'C099', '2024-06-22', 'completed', 79.90,  'Portugal'),
+    ('ORD-009', 'C007', '2024/07/01', 'completed', 55.00,  'France'),
+    ('ORD-010', 'C008', '2024-07-05', 'pending',   8.99,   'Germany'),
+    ('ORD-011', 'C010', '2024-07-10', 'completed', 94.50,  'Portugal'),
+    ('ORD-012', 'C009', '2024-07-15', 'completed', 4.50,   'Italy'),
+    ('ORD-013', 'C001', '2024-07-20', 'completed', 35.00,  'Portugal'),
+    ('ORD-014', 'C011', '2024-08-01', 'shipped',   125.49, 'Germany'),
+    ('ORD-015', 'C003', '2024-08-10', 'completed', 29.99,  'Germany');
