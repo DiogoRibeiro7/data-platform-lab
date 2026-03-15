@@ -129,22 +129,33 @@ data-platform-lab/
 | Data formats | CSV, JSON, Parquet |
 | CI | GitHub Actions |
 
-## Planned Exercises
+## Exercises
 
-| # | Exercise | Key concepts |
-| --- | --- | --- |
-| 1 | CSV ingestion | Read flat files, handle encodings, parse malformed rows, write to bronze |
-| 2 | API ingestion | Fetch paginated JSON from HTTP endpoints, handle rate limits and retries |
-| 3 | ZIP extraction | Decompress archives, inventory contents, route files to appropriate layers |
-| 4 | Log parsing | Parse semi-structured log files into structured records |
-| 5 | Checkpointed incremental ETL | Track high-water marks, resume from last checkpoint, guarantee idempotency |
-| 6 | CDC snapshot comparison | Compare successive snapshots to detect inserts, updates, and deletes |
-| 7 | Schema validation framework | Define schemas, validate at pipeline boundaries, route failures to dead-letter storage |
-| 8 | Data quality framework | Build reusable quality checks with pass/fail gating and metric collection |
-| 9 | Warehouse loading with SQLite | Load silver/gold data into SQLite, write analytical queries against it |
-| 10 | Event processing simulation | Simulate a stream of events, apply windowed aggregation, emit results |
-| 11 | Orchestration runner | Build a minimal DAG runner with dependency resolution and retry logic |
-| 12 | Ingestion benchmark | Compare sequential, parallel, and async ingestion strategies on throughput and resource usage |
+See [docs/exercise-index.md](docs/exercise-index.md) for full details, file locations, and dependencies. See [docs/roadmap.md](docs/roadmap.md) for recommended learning order.
+
+### Implemented
+
+| # | Exercise | Key concepts | Guide |
+| --- | --- | --- | --- |
+| 01 | CSV ingestion | Read flat files, handle encodings, deduplicate, write to bronze | [docs/01](docs/01-csv-ingestion-pipeline.md) |
+| 02 | API ingestion | Fetch paginated JSON, handle retries, store raw + processed | [docs/02](docs/02-api-ingestion-pipeline.md) |
+| 03 | Validation framework | Composable rules, severity levels, pass/fail gating | [docs/03](docs/03-validation-framework.md) |
+| 04 | Incremental ETL | Checkpoint persistence, idempotent reruns, process only new records | [docs/04](docs/04-incremental-etl-pipeline.md) |
+| 05 | Snapshot diff (CDC) | Compare snapshots to detect inserts, updates, and deletes | [docs/05](docs/05-snapshot-diff.md) |
+| 06 | Orchestration runner | Sequential step execution, retry logic, shared context | [docs/06](docs/06-orchestration-runner.md) |
+| 07 | Observability | Execution timing, run metadata, counters, structured reporting | [docs/07](docs/07-observability.md) |
+
+All seven exercises are implemented in both Python and JavaScript with full test coverage. The `sql/` directory provides 27 standalone SQL scripts covering schema design, data loading, analytical queries, and warehouse ETL patterns.
+
+### Planned
+
+| Exercise | Key concepts |
+| --- | --- |
+| ZIP extraction | Decompress archives, inventory contents, route files to appropriate layers |
+| Log parsing | Parse semi-structured log files into structured records |
+| Event processing simulation | Windowed aggregation, event ordering, simulated real-time |
+| Warehouse loading CLI | Python/JS wrapper around the SQL assets |
+| Ingestion benchmark | Sequential vs parallel vs async throughput comparison |
 
 ## How to Use This Repository
 
@@ -169,7 +180,7 @@ yarn test
 SQL files in `sql/` are standalone scripts. Run them against any compatible database engine:
 
 ```bash
-sqlite3 < sql/ddl/create_tables.sql
+sqlite3 lab.db < sql/ddl/01_customers.sql
 ```
 
 ### Working through exercises
@@ -187,13 +198,13 @@ Each exercise lives in a module directory under `src/` (e.g., `python/src/data_p
 
 ## Roadmap
 
-- [ ] Complete initial exercise implementations (ingestion, validation, transforms)
-- [ ] Add sample datasets to `data/sample/` for each exercise
-- [ ] Build orchestration runner with checkpoint support
+- [x] Complete initial exercise implementations (ingestion, validation, transforms)
+- [x] Add sample datasets to `data/sample/` for each exercise
+- [x] Build orchestration runner with checkpoint support
 - [ ] Add streaming simulation exercises
-- [ ] Write SQL exercises for warehouse patterns (CTEs, window functions, slowly changing dimensions)
-- [ ] Set up GitHub Actions CI for both Python and JavaScript
-- [ ] Add architecture diagrams and exercise guides to `docs/`
+- [x] Write SQL exercises for warehouse patterns (CTEs, window functions, slowly changing dimensions)
+- [x] Set up GitHub Actions CI for both Python and JavaScript
+- [x] Add architecture diagrams and exercise guides to `docs/`
 - [ ] Implement the end-to-end benchmark lab
 
 ## Development Notes

@@ -1,0 +1,21 @@
+-- Load product data matching data/sample/products.csv.
+--
+-- Includes raw data issues:
+--   P008 is inactive with 0 stock
+--   P009 has a negative price
+--   P011 has NULL stock
+--   P012 uses USD currency
+
+INSERT OR IGNORE INTO products (product_id, name, category, price, currency, stock, active) VALUES
+    ('P001', 'Wireless Mouse',    'Electronics',  29.99,  'EUR', 150,  'true'),
+    ('P002', 'Mechanical Keyboard','Electronics', 89.50,  'EUR', 75,   'true'),
+    ('P003', 'USB-C Hub',         'Electronics',  45.00,  'EUR', 200,  'true'),
+    ('P004', 'Standing Desk',     'Furniture',    349.99, 'EUR', 30,   'true'),
+    ('P005', 'Monitor Arm',       'Furniture',    79.90,  'EUR', 60,   'true'),
+    ('P006', 'Notebook A5',       'Stationery',   4.50,   'EUR', 500,  'true'),
+    ('P007', 'Gel Pen Set',       'Stationery',   12.00,  'EUR', 300,  'true'),
+    ('P008', 'Desk Lamp',         'Furniture',    55.00,  'EUR', 0,    'false'),
+    ('P009', 'Webcam HD',         'Electronics',  -15.00, 'EUR', 40,   'true'),
+    ('P010', 'Cable Organizer',   'Accessories',  8.99,   'EUR', 1000, 'true'),
+    ('P011', 'Laptop Stand',      'Furniture',    65.00,  'EUR', NULL, 'true'),
+    ('P012', 'Wireless Charger',  'Electronics',  35.00,  'USD', 90,   'true');
