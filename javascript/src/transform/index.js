@@ -12,3 +12,13 @@ export {
   transformEvent,
   runIncrementalEtl,
 } from "./incremental-etl.js";
+
+export {
+  parseCsv,
+  readSnapshot,
+  indexByKey,
+  compareRows,
+  compareSnapshots,
+  writeDiffFiles,
+  formatSummary,
+} from "./snapshot-diff.js";
