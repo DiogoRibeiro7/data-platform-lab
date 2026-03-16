@@ -191,6 +191,22 @@ sqlite3 lab.db "SELECT * FROM customers LIMIT 5;"
 
 See [docs/local-development.md](docs/local-development.md) for detailed setup instructions, common commands, and known pitfalls.
 
+### Run the demo
+
+A single command processes all four e-commerce sample datasets — customers, products, orders, and order items — through ingestion, validation, cleaning, and curated output. See [docs/end-to-end-demo.md](docs/end-to-end-demo.md) for full details.
+
+```bash
+# Python
+cd python
+poetry run python -m data_platform_lab.demo
+
+# JavaScript
+cd javascript
+node src/demo.js
+```
+
+Output: 60 rows in, 57 rows out, 3 rejected (1 duplicate customer, 1 negative-price product, 1 duplicate order item), 6 data-quality warnings, cleaned CSVs in `data/silver/demo/`, JSON manifest in `data/manifests/`.
+
 ### Working through exercises
 
 Each exercise lives in a module directory under `src/` (e.g., `python/src/data_platform_lab/ingestion/`). Exercises are designed to be worked in order but can be tackled independently. Accompanying tests in `tests/` verify expected behavior.
