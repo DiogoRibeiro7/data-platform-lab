@@ -104,6 +104,73 @@ class TestRunDemo:
         assert any("invalid price" in w for w in warnings)
         assert any("non-existent customer_id" in w for w in warnings)
 
+    def test_golden_output_customers(self, tmp_path: Path) -> None:
+        """Curated customers.csv has exact expected content."""
+        output_dir = tmp_path / "silver"
+
+        run_demo(
+            data_dir=str(SAMPLE_DIR),
+            output_dir=str(output_dir),
+            manifest_dir=str(tmp_path / "mf"),
+        )
+
+        lines = (output_dir / "customers.csv").read_text(encoding="utf-8").strip().split("\n")
+        # 12 data rows + 1 header = 13 lines
+        assert len(lines) == 13
+        assert lines[0] == "customer_id,first_name,last_name,email,city,country,created_at"
+        # C003 duplicate removed — should appear exactly once
+        c003_rows = [l for l in lines[1:] if l.startswith("C003,")]
+        assert len(c003_rows) == 1
+        # No negative-price product P009 in products.csv
+        product_lines = (output_dir / "products.csv").read_text(encoding="utf-8").strip().split("\n")
+        p009_rows = [l for l in product_lines[1:] if l.startswith("P009,")]
+        assert len(p009_rows) == 0
+
+    def test_manifest_json_shape(self, tmp_path: Path) -> None:
+        """Manifest JSON has the exact expected structure."""
+        result = run_demo(
+            data_dir=str(SAMPLE_DIR),
+            output_dir=str(tmp_path / "silver"),
+            manifest_dir=str(tmp_path / "mf"),
+        )
+
+        manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+
+        # Top-level keys
+        assert set(manifest.keys()) == {"run", "tables"}
+
+        # Run metadata shape
+        run = manifest["run"]
+        expected_run_keys = {
+            "pipeline_name", "run_id", "status", "started_at", "ended_at",
+            "duration_seconds", "rows_read", "rows_written", "rows_rejected",
+            "files_processed", "files_rejected", "warnings", "errors", "extra",
+        }
+        assert set(run.keys()) == expected_run_keys
+
+        # Table summary shape
+        for table_name in ("customers", "products", "orders", "order_items"):
+            assert table_name in manifest["tables"]
+            table = manifest["tables"][table_name]
+            assert "source" in table
+            assert "rows_read" in table
+            assert "rows_out" in table
+            assert "validation_status" in table
+
+    def test_rerun_produces_identical_output(self, tmp_path: Path) -> None:
+        """Running the demo twice produces identical silver CSVs."""
+        for run_name in ("run1", "run2"):
+            run_demo(
+                data_dir=str(SAMPLE_DIR),
+                output_dir=str(tmp_path / run_name / "silver"),
+                manifest_dir=str(tmp_path / run_name / "mf"),
+            )
+
+        for name in ("customers.csv", "products.csv", "orders.csv", "order_items.csv"):
+            content1 = (tmp_path / "run1" / "silver" / name).read_text(encoding="utf-8")
+            content2 = (tmp_path / "run2" / "silver" / name).read_text(encoding="utf-8")
+            assert content1 == content2, f"{name} differs between runs"
+
     def test_customer_country_standardised(self, tmp_path: Path) -> None:
         """Country casing is normalised to title case."""
         output_dir = tmp_path / "silver"

@@ -109,4 +109,72 @@ describe("e-commerce demo pipeline", () => {
     assert.ok(warnings.some((w) => w.includes("invalid price")));
     assert.ok(warnings.some((w) => w.includes("non-existent customer_id")));
   });
+
+  test("golden output — customers deduplicated, products filtered", async () => {
+    const outputDir = join(tempDir, "silver");
+
+    await runDemo({
+      dataDir: SAMPLE_DIR,
+      outputDir,
+      manifestDir: join(tempDir, "mf"),
+    });
+
+    const customerLines = readFileSync(join(outputDir, "customers.csv"), "utf-8")
+      .trim()
+      .split("\n");
+    // 12 data rows + 1 header
+    assert.equal(customerLines.length, 13);
+    // C003 duplicate removed — appears exactly once
+    const c003 = customerLines.filter((l) => l.startsWith("C003,"));
+    assert.equal(c003.length, 1);
+
+    // P009 (negative price) filtered from products
+    const productLines = readFileSync(join(outputDir, "products.csv"), "utf-8")
+      .trim()
+      .split("\n");
+    const p009 = productLines.filter((l) => l.startsWith("P009,"));
+    assert.equal(p009.length, 0);
+  });
+
+  test("manifest JSON has expected structure", async () => {
+    const result = await runDemo({
+      dataDir: SAMPLE_DIR,
+      outputDir: join(tempDir, "silver"),
+      manifestDir: join(tempDir, "mf"),
+    });
+
+    const manifest = JSON.parse(readFileSync(result.manifest_path, "utf-8"));
+
+    // Top-level keys
+    assert.deepEqual(Object.keys(manifest).sort(), ["run", "tables"]);
+
+    // Run metadata has required keys
+    const runKeys = Object.keys(manifest.run).sort();
+    assert.ok(runKeys.includes("pipeline_name"));
+    assert.ok(runKeys.includes("status"));
+    assert.ok(runKeys.includes("rows_read"));
+    assert.ok(runKeys.includes("rows_written"));
+    assert.ok(runKeys.includes("warnings"));
+
+    // All 4 tables present with required fields
+    for (const table of ["customers", "products", "orders", "order_items"]) {
+      assert.ok(table in manifest.tables, `${table} missing from manifest`);
+      assert.ok("rows_read" in manifest.tables[table]);
+      assert.ok("rows_out" in manifest.tables[table]);
+    }
+  });
+
+  test("rerun produces identical output", async () => {
+    const run1Dir = join(tempDir, "run1");
+    const run2Dir = join(tempDir, "run2");
+
+    await runDemo({ dataDir: SAMPLE_DIR, outputDir: join(run1Dir, "silver"), manifestDir: join(run1Dir, "mf") });
+    await runDemo({ dataDir: SAMPLE_DIR, outputDir: join(run2Dir, "silver"), manifestDir: join(run2Dir, "mf") });
+
+    for (const name of ["customers.csv", "products.csv", "orders.csv", "order_items.csv"]) {
+      const c1 = readFileSync(join(run1Dir, "silver", name), "utf-8");
+      const c2 = readFileSync(join(run2Dir, "silver", name), "utf-8");
+      assert.equal(c1, c2, `${name} differs between runs`);
+    }
+  });
 });

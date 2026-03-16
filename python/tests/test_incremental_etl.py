@@ -399,3 +399,59 @@ class TestRunIncrementalETL:
         assert len(output_files) == 1
         lines = output_files[0].read_text().strip().split("\n")
         assert len(lines) == 2
+
+    def test_rerun_produces_no_duplicate_output(self, tmp_path: Path) -> None:
+        """Running twice on the same data produces exactly one output file."""
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        output_dir = tmp_path / "output"
+        cp_path = tmp_path / "checkpoint.json"
+
+        write_jsonl(input_dir / "batch1.jsonl", SAMPLE_EVENTS)
+
+        run_incremental_etl(input_dir, output_dir, cp_path)
+        run_incremental_etl(input_dir, output_dir, cp_path)
+
+        # Only one output file — the second run wrote nothing
+        output_files = list(output_dir.glob("*.jsonl"))
+        assert len(output_files) == 1
+
+    def test_checkpoint_json_shape(self, tmp_path: Path) -> None:
+        """Checkpoint file has the expected JSON structure."""
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        output_dir = tmp_path / "output"
+        cp_path = tmp_path / "checkpoint.json"
+
+        write_jsonl(input_dir / "batch1.jsonl", SAMPLE_EVENTS)
+        run_incremental_etl(input_dir, output_dir, cp_path)
+
+        raw = json.loads(cp_path.read_text(encoding="utf-8"))
+        assert set(raw.keys()) == {
+            "pipeline_name", "last_run_at", "processed_ids", "total_runs"
+        }
+        assert isinstance(raw["pipeline_name"], str)
+        assert isinstance(raw["last_run_at"], str)
+        assert isinstance(raw["processed_ids"], list)
+        assert isinstance(raw["total_runs"], int)
+
+    def test_empty_string_event_id_treated_as_valid(self, tmp_path: Path) -> None:
+        """Events with empty-string event_id are processed (not skipped)."""
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        output_dir = tmp_path / "output"
+        cp_path = tmp_path / "checkpoint.json"
+
+        events: list[dict[str, object]] = [
+            {"event_id": "", "type": "click", "timestamp": "2024-06-01T10:00:00Z"},
+            SAMPLE_EVENTS[0],
+        ]
+        write_jsonl(input_dir / "batch.jsonl", events)
+
+        summary = run_incremental_etl(input_dir, output_dir, cp_path)
+
+        # Both are processed — empty string is a valid (if odd) event_id
+        assert summary.records_processed == 2
+        cp = load_checkpoint(cp_path, "events_etl")
+        assert "evt-001" in cp.processed_ids
+        assert "" in cp.processed_ids

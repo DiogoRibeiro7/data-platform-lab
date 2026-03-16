@@ -470,4 +470,35 @@ describe("runIncrementalEtl", () => {
     const cp = JSON.parse(readFileSync(checkpointPath, "utf-8"));
     assert.equal(cp.processed_ids.length, 2);
   });
+
+  test("rerun produces no duplicate output files", async () => {
+    writeJsonl(join(inputDir, "events.jsonl"), SAMPLE_EVENTS);
+
+    await runIncrementalEtl({ inputDir, outputDir, checkpointPath });
+    await runIncrementalEtl({ inputDir, outputDir, checkpointPath });
+
+    // Only one output file — second run wrote nothing
+    const outputFiles = readdirSync(outputDir).filter((f) =>
+      f.endsWith(".jsonl"),
+    );
+    assert.equal(outputFiles.length, 1);
+  });
+
+  test("checkpoint JSON has expected structure", async () => {
+    writeJsonl(join(inputDir, "events.jsonl"), SAMPLE_EVENTS);
+    await runIncrementalEtl({ inputDir, outputDir, checkpointPath });
+
+    const raw = JSON.parse(readFileSync(checkpointPath, "utf-8"));
+    const keys = Object.keys(raw).sort();
+    assert.deepEqual(keys, [
+      "last_run_at",
+      "pipeline_name",
+      "processed_ids",
+      "total_runs",
+    ]);
+    assert.equal(typeof raw.pipeline_name, "string");
+    assert.equal(typeof raw.last_run_at, "string");
+    assert.ok(Array.isArray(raw.processed_ids));
+    assert.equal(typeof raw.total_runs, "number");
+  });
 });

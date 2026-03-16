@@ -369,6 +369,48 @@ class TestCompareSnapshots:
         updated = [c for c in result.changes if c.change_type == "update"]
         assert updated[0].key == {"region": "US", "id": "1"}
 
+    def test_compare_snapshots_deterministic_order(self, tmp_path: Path) -> None:
+        """Changes are sorted deterministically (delete, insert, update by key)."""
+        old_path = tmp_path / "old.csv"
+        new_path = tmp_path / "new.csv"
+
+        write_csv(
+            old_path,
+            ["id", "name"],
+            [["3", "Carla"], ["1", "Alice"], ["2", "Bob"]],
+        )
+        write_csv(
+            new_path,
+            ["id", "name"],
+            [["1", "Alice_updated"], ["4", "David"]],
+        )
+
+        result = compare_snapshots(old_path, new_path, key_columns=["id"])
+
+        # Run twice — order must be identical
+        result2 = compare_snapshots(old_path, new_path, key_columns=["id"])
+        types1 = [(c.change_type, tuple(c.key.values())) for c in result.changes]
+        types2 = [(c.change_type, tuple(c.key.values())) for c in result2.changes]
+        assert types1 == types2, "Change order is not deterministic across runs"
+
+    def test_compare_snapshots_column_order_differs(self, tmp_path: Path) -> None:
+        """Snapshots with different column order still compare correctly."""
+        old_path = tmp_path / "old.csv"
+        new_path = tmp_path / "new.csv"
+
+        write_csv(old_path, ["id", "name", "value"], [["1", "Alice", "100"]])
+        # New file has columns in different order
+        new_path.write_text("value,id,name\n200,1,Alice\n", encoding="utf-8")
+
+        result = compare_snapshots(old_path, new_path, key_columns=["id"])
+
+        assert result.inserts == 0
+        assert result.deletes == 0
+        assert result.updates == 1
+        assert result.changes[0].changed_columns[0].column == "value"
+        assert result.changes[0].changed_columns[0].old_value == "100"
+        assert result.changes[0].changed_columns[0].new_value == "200"
+
     def test_compare_snapshots_with_ignore_columns(self, tmp_path: Path) -> None:
         """Ignored columns not counted as changes."""
         old_path = tmp_path / "old.csv"

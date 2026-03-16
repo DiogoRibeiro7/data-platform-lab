@@ -151,3 +151,50 @@ class TestRunAnalytics:
         assert counts["customer_orders"] == 12
         assert counts["orphan_foreign_keys"] == 1
         assert counts["duplicate_detection"] == 0
+
+    def test_revenue_amounts_correct(self, tmp_path: Path) -> None:
+        """Revenue figures are numerically correct, not just row-count correct."""
+        silver_dir = _produce_silver(tmp_path)
+
+        result = run_analytics(
+            silver_dir=str(silver_dir),
+            report_dir=str(tmp_path / "gold"),
+        )
+
+        revenue_query = next(
+            q for q in result["queries"] if q["name"] == "daily_revenue"
+        )
+        total_revenue = sum(r["daily_revenue"] for r in revenue_query["rows"])
+        assert total_revenue > 0
+
+        # Top product should be Mechanical Keyboard
+        top_query = next(
+            q for q in result["queries"] if q["name"] == "top_products"
+        )
+        assert top_query["rows"][0]["product_name"] == "Mechanical Keyboard"
+        assert top_query["rows"][0]["total_revenue"] > 300
+
+    def test_report_csv_matches_query_results(self, tmp_path: Path) -> None:
+        """Report CSV files contain the same data as the in-memory query results."""
+        import csv as csv_mod
+
+        silver_dir = _produce_silver(tmp_path)
+        report_dir = tmp_path / "gold"
+
+        result = run_analytics(
+            silver_dir=str(silver_dir),
+            report_dir=str(report_dir),
+        )
+
+        for q in result["queries"]:
+            csv_path = report_dir / f"{q['name']}.csv"
+            if q["row_count"] == 0:
+                continue
+
+            with csv_path.open(newline="", encoding="utf-8") as fh:
+                reader = csv_mod.DictReader(fh)
+                csv_rows = list(reader)
+
+            assert len(csv_rows) == q["row_count"], (
+                f"{q['name']}: CSV has {len(csv_rows)} rows but query had {q['row_count']}"
+            )

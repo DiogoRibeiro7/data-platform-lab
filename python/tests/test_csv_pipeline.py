@@ -184,6 +184,30 @@ class TestRunPipeline:
         assert result.rows_read == 0
         assert result.rows_written == 0
 
+    def test_run_pipeline_rerun_produces_identical_output(self, tmp_path: Path) -> None:
+        """Running the pipeline twice on the same input produces identical output."""
+        _write_csv(tmp_path / "data.csv", "id,name\n1,Alice\n2,Bob\n1,Alice\n")
+        out = tmp_path / "out.csv"
+
+        run_pipeline(tmp_path, out)
+        content_first = out.read_text(encoding="utf-8")
+
+        run_pipeline(tmp_path, out)
+        content_second = out.read_text(encoding="utf-8")
+
+        assert content_first == content_second
+
+    def test_run_pipeline_whitespace_only_csv(self, tmp_path: Path) -> None:
+        """A file with only whitespace lines is handled gracefully."""
+        _write_csv(tmp_path / "spaces.csv", "   \n  \n\n")
+        _write_csv(tmp_path / "good.csv", "id,name\n1,Alice\n")
+        out = tmp_path / "out.csv"
+        result = run_pipeline(tmp_path, out)
+
+        # The whitespace file is either rejected or produces 0 usable rows
+        assert "good.csv" in result.files_processed
+        assert result.rows_written >= 1
+
     def test_run_pipeline_malformed_csv(self, tmp_path: Path) -> None:
         """Handles a CSV with inconsistent column counts gracefully."""
         _write_csv(

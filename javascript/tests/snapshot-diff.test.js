@@ -409,6 +409,28 @@ describe("compareSnapshots", () => {
     assert.deepEqual(updated[0].key, { region: "US", id: "1" });
   });
 
+  test("deterministic output order across runs", async () => {
+    const oldPath = join(tempDir, "old.csv");
+    const newPath = join(tempDir, "new.csv");
+
+    writeCsv(oldPath, ["id", "name"], [
+      ["3", "Carla"],
+      ["1", "Alice"],
+      ["2", "Bob"],
+    ]);
+    writeCsv(newPath, ["id", "name"], [
+      ["1", "Alice_updated"],
+      ["4", "David"],
+    ]);
+
+    const result1 = await compareSnapshots(oldPath, newPath, ["id"]);
+    const result2 = await compareSnapshots(oldPath, newPath, ["id"]);
+
+    const keys1 = result1.changes.map((c) => `${c.change_type}:${JSON.stringify(c.key)}`);
+    const keys2 = result2.changes.map((c) => `${c.change_type}:${JSON.stringify(c.key)}`);
+    assert.deepEqual(keys1, keys2, "Change order is not deterministic");
+  });
+
   test("with ignore_columns", async () => {
     const oldPath = join(tempDir, "old.csv");
     const newPath = join(tempDir, "new.csv");
