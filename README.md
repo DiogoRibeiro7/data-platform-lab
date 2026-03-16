@@ -207,6 +207,20 @@ node src/demo.js
 
 Output: 60 rows in, 57 rows out, 3 rejected (1 duplicate customer, 1 negative-price product, 1 duplicate order item), 6 data-quality warnings, cleaned CSVs in `data/silver/demo/`, JSON manifest in `data/manifests/`.
 
+Then load the curated data into SQLite and run analytical queries. See [docs/sqlite-analytics-demo.md](docs/sqlite-analytics-demo.md).
+
+```bash
+# Python
+cd python
+poetry run python -m data_platform_lab.analytics
+
+# JavaScript (requires Node.js 22+)
+cd javascript
+node src/analytics.js
+```
+
+Output: daily revenue, top products by revenue, customer order counts, orphan FK detection, duplicate detection — with report CSVs in `data/gold/reports/`.
+
 ### Working through exercises
 
 Each exercise lives in a module directory under `src/` (e.g., `python/src/data_platform_lab/ingestion/`). Exercises are designed to be worked in order but can be tackled independently. Accompanying tests in `tests/` verify expected behavior.
