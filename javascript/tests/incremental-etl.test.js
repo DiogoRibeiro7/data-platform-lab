@@ -84,6 +84,18 @@ describe("loadCheckpoint", () => {
     assert.equal(cp.total_runs, 0);
   });
 
+  test("returns default when checkpoint file is corrupted JSON", async () => {
+    const cpPath = join(tempDir, "bad.json");
+    writeFileSync(cpPath, "{not valid json", "utf-8");
+
+    const cp = await loadCheckpoint(cpPath, "events_etl");
+
+    assert.equal(cp.pipeline_name, "events_etl");
+    assert.equal(cp.last_run_at, null);
+    assert.deepEqual(cp.processed_ids, []);
+    assert.equal(cp.total_runs, 0);
+  });
+
   test("saveCheckpoint and loadCheckpoint round-trip", async () => {
     const cpPath = join(tempDir, "sub", "checkpoint.json");
     const checkpoint = {
@@ -147,6 +159,21 @@ describe("readEvents", () => {
     const events = await readEvents(tempDir);
     assert.deepEqual(events, []);
   });
+
+  test("skips malformed JSON lines", async () => {
+    const content =
+      JSON.stringify(SAMPLE_EVENTS[0]) +
+      "\nNOT VALID JSON\n" +
+      JSON.stringify(SAMPLE_EVENTS[1]) +
+      "\n";
+    writeFileSync(join(tempDir, "mixed.jsonl"), content, "utf-8");
+
+    const events = await readEvents(tempDir);
+
+    assert.equal(events.length, 2);
+    assert.equal(events[0].event_id, "evt-001");
+    assert.equal(events[1].event_id, "evt-002");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -173,6 +200,15 @@ describe("transformEvent", () => {
     assert.equal(transformEvent({ event_id: "evt-100", timestamp: "2024-06-01T00:00:00Z" }), null);
     assert.equal(transformEvent({ type: "click", timestamp: "2024-06-01T00:00:00Z" }), null);
     assert.equal(transformEvent({}), null);
+  });
+
+  test("invalid timestamp returns null", () => {
+    const result = transformEvent({
+      event_id: "evt-bad",
+      type: "click",
+      timestamp: "not-a-date",
+    });
+    assert.equal(result, null);
   });
 
   test("null user_id", () => {

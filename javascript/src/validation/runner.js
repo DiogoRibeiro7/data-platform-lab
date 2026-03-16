@@ -38,8 +38,18 @@ export function runValidation(records, checks, { datasetName = "dataset" } = {})
   const results = [];
 
   for (const [ruleFn, ruleOptions] of checks) {
-    const result = ruleFn(records, ruleOptions);
-    results.push(result);
+    try {
+      const result = ruleFn(records, ruleOptions);
+      results.push(result);
+    } catch {
+      results.push({
+        name: ruleFn.name || "unknown",
+        passed: false,
+        severity: Severity.CRITICAL,
+        message: "Check raised an exception — see logs for details.",
+        failingRows: [],
+      });
+    }
   }
 
   let passed = 0;

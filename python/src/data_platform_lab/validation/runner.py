@@ -50,7 +50,17 @@ def run_validation(
 
     for rule_fn, kwargs in checks:
         logger.debug("Running check: %s", rule_fn.__name__)
-        result = rule_fn(records, **kwargs)
+        try:
+            result = rule_fn(records, **kwargs)
+        except Exception:
+            logger.exception("Check '%s' raised an exception", rule_fn.__name__)
+            result = CheckResult(
+                name=rule_fn.__name__,
+                passed=False,
+                severity=Severity.CRITICAL,
+                message=f"Check raised an exception — see logs for details.",
+                failing_rows=[],
+            )
         results.append(result)
 
     passed = sum(1 for r in results if r.passed)

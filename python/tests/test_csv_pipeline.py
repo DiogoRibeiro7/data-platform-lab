@@ -41,6 +41,23 @@ class TestReadCsvFile:
         assert rows == [["1", "Alice", "30"], ["2", "Bob", "25"]]
 
 
+    def test_read_csv_file_empty(self, tmp_path: Path) -> None:
+        """Empty file raises ValueError."""
+        p = _write_csv(tmp_path / "empty.csv", "")
+        try:
+            read_csv_file(p)
+            assert False, "Expected ValueError"
+        except ValueError as exc:
+            assert "empty" in str(exc).lower()
+
+    def test_read_csv_file_header_only(self, tmp_path: Path) -> None:
+        """Header-only CSV returns headers and empty rows list."""
+        p = _write_csv(tmp_path / "header_only.csv", "id,name,age\n")
+        headers, rows = read_csv_file(p)
+        assert headers == ["id", "name", "age"]
+        assert rows == []
+
+
 class TestValidateColumns:
     def test_validate_columns_pass(self) -> None:
         """All required columns are present."""
@@ -145,6 +162,27 @@ class TestRunPipeline:
         assert result.rows_read == 0
         assert result.rows_written == 0
         assert out.exists()
+
+    def test_run_pipeline_empty_csv_file(self, tmp_path: Path) -> None:
+        """An empty CSV file is rejected (no header), but pipeline continues."""
+        _write_csv(tmp_path / "good.csv", "id,name\n1,Alice\n")
+        _write_csv(tmp_path / "empty.csv", "")
+        out = tmp_path / "out.csv"
+        result = run_pipeline(tmp_path, out)
+
+        assert "good.csv" in result.files_processed
+        assert any("empty.csv" in r for r in result.files_rejected)
+        assert result.rows_written == 1
+
+    def test_run_pipeline_header_only_csv(self, tmp_path: Path) -> None:
+        """A header-only CSV is processed successfully with zero data rows."""
+        _write_csv(tmp_path / "header_only.csv", "id,name\n")
+        out = tmp_path / "out.csv"
+        result = run_pipeline(tmp_path, out)
+
+        assert "header_only.csv" in result.files_processed
+        assert result.rows_read == 0
+        assert result.rows_written == 0
 
     def test_run_pipeline_malformed_csv(self, tmp_path: Path) -> None:
         """Handles a CSV with inconsistent column counts gracefully."""

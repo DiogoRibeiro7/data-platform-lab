@@ -231,6 +231,31 @@ describe("runValidation", () => {
     assert.ok(report.failed > 0);
   });
 
+  test("rule that throws does not crash runner", () => {
+    function explodingRule() {
+      throw new Error("unexpected error in rule");
+    }
+
+    const report = runValidation(VALID_RECORDS, [
+      [checkRequiredColumns, { required: ["id"] }],
+      [explodingRule, {}],
+    ]);
+
+    assert.equal(report.totalChecks, 2);
+    assert.equal(report.passed, 1);
+    assert.equal(report.failed, 1);
+    assert.equal(report.criticalFailures, 1);
+    assert.equal(report.status, "failed");
+  });
+
+  test("empty checks list", () => {
+    const report = runValidation(VALID_RECORDS, []);
+    assert.equal(report.totalChecks, 0);
+    assert.equal(report.passed, 0);
+    assert.equal(report.failed, 0);
+    assert.equal(report.status, "passed");
+  });
+
   test("status logic", () => {
     // All critical pass, one warning fails => status "warning"
     const warningReport = runValidation(VALID_RECORDS, [

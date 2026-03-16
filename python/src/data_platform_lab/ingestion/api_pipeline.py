@@ -143,13 +143,24 @@ def transform_posts(
             logger.warning("Skipping record with missing fields: %s", record)
             continue
 
-        body = str(record["body"])
-        title = str(record["title"])
+        try:
+            rid = int(record["id"])
+            uid = int(record["userId"])
+        except (TypeError, ValueError):
+            logger.warning(
+                "Skipping record with non-numeric id/userId: id=%r, userId=%r",
+                record.get("id"),
+                record.get("userId"),
+            )
+            continue
+
+        body = str(record["body"]) if record["body"] is not None else ""
+        title = str(record["title"]) if record["title"] is not None else ""
 
         transformed.append(
             {
-                "id": int(record["id"]),
-                "user_id": int(record["userId"]),
+                "id": rid,
+                "user_id": uid,
                 "title": title,
                 "title_length": len(title),
                 "body_preview": body[:100],

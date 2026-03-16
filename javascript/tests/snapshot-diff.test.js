@@ -368,6 +368,47 @@ describe("compareSnapshots", () => {
     );
   });
 
+  test("both snapshots empty (headers only)", async () => {
+    const oldPath = join(tempDir, "old.csv");
+    const newPath = join(tempDir, "new.csv");
+
+    writeCsv(oldPath, ["id", "name"], []);
+    writeCsv(newPath, ["id", "name"], []);
+
+    const result = await compareSnapshots(oldPath, newPath, ["id"]);
+
+    assert.equal(result.inserts, 0);
+    assert.equal(result.updates, 0);
+    assert.equal(result.deletes, 0);
+    assert.equal(result.unchanged, 0);
+    assert.equal(result.old_row_count, 0);
+    assert.equal(result.new_row_count, 0);
+  });
+
+  test("composite key", async () => {
+    const oldPath = join(tempDir, "old.csv");
+    const newPath = join(tempDir, "new.csv");
+
+    writeCsv(oldPath, ["region", "id", "value"], [
+      ["US", "1", "100"],
+      ["EU", "1", "200"],
+    ]);
+    writeCsv(newPath, ["region", "id", "value"], [
+      ["US", "1", "150"],
+      ["EU", "1", "200"],
+    ]);
+
+    const result = await compareSnapshots(oldPath, newPath, ["region", "id"]);
+
+    assert.equal(result.inserts, 0);
+    assert.equal(result.deletes, 0);
+    assert.equal(result.updates, 1);
+    assert.equal(result.unchanged, 1);
+
+    const updated = result.changes.filter((c) => c.change_type === "update");
+    assert.deepEqual(updated[0].key, { region: "US", id: "1" });
+  });
+
   test("with ignore_columns", async () => {
     const oldPath = join(tempDir, "old.csv");
     const newPath = join(tempDir, "new.csv");

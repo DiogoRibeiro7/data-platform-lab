@@ -20,6 +20,15 @@ export async function loadCheckpoint(checkpointPath, pipelineName) {
         total_runs: 0,
       };
     }
+    if (err instanceof SyntaxError) {
+      // Corrupted checkpoint — start fresh rather than crashing
+      return {
+        pipeline_name: pipelineName,
+        last_run_at: null,
+        processed_ids: [],
+        total_runs: 0,
+      };
+    }
     throw err;
   }
 }
@@ -63,7 +72,11 @@ export async function readEvents(inputDir) {
     for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed.length === 0) continue;
-      events.push(JSON.parse(trimmed));
+      try {
+        events.push(JSON.parse(trimmed));
+      } catch {
+        // Skip malformed JSON lines rather than crashing the pipeline
+      }
     }
   }
 
@@ -83,6 +96,9 @@ export function transformEvent(event) {
   }
 
   const date = new Date(event.timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
 
   return {
     ...event,

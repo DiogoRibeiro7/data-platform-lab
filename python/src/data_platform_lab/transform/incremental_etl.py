@@ -55,8 +55,17 @@ def load_checkpoint(checkpoint_path: Path, pipeline_name: str) -> Checkpoint:
         )
         return Checkpoint(pipeline_name=pipeline_name)
 
-    with checkpoint_path.open("r", encoding="utf-8") as fh:
-        data = json.load(fh)
+    try:
+        with checkpoint_path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (json.JSONDecodeError, ValueError) as exc:
+        logger.warning(
+            "Corrupted checkpoint at %s (%s) — starting fresh for '%s'",
+            checkpoint_path,
+            exc,
+            pipeline_name,
+        )
+        return Checkpoint(pipeline_name=pipeline_name)
 
     return Checkpoint(
         pipeline_name=data.get("pipeline_name", pipeline_name),
@@ -98,14 +107,23 @@ def read_events(input_dir: Path) -> list[dict[str, Any]]:
         logger.warning("No JSONL files found in %s", input_dir)
         return events
 
+    malformed = 0
     for path in jsonl_files:
         with path.open("r", encoding="utf-8") as fh:
-            for line in fh:
+            for line_no, line in enumerate(fh, 1):
                 stripped = line.strip()
                 if not stripped:
                     continue
-                events.append(json.loads(stripped))
+                try:
+                    events.append(json.loads(stripped))
+                except json.JSONDecodeError:
+                    malformed += 1
+                    logger.warning(
+                        "Skipping malformed JSON at %s:%d", path.name, line_no
+                    )
 
+    if malformed:
+        logger.warning("Skipped %d malformed line(s) across input files", malformed)
     logger.info("Read %d events from %d file(s)", len(events), len(jsonl_files))
     return events
 

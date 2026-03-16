@@ -179,6 +179,27 @@ class TestTransformPosts:
         assert len(result) == 1
         assert result[0]["id"] == 2
 
+    def test_transform_posts_skips_null_id(self) -> None:
+        """Records with null or non-numeric id/userId are skipped."""
+        records: list[dict[str, Any]] = [
+            {"id": None, "userId": 1, "title": "t", "body": "b"},
+            {"id": 1, "userId": "not_a_number", "title": "t", "body": "b"},
+            {"id": 2, "userId": 2, "title": "t", "body": "b"},
+        ]
+        result = transform_posts(records)
+        assert len(result) == 1
+        assert result[0]["id"] == 2
+
+    def test_transform_posts_null_body(self) -> None:
+        """Records with None body get empty string instead of crashing."""
+        records: list[dict[str, Any]] = [
+            {"id": 1, "userId": 1, "title": "t", "body": None},
+        ]
+        result = transform_posts(records)
+        assert len(result) == 1
+        assert result[0]["body_preview"] == ""
+        assert result[0]["word_count"] == 0
+
     def test_transform_posts_body_preview(self) -> None:
         """Body preview is truncated to 100 chars."""
         long_body = "a" * 200

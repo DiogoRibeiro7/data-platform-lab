@@ -286,6 +286,30 @@ class TestRunValidation:
         assert report.failed > 0
         assert report.total_checks == 4
 
+    def test_rule_that_raises_does_not_crash_runner(self) -> None:
+        """If a rule function throws, it is recorded as a critical failure."""
+        def exploding_rule(records: list[dict[str, object]], **kwargs: object) -> CheckResult:
+            raise RuntimeError("unexpected error in rule")
+
+        checks: list[tuple[object, dict[str, object]]] = [
+            (check_required_columns, {"required": ["id"]}),
+            (exploding_rule, {}),
+        ]
+        report = run_validation(VALID_RECORDS, checks, dataset_name="test")  # type: ignore[arg-type]
+        assert report.total_checks == 2
+        assert report.passed == 1
+        assert report.failed == 1
+        assert report.critical_failures == 1
+        assert report.status == "failed"
+
+    def test_empty_checks_list(self) -> None:
+        """Empty checks list produces a passing report with zero counts."""
+        report = run_validation(VALID_RECORDS, [], dataset_name="test")
+        assert report.total_checks == 0
+        assert report.passed == 0
+        assert report.failed == 0
+        assert report.status == "passed"
+
     def test_status_logic(self) -> None:
         # Only warnings (no critical failures) -> "warning"
         warning_checks: list[tuple[object, dict[str, object]]] = [

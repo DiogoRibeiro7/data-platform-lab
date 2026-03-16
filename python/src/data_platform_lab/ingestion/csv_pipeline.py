@@ -26,10 +26,16 @@ class PipelineResult:
 
 
 def read_csv_file(path: Path) -> tuple[list[str], list[list[str]]]:
-    """Read a single CSV file and return (headers, rows)."""
+    """Read a single CSV file and return (headers, rows).
+
+    Raises :class:`ValueError` if the file is empty (no header row).
+    """
     with path.open(newline="", encoding="utf-8") as fh:
         reader = csv.reader(fh)
-        headers = next(reader)
+        try:
+            headers = next(reader)
+        except StopIteration:
+            raise ValueError(f"CSV file is empty: {path}") from None
         rows = list(reader)
     return headers, rows
 

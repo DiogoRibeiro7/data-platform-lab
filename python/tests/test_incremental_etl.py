@@ -68,6 +68,15 @@ class TestLoadCheckpoint:
         assert cp.processed_ids == set()
         assert cp.total_runs == 0
 
+    def test_load_checkpoint_corrupted_file(self, tmp_path: Path) -> None:
+        """Corrupted checkpoint JSON returns an empty checkpoint instead of crashing."""
+        cp_path = tmp_path / "bad.json"
+        cp_path.write_text("{this is not valid json", encoding="utf-8")
+        cp = load_checkpoint(cp_path, "my_pipeline")
+        assert cp.pipeline_name == "my_pipeline"
+        assert cp.processed_ids == set()
+        assert cp.total_runs == 0
+
     def test_save_and_load_checkpoint(self, tmp_path: Path) -> None:
         """Round-trip save/load preserves all checkpoint data."""
         cp_path = tmp_path / "checkpoint.json"
@@ -113,6 +122,19 @@ class TestReadEvents:
         events = read_events(tmp_path)
         assert events == []
 
+    def test_read_events_skips_malformed_json(self, tmp_path: Path) -> None:
+        """Malformed JSON lines are skipped instead of crashing the pipeline."""
+        content = (
+            json.dumps(SAMPLE_EVENTS[0]) + "\n"
+            + "NOT VALID JSON\n"
+            + json.dumps(SAMPLE_EVENTS[1]) + "\n"
+        )
+        (tmp_path / "mixed.jsonl").write_text(content)
+        events = read_events(tmp_path)
+        assert len(events) == 2
+        assert events[0]["event_id"] == "evt-001"
+        assert events[1]["event_id"] == "evt-002"
+
 
 # ===================================================================
 # Transform
@@ -148,6 +170,15 @@ class TestTransformEvent:
         assert transform_event({"event_id": "x", "type": "click"}) is None
         # Missing type
         assert transform_event({"event_id": "x", "timestamp": "2024-06-01T10:00:00Z"}) is None
+
+    def test_transform_event_bad_timestamp(self) -> None:
+        """Returns None for events with unparseable timestamps."""
+        event = {
+            "event_id": "evt-bad",
+            "type": "click",
+            "timestamp": "not-a-date",
+        }
+        assert transform_event(event) is None
 
     def test_transform_event_null_user(self) -> None:
         """has_user is False when user_id is null."""

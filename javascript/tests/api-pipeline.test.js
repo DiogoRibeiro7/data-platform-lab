@@ -249,6 +249,19 @@ describe("transformPosts", () => {
     assert.equal(result[0].id, 1);
   });
 
+  test("skips records with null required fields", () => {
+    const raw = [
+      { userId: 1, id: null, title: "t", body: "b" },
+      { userId: null, id: 2, title: "t", body: "b" },
+      { userId: 3, id: 3, title: "t", body: "b" },
+    ];
+
+    const result = transformPosts(raw);
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0].id, 3);
+  });
+
   test("truncates body preview to 100 chars", () => {
     const longBody = "a".repeat(200);
     const raw = [

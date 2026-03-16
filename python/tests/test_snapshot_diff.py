@@ -325,6 +325,50 @@ class TestCompareSnapshots:
         with pytest.raises(KeyError, match="not found in data"):
             compare_snapshots(old_path, new_path, key_columns=["nonexistent"])
 
+    def test_compare_snapshots_both_empty(self, tmp_path: Path) -> None:
+        """Both snapshots have headers but no data rows."""
+        old_path = tmp_path / "old.csv"
+        new_path = tmp_path / "new.csv"
+
+        write_csv(old_path, ["id", "name"], [])
+        write_csv(new_path, ["id", "name"], [])
+
+        result = compare_snapshots(old_path, new_path, key_columns=["id"])
+
+        assert result.inserts == 0
+        assert result.updates == 0
+        assert result.deletes == 0
+        assert result.unchanged == 0
+        assert result.old_row_count == 0
+        assert result.new_row_count == 0
+
+    def test_compare_snapshots_composite_key(self, tmp_path: Path) -> None:
+        """Composite key across two columns."""
+        old_path = tmp_path / "old.csv"
+        new_path = tmp_path / "new.csv"
+
+        write_csv(
+            old_path,
+            ["region", "id", "value"],
+            [["US", "1", "100"], ["EU", "1", "200"]],
+        )
+        write_csv(
+            new_path,
+            ["region", "id", "value"],
+            [["US", "1", "150"], ["EU", "1", "200"]],
+        )
+
+        result = compare_snapshots(
+            old_path, new_path, key_columns=["region", "id"]
+        )
+
+        assert result.inserts == 0
+        assert result.deletes == 0
+        assert result.updates == 1
+        assert result.unchanged == 1
+        updated = [c for c in result.changes if c.change_type == "update"]
+        assert updated[0].key == {"region": "US", "id": "1"}
+
     def test_compare_snapshots_with_ignore_columns(self, tmp_path: Path) -> None:
         """Ignored columns not counted as changes."""
         old_path = tmp_path / "old.csv"
