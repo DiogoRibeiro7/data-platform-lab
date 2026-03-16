@@ -29,7 +29,7 @@ On startup, the pipeline loads the checkpoint (or creates an empty one if the fi
 ## Data Flow
 
 ```text
-data/sample/*.jsonl (input events)
+data/sample/*.json (input events — the pipeline reads .jsonl by convention)
   │
   ├── readEvents / read_events
   │     (read all JSONL files from input dir, skip blank lines)

@@ -81,13 +81,7 @@ data/manifests/*
 !data/staging/.gitkeep
 !data/checkpoints/.gitkeep
 !data/manifests/.gitkeep
-
-# =============================================================================
-# OS files
-# =============================================================================
-.DS_Store
-Thumbs.db
-Desktop.ini
+!data/sample/*.log
 
 # =============================================================================
 # Misc
