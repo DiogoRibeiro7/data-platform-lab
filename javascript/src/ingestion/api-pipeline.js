@@ -163,8 +163,8 @@ export async function fetchAllPages(
 /**
  * Transform raw post records into a canonical schema.
  *
- * Output fields: `id`, `userId`, `title`, `titleLength`, `bodyPreview` (first
- * 100 characters of the body), and `wordCount` (words in the body).
+ * Output fields: `id`, `user_id`, `title`, `title_length`, `body_preview` (first
+ * 100 characters of the body), and `word_count` (words in the body).
  *
  * Records missing any of the required fields (`id`, `userId`, `title`, `body`)
  * are silently skipped.
@@ -190,11 +190,11 @@ export function transformPosts(rawRecords) {
     })
     .map((record) => ({
       id: record.id,
-      userId: record.userId,
+      user_id: record.userId,
       title: record.title,
-      titleLength: record.title.length,
-      bodyPreview: String(record.body).slice(0, 100),
-      wordCount: String(record.body)
+      title_length: record.title.length,
+      body_preview: String(record.body).slice(0, 100),
+      word_count: String(record.body)
         .trim()
         .split(/\s+/)
         .filter(Boolean).length,
@@ -256,15 +256,15 @@ export async function saveProcessed(records, outputDir, runId) {
  * @param {number} [options.maxPages=5]
  * @param {number} [options.timeoutMs=10000]
  * @returns {Promise<{
- *   runId: string,
- *   apiUrl: string,
- *   pagesFetched: number,
- *   totalRecords: number,
- *   recordsWritten: number,
- *   rawPath: string,
- *   processedPath: string,
+ *   run_id: string,
+ *   api_url: string,
+ *   pages_fetched: number,
+ *   total_records: number,
+ *   records_written: number,
+ *   raw_path: string,
+ *   processed_path: string,
  *   errors: string[],
- *   durationSeconds: number
+ *   duration_seconds: number
  * }>}
  */
 export async function runApiPipeline({
@@ -323,15 +323,15 @@ export async function runApiPipeline({
     Math.round(((performance.now() - startTime) / 1000) * 1000) / 1000;
 
   const summary = {
-    runId,
-    apiUrl: baseUrl,
-    pagesFetched,
-    totalRecords: records.length,
-    recordsWritten: transformed.length,
-    rawPath,
-    processedPath,
+    run_id: runId,
+    api_url: baseUrl,
+    pages_fetched: pagesFetched,
+    total_records: records.length,
+    records_written: transformed.length,
+    raw_path: rawPath,
+    processed_path: processedPath,
     errors,
-    durationSeconds,
+    duration_seconds: durationSeconds,
   };
 
   console.info("[runApiPipeline] Pipeline complete:", summary);

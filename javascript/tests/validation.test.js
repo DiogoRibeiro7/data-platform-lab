@@ -36,7 +36,7 @@ describe("checkRequiredColumns", () => {
     });
     assert.equal(result.passed, true);
     assert.equal(result.severity, Severity.CRITICAL);
-    assert.deepEqual(result.failingRows, []);
+    assert.deepEqual(result.failing_rows, []);
   });
 
   test("missing columns", () => {
@@ -69,7 +69,7 @@ describe("checkNoNulls", () => {
       columns: ["id", "name", "email"],
     });
     assert.equal(result.passed, true);
-    assert.deepEqual(result.failingRows, []);
+    assert.deepEqual(result.failing_rows, []);
   });
 
   test("nulls found", () => {
@@ -78,8 +78,8 @@ describe("checkNoNulls", () => {
     });
     assert.equal(result.passed, false);
     // Row 1 has null email, row 3 is missing email entirely (undefined)
-    assert.ok(result.failingRows.includes(1));
-    assert.ok(result.failingRows.includes(3));
+    assert.ok(result.failing_rows.includes(1));
+    assert.ok(result.failing_rows.includes(3));
   });
 
   test("empty strings count as null", () => {
@@ -88,7 +88,7 @@ describe("checkNoNulls", () => {
     });
     assert.equal(result.passed, false);
     // Row 1 has empty-string name
-    assert.ok(result.failingRows.includes(1));
+    assert.ok(result.failing_rows.includes(1));
   });
 });
 
@@ -101,7 +101,7 @@ describe("checkUnique", () => {
       columns: ["id"],
     });
     assert.equal(result.passed, true);
-    assert.deepEqual(result.failingRows, []);
+    assert.deepEqual(result.failing_rows, []);
   });
 
   test("duplicates found", () => {
@@ -110,8 +110,8 @@ describe("checkUnique", () => {
     });
     assert.equal(result.passed, false);
     // Rows 0 and 2 share id=1
-    assert.ok(result.failingRows.includes(0));
-    assert.ok(result.failingRows.includes(2));
+    assert.ok(result.failing_rows.includes(0));
+    assert.ok(result.failing_rows.includes(2));
   });
 });
 
@@ -126,7 +126,7 @@ describe("checkNumericRange", () => {
       max: 120,
     });
     assert.equal(result.passed, true);
-    assert.deepEqual(result.failingRows, []);
+    assert.deepEqual(result.failing_rows, []);
   });
 
   test("out of range", () => {
@@ -137,8 +137,8 @@ describe("checkNumericRange", () => {
     });
     assert.equal(result.passed, false);
     // Row 1 has age -5 (below min), row 2 has age 200 (above max)
-    assert.ok(result.failingRows.includes(1));
-    assert.ok(result.failingRows.includes(2));
+    assert.ok(result.failing_rows.includes(1));
+    assert.ok(result.failing_rows.includes(2));
   });
 
   test("only min bound", () => {
@@ -148,7 +148,7 @@ describe("checkNumericRange", () => {
     });
     assert.equal(result.passed, false);
     // Only row 1 (age -5) fails when there is no max
-    assert.deepEqual(result.failingRows, [1]);
+    assert.deepEqual(result.failing_rows, [1]);
   });
 });
 
@@ -162,7 +162,7 @@ describe("checkAllowedValues", () => {
       allowed: ["active", "inactive"],
     });
     assert.equal(result.passed, true);
-    assert.deepEqual(result.failingRows, []);
+    assert.deepEqual(result.failing_rows, []);
   });
 
   test("disallowed values", () => {
@@ -172,7 +172,7 @@ describe("checkAllowedValues", () => {
     });
     assert.equal(result.passed, false);
     // Row 1 has status "unknown"
-    assert.ok(result.failingRows.includes(1));
+    assert.ok(result.failing_rows.includes(1));
   });
 });
 
@@ -185,7 +185,7 @@ describe("checkDateFormat", () => {
       column: "createdAt",
     });
     assert.equal(result.passed, true);
-    assert.deepEqual(result.failingRows, []);
+    assert.deepEqual(result.failing_rows, []);
   });
 
   test("invalid dates", () => {
@@ -194,8 +194,8 @@ describe("checkDateFormat", () => {
     });
     assert.equal(result.passed, false);
     // Row 1: "15/01/2024" wrong format, Row 2: "2024-13-01" month 13 invalid
-    assert.ok(result.failingRows.includes(1));
-    assert.ok(result.failingRows.includes(2));
+    assert.ok(result.failing_rows.includes(1));
+    assert.ok(result.failing_rows.includes(2));
   });
 });
 
@@ -210,7 +210,7 @@ describe("runValidation", () => {
       [checkUnique, { columns: ["id"] }],
     ]);
     assert.equal(report.status, "passed");
-    assert.equal(report.totalChecks, 3);
+    assert.equal(report.total_checks, 3);
     assert.equal(report.passed, 3);
     assert.equal(report.failed, 0);
   });
@@ -226,8 +226,8 @@ describe("runValidation", () => {
       ],
       { datasetName: "users" },
     );
-    assert.equal(report.datasetName, "users");
-    assert.equal(report.totalChecks, 4);
+    assert.equal(report.dataset_name, "users");
+    assert.equal(report.total_checks, 4);
     assert.ok(report.failed > 0);
   });
 
@@ -241,16 +241,16 @@ describe("runValidation", () => {
       [explodingRule, {}],
     ]);
 
-    assert.equal(report.totalChecks, 2);
+    assert.equal(report.total_checks, 2);
     assert.equal(report.passed, 1);
     assert.equal(report.failed, 1);
-    assert.equal(report.criticalFailures, 1);
+    assert.equal(report.critical_failures, 1);
     assert.equal(report.status, "failed");
   });
 
   test("empty checks list", () => {
     const report = runValidation(VALID_RECORDS, []);
-    assert.equal(report.totalChecks, 0);
+    assert.equal(report.total_checks, 0);
     assert.equal(report.passed, 0);
     assert.equal(report.failed, 0);
     assert.equal(report.status, "passed");

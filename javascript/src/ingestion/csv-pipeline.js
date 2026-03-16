@@ -113,7 +113,7 @@ export function trimFields(rows) {
  * Remove exact duplicate rows.
  *
  * @param {string[][]} rows - Array of row arrays.
- * @returns {{ uniqueRows: string[][], removedCount: number }} Deduplicated rows and count of removed duplicates.
+ * @returns {{ unique_rows: string[][], removed_count: number }} Deduplicated rows and count of removed duplicates.
  */
 export function deduplicate(rows) {
   const seen = new Set();
@@ -128,8 +128,8 @@ export function deduplicate(rows) {
   }
 
   return {
-    uniqueRows,
-    removedCount: rows.length - uniqueRows.length,
+    unique_rows: uniqueRows,
+    removed_count: rows.length - uniqueRows.length,
   };
 }
 
@@ -171,20 +171,20 @@ function rowToCsvLine(row) {
  * @param {string} options.outputPath - Path for the output CSV file.
  * @param {string[]} [options.requiredColumns] - Optional list of required column names.
  * @returns {Promise<{
- *   filesProcessed: string[],
- *   filesRejected: string[],
- *   rowsRead: number,
- *   rowsWritten: number,
- *   duplicatesRemoved: number
+ *   files_processed: string[],
+ *   files_rejected: string[],
+ *   rows_read: number,
+ *   rows_written: number,
+ *   duplicates_removed: number
  * }>} Pipeline result summary.
  */
 export async function runPipeline({ inputDir, outputPath, requiredColumns }) {
   const result = {
-    filesProcessed: [],
-    filesRejected: [],
-    rowsRead: 0,
-    rowsWritten: 0,
-    duplicatesRemoved: 0,
+    files_processed: [],
+    files_rejected: [],
+    rows_read: 0,
+    rows_written: 0,
+    duplicates_removed: 0,
   };
 
   // 1. Discover CSV files
@@ -219,14 +219,14 @@ export async function runPipeline({ inputDir, outputPath, requiredColumns }) {
     } catch (err) {
       const reason = `${fileName}: read error — ${err.message}`;
       console.warn(reason);
-      result.filesRejected.push(reason);
+      result.files_rejected.push(reason);
       continue;
     }
 
     if (parsed.headers.length === 0) {
       const reason = `${fileName}: empty or malformed file`;
       console.warn(reason);
-      result.filesRejected.push(reason);
+      result.files_rejected.push(reason);
       continue;
     }
 
@@ -236,7 +236,7 @@ export async function runPipeline({ inputDir, outputPath, requiredColumns }) {
       if (missing.length > 0) {
         const reason = `${fileName}: missing required columns — ${missing.join(", ")}`;
         console.warn(reason);
-        result.filesRejected.push(reason);
+        result.files_rejected.push(reason);
         continue;
       }
     }
@@ -245,7 +245,7 @@ export async function runPipeline({ inputDir, outputPath, requiredColumns }) {
     const stdHeaders = standardizeHeaders(parsed.headers);
     const trimmedRows = trimFields(parsed.rows);
 
-    result.rowsRead += trimmedRows.length;
+    result.rows_read += trimmedRows.length;
 
     // 5. Merge — use the headers from the first valid file as canonical
     if (mergedHeaders === null) {
@@ -261,7 +261,7 @@ export async function runPipeline({ inputDir, outputPath, requiredColumns }) {
       if (extraCols.length > 0 || missingCols.length > 0) {
         const reason = `${fileName}: header mismatch — extra: [${extraCols.join(", ")}], missing: [${missingCols.join(", ")}]`;
         console.warn(reason);
-        result.filesRejected.push(reason);
+        result.files_rejected.push(reason);
         continue;
       }
 
@@ -271,19 +271,19 @@ export async function runPipeline({ inputDir, outputPath, requiredColumns }) {
         for (const row of trimmedRows) {
           allRows.push(indexMap.map((i) => row[i] ?? ""));
         }
-        result.filesProcessed.push(fileName);
+        result.files_processed.push(fileName);
         continue;
       }
     }
 
     allRows.push(...trimmedRows);
-    result.filesProcessed.push(fileName);
+    result.files_processed.push(fileName);
   }
 
   // 6. Deduplicate
-  const { uniqueRows, removedCount } = deduplicate(allRows);
-  result.duplicatesRemoved = removedCount;
-  result.rowsWritten = uniqueRows.length;
+  const { unique_rows: uniqueRows, removed_count: removedCount } = deduplicate(allRows);
+  result.duplicates_removed = removedCount;
+  result.rows_written = uniqueRows.length;
 
   // 7. Write output
   if (mergedHeaders) {
@@ -297,10 +297,10 @@ export async function runPipeline({ inputDir, outputPath, requiredColumns }) {
   }
 
   console.info(
-    `Pipeline complete: ${result.filesProcessed.length} file(s) processed, ` +
-      `${result.filesRejected.length} rejected, ` +
-      `${result.rowsRead} rows read, ${result.rowsWritten} written, ` +
-      `${result.duplicatesRemoved} duplicates removed.`,
+    `Pipeline complete: ${result.files_processed.length} file(s) processed, ` +
+    `${result.files_rejected.length} rejected, ` +
+    `${result.rows_read} rows read, ${result.rows_written} written, ` +
+    `${result.duplicates_removed} duplicates removed.`,
   );
 
   return result;

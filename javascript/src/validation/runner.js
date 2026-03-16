@@ -11,12 +11,12 @@ import { Severity } from "./rules.js";
 
 /**
  * @typedef {object} ValidationReport
- * @property {string}        datasetName      - Name of the dataset being validated
- * @property {number}        totalChecks      - Total number of checks executed
+ * @property {string}        dataset_name     - Name of the dataset being validated
+ * @property {number}        total_checks     - Total number of checks executed
  * @property {number}        passed           - Number of checks that passed
  * @property {number}        failed           - Number of checks that failed
  * @property {number}        warnings         - Number of failed checks with WARNING severity
- * @property {number}        criticalFailures - Number of failed checks with CRITICAL severity
+ * @property {number}        critical_failures - Number of failed checks with CRITICAL severity
  * @property {"passed"|"warning"|"failed"} status - Overall validation status
  * @property {CheckResult[]} checks           - Individual check results
  */
@@ -47,7 +47,7 @@ export function runValidation(records, checks, { datasetName = "dataset" } = {})
         passed: false,
         severity: Severity.CRITICAL,
         message: "Check raised an exception — see logs for details.",
-        failingRows: [],
+        failing_rows: [],
       });
     }
   }
@@ -80,12 +80,12 @@ export function runValidation(records, checks, { datasetName = "dataset" } = {})
   }
 
   return {
-    datasetName,
-    totalChecks: results.length,
+    dataset_name: datasetName,
+    total_checks: results.length,
     passed,
     failed,
     warnings,
-    criticalFailures,
+    critical_failures: criticalFailures,
     status,
     checks: results,
   };
@@ -100,22 +100,22 @@ export function runValidation(records, checks, { datasetName = "dataset" } = {})
 export function formatReport(report) {
   const lines = [];
 
-  lines.push(`Validation Report: ${report.datasetName}`);
+  lines.push(`Validation Report: ${report.dataset_name}`);
   lines.push("=".repeat(40));
   lines.push(`Status: ${report.status.toUpperCase()}`);
-  lines.push(`Total checks: ${report.totalChecks}`);
+  lines.push(`Total checks: ${report.total_checks}`);
   lines.push(`Passed: ${report.passed}`);
   lines.push(`Failed: ${report.failed}`);
   lines.push(`  Warnings: ${report.warnings}`);
-  lines.push(`  Critical: ${report.criticalFailures}`);
+  lines.push(`  Critical: ${report.critical_failures}`);
   lines.push("");
 
   for (const check of report.checks) {
     const icon = check.passed ? "PASS" : "FAIL";
     lines.push(`[${icon}] ${check.name} (${check.severity})`);
     lines.push(`       ${check.message}`);
-    if (!check.passed && check.failingRows.length > 0) {
-      lines.push(`       Failing rows: ${check.failingRows.join(", ")}`);
+    if (!check.passed && check.failing_rows.length > 0) {
+      lines.push(`       Failing rows: ${check.failing_rows.join(", ")}`);
     }
   }
 

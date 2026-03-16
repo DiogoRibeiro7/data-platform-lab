@@ -17,7 +17,7 @@ export const Severity = Object.freeze({
  * @property {boolean}  passed       - Whether every row satisfied the rule
  * @property {string}   severity     - "warning" | "critical"
  * @property {string}   message      - Explanation of the outcome
- * @property {number[]} failingRows  - 0-based indices of rows that failed
+ * @property {number[]} failing_rows - 0-based indices of rows that failed
  */
 
 /**
@@ -50,7 +50,7 @@ export function checkRequiredColumns(records, { required, severity = Severity.CR
     message: passed
       ? "All required columns are present."
       : `Missing columns: ${missing.join(", ")}`,
-    failingRows: [],
+    failing_rows: [],
   };
 }
 
@@ -86,7 +86,7 @@ export function checkNoNulls(records, { columns, severity = Severity.CRITICAL })
     message: passed
       ? `No null values found in columns: ${columns.join(", ")}.`
       : `Found null/empty values in ${failingRows.length} row(s) for columns: ${columns.join(", ")}.`,
-    failingRows,
+    failing_rows: failingRows,
   };
 }
 
@@ -127,7 +127,7 @@ export function checkUnique(records, { columns, severity = Severity.CRITICAL }) 
     message: passed
       ? `All rows are unique on columns: ${columns.join(", ")}.`
       : `Found duplicate values in ${failingRows.length} row(s) on columns: ${columns.join(", ")}.`,
-    failingRows,
+    failing_rows: failingRows,
   };
 }
 
@@ -173,7 +173,7 @@ export function checkNumericRange(records, { column, min, max, severity = Severi
     message: passed
       ? `All numeric values in "${column}" are within ${boundsDesc}.`
       : `${failingRows.length} row(s) have "${column}" outside ${boundsDesc}.`,
-    failingRows,
+    failing_rows: failingRows,
   };
 }
 
@@ -207,7 +207,7 @@ export function checkAllowedValues(records, { column, allowed, severity = Severi
     message: passed
       ? `All values in "${column}" are within the allowed set.`
       : `${failingRows.length} row(s) have disallowed values in "${column}".`,
-    failingRows,
+    failing_rows: failingRows,
   };
 }
 
@@ -278,6 +278,6 @@ export function checkDateFormat(records, { column, format = "YYYY-MM-DD", severi
     message: passed
       ? `All values in "${column}" match format ${format}.`
       : `${failingRows.length} row(s) have invalid date format in "${column}" (expected ${format}).`,
-    failingRows,
+    failing_rows: failingRows,
   };
 }

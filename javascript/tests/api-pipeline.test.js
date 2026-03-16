@@ -227,11 +227,11 @@ describe("transformPosts", () => {
 
     assert.equal(result.length, 1);
     assert.equal(result[0].id, 1);
-    assert.equal(result[0].userId, 1);
+    assert.equal(result[0].user_id, 1);
     assert.equal(result[0].title, "Hello World");
-    assert.equal(result[0].titleLength, 11);
-    assert.equal(result[0].bodyPreview, "This is the body text");
-    assert.equal(result[0].wordCount, 5);
+    assert.equal(result[0].title_length, 11);
+    assert.equal(result[0].body_preview, "This is the body text");
+    assert.equal(result[0].word_count, 5);
   });
 
   test("skips records missing required fields", () => {
@@ -270,8 +270,8 @@ describe("transformPosts", () => {
 
     const result = transformPosts(raw);
 
-    assert.equal(result[0].bodyPreview.length, 100);
-    assert.equal(result[0].bodyPreview, "a".repeat(100));
+    assert.equal(result[0].body_preview.length, 100);
+    assert.equal(result[0].body_preview, "a".repeat(100));
   });
 });
 
@@ -303,27 +303,27 @@ describe("runApiPipeline", () => {
         maxPages: 5,
       });
 
-      assert.equal(summary.pagesFetched, 1);
-      assert.equal(summary.totalRecords, 3);
-      assert.equal(summary.recordsWritten, 3);
+      assert.equal(summary.pages_fetched, 1);
+      assert.equal(summary.total_records, 3);
+      assert.equal(summary.records_written, 3);
       assert.deepStrictEqual(summary.errors, []);
-      assert.ok(summary.runId.length > 0);
-      assert.ok(summary.durationSeconds >= 0);
-      assert.equal(summary.apiUrl, "https://example.com/posts");
+      assert.ok(summary.run_id.length > 0);
+      assert.ok(summary.duration_seconds >= 0);
+      assert.equal(summary.api_url, "https://example.com/posts");
 
       // Verify raw file was written
-      const rawContent = JSON.parse(readFileSync(summary.rawPath, "utf-8"));
+      const rawContent = JSON.parse(readFileSync(summary.raw_path, "utf-8"));
       assert.equal(rawContent.length, 3);
       assert.equal(rawContent[0].title, "First Post");
 
       // Verify processed file was written
       const processedContent = JSON.parse(
-        readFileSync(summary.processedPath, "utf-8"),
+        readFileSync(summary.processed_path, "utf-8"),
       );
       assert.equal(processedContent.length, 3);
-      assert.ok("titleLength" in processedContent[0]);
-      assert.ok("bodyPreview" in processedContent[0]);
-      assert.ok("wordCount" in processedContent[0]);
+      assert.ok("title_length" in processedContent[0]);
+      assert.ok("body_preview" in processedContent[0]);
+      assert.ok("word_count" in processedContent[0]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -348,9 +348,9 @@ describe("runApiPipeline", () => {
       });
 
       assert.ok(summary.errors.length > 0);
-      assert.equal(summary.totalRecords, 0);
-      assert.equal(summary.recordsWritten, 0);
-      assert.equal(summary.pagesFetched, 0);
+      assert.equal(summary.total_records, 0);
+      assert.equal(summary.records_written, 0);
+      assert.equal(summary.pages_fetched, 0);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

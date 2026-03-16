@@ -36,14 +36,14 @@ const requiredColumns = values["required-columns"]
 const result = await runPipeline({ inputDir, outputPath, requiredColumns });
 
 console.log("\n=== Pipeline Summary ===");
-console.log(`Files processed: ${result.filesProcessed.length}`);
-result.filesProcessed.forEach((f) => console.log(`  - ${f}`));
+console.log(`Files processed: ${result.files_processed.length}`);
+result.files_processed.forEach((f) => console.log(`  - ${f}`));
 
-if (result.filesRejected.length > 0) {
-  console.log(`Files rejected:  ${result.filesRejected.length}`);
-  result.filesRejected.forEach((r) => console.log(`  - ${r}`));
+if (result.files_rejected.length > 0) {
+  console.log(`Files rejected:  ${result.files_rejected.length}`);
+  result.files_rejected.forEach((r) => console.log(`  - ${r}`));
 }
 
-console.log(`Rows read:       ${result.rowsRead}`);
-console.log(`Rows written:    ${result.rowsWritten}`);
-console.log(`Duplicates removed: ${result.duplicatesRemoved}`);
+console.log(`Rows read:       ${result.rows_read}`);
+console.log(`Rows written:    ${result.rows_written}`);
+console.log(`Duplicates removed: ${result.duplicates_removed}`);

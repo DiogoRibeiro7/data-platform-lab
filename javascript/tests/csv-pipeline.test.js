@@ -176,25 +176,25 @@ describe("deduplicate", () => {
       ["Bob", "25", "Porto"],
     ];
 
-    const { uniqueRows, removedCount } = deduplicate(rows);
+    const { unique_rows, removed_count } = deduplicate(rows);
 
-    assert.equal(uniqueRows.length, 3);
-    assert.equal(removedCount, 2);
-    assert.deepStrictEqual(uniqueRows[0], ["Alice", "30", "Lisbon"]);
-    assert.deepStrictEqual(uniqueRows[1], ["Bob", "25", "Porto"]);
-    assert.deepStrictEqual(uniqueRows[2], ["Carla", "28", "Berlin"]);
+    assert.equal(unique_rows.length, 3);
+    assert.equal(removed_count, 2);
+    assert.deepStrictEqual(unique_rows[0], ["Alice", "30", "Lisbon"]);
+    assert.deepStrictEqual(unique_rows[1], ["Bob", "25", "Porto"]);
+    assert.deepStrictEqual(unique_rows[2], ["Carla", "28", "Berlin"]);
   });
 
-  test("returns zero removedCount when no duplicates", () => {
+  test("returns zero removed_count when no duplicates", () => {
     const rows = [
       ["Alice", "30"],
       ["Bob", "25"],
     ];
 
-    const { uniqueRows, removedCount } = deduplicate(rows);
+    const { unique_rows, removed_count } = deduplicate(rows);
 
-    assert.equal(uniqueRows.length, 2);
-    assert.equal(removedCount, 0);
+    assert.equal(unique_rows.length, 2);
+    assert.equal(removed_count, 0);
   });
 });
 
@@ -232,11 +232,11 @@ describe("runPipeline", () => {
       outputPath,
     });
 
-    assert.deepStrictEqual(result.filesProcessed, ["a.csv", "b.csv"]);
-    assert.deepStrictEqual(result.filesRejected, []);
-    assert.equal(result.rowsRead, 4);
-    assert.equal(result.rowsWritten, 3); // Alice duplicate removed
-    assert.equal(result.duplicatesRemoved, 1);
+    assert.deepStrictEqual(result.files_processed, ["a.csv", "b.csv"]);
+    assert.deepStrictEqual(result.files_rejected, []);
+    assert.equal(result.rows_read, 4);
+    assert.equal(result.rows_written, 3); // Alice duplicate removed
+    assert.equal(result.duplicates_removed, 1);
 
     const output = readFileSync(outputPath, "utf-8");
     const lines = output.trim().split("\n");
@@ -262,12 +262,12 @@ describe("runPipeline", () => {
       requiredColumns: ["name", "age", "city"],
     });
 
-    assert.deepStrictEqual(result.filesProcessed, ["good.csv"]);
-    assert.equal(result.filesRejected.length, 1);
-    assert.ok(result.filesRejected[0].includes("bad.csv"));
-    assert.ok(result.filesRejected[0].includes("missing required columns"));
-    assert.equal(result.rowsRead, 1);
-    assert.equal(result.rowsWritten, 1);
+    assert.deepStrictEqual(result.files_processed, ["good.csv"]);
+    assert.equal(result.files_rejected.length, 1);
+    assert.ok(result.files_rejected[0].includes("bad.csv"));
+    assert.ok(result.files_rejected[0].includes("missing required columns"));
+    assert.equal(result.rows_read, 1);
+    assert.equal(result.rows_written, 1);
   });
 
   test("handles empty input directory", async () => {
@@ -279,11 +279,11 @@ describe("runPipeline", () => {
         outputPath,
       });
 
-      assert.deepStrictEqual(result.filesProcessed, []);
-      assert.deepStrictEqual(result.filesRejected, []);
-      assert.equal(result.rowsRead, 0);
-      assert.equal(result.rowsWritten, 0);
-      assert.equal(result.duplicatesRemoved, 0);
+      assert.deepStrictEqual(result.files_processed, []);
+      assert.deepStrictEqual(result.files_rejected, []);
+      assert.equal(result.rows_read, 0);
+      assert.equal(result.rows_written, 0);
+      assert.equal(result.duplicates_removed, 0);
     } finally {
       rmSync(emptyDir, { recursive: true, force: true });
     }
@@ -311,11 +311,11 @@ describe("runPipeline", () => {
     // The empty file should be rejected; header-only should be processed
     // (zero rows is valid).
     assert.ok(
-      result.filesRejected.some((r) => r.includes("empty.csv")),
+      result.files_rejected.some((r) => r.includes("empty.csv")),
       "Empty file should be rejected",
     );
     assert.ok(
-      result.filesProcessed.includes("valid.csv"),
+      result.files_processed.includes("valid.csv"),
       "Valid file should be processed",
     );
   });
@@ -332,8 +332,8 @@ describe("runPipeline", () => {
       outputPath,
     });
 
-    assert.equal(result.filesProcessed.length, 1);
-    assert.equal(result.rowsWritten, 1);
+    assert.equal(result.files_processed.length, 1);
+    assert.equal(result.rows_written, 1);
 
     const output = readFileSync(outputPath, "utf-8");
     const lines = output.trim().split("\n");

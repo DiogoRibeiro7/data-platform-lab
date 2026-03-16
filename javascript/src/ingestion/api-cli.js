@@ -68,14 +68,14 @@ const summary = await runApiPipeline({
 });
 
 console.info("\n=== API Ingestion Summary ===");
-console.info(`  Run ID:           ${summary.runId}`);
-console.info(`  API URL:          ${summary.apiUrl}`);
-console.info(`  Pages fetched:    ${summary.pagesFetched}`);
-console.info(`  Total records:    ${summary.totalRecords}`);
-console.info(`  Records written:  ${summary.recordsWritten}`);
-console.info(`  Raw path:         ${summary.rawPath}`);
-console.info(`  Processed path:   ${summary.processedPath}`);
-console.info(`  Duration:         ${summary.durationSeconds}s`);
+console.info(`  Run ID:           ${summary.run_id}`);
+console.info(`  API URL:          ${summary.api_url}`);
+console.info(`  Pages fetched:    ${summary.pages_fetched}`);
+console.info(`  Total records:    ${summary.total_records}`);
+console.info(`  Records written:  ${summary.records_written}`);
+console.info(`  Raw path:         ${summary.raw_path}`);
+console.info(`  Processed path:   ${summary.processed_path}`);
+console.info(`  Duration:         ${summary.duration_seconds}s`);
 
 if (summary.errors.length > 0) {
   console.warn(`  Errors:           ${summary.errors.join("; ")}`);
