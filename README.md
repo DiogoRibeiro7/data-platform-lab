@@ -157,31 +157,39 @@ All seven exercises are implemented in both Python and JavaScript with full test
 | Warehouse loading CLI | Python/JS wrapper around the SQL assets |
 | Ingestion benchmark | Sequential vs parallel vs async throughput comparison |
 
-## How to Use This Repository
+## Quickstart
 
-### Python
+### Prerequisites
+
+- **Python 3.11+** and [Poetry](https://python-poetry.org/)
+- **Node.js 20+** (Yarn is enabled via [Corepack](https://nodejs.org/api/corepack.html))
+- **SQLite 3.35+** (for SQL exercises)
+
+### Clone and set up
 
 ```bash
+git clone <repo-url> && cd data-platform-lab
+
+# Python
 cd python
-poetry install
-poetry run pytest
-```
+poetry install          # installs package + dev tools (pytest, ruff, mypy)
+poetry run pytest       # run all tests (110 tests)
+cd ..
 
-### JavaScript
-
-```bash
+# JavaScript
 cd javascript
-yarn install
-yarn test
-```
+corepack enable         # enables yarn via Node's built-in corepack
+yarn install            # installs dev dependencies (eslint)
+yarn test               # run all tests (116 tests)
+cd ..
 
-### SQL
-
-SQL files in `sql/` are standalone scripts. Run them against any compatible database engine:
-
-```bash
+# SQL (optional)
 sqlite3 lab.db < sql/ddl/01_customers.sql
+sqlite3 lab.db < sql/dml/01_load_customers.sql
+sqlite3 lab.db "SELECT * FROM customers LIMIT 5;"
 ```
+
+See [docs/local-development.md](docs/local-development.md) for detailed setup instructions, common commands, and known pitfalls.
 
 ### Working through exercises
 

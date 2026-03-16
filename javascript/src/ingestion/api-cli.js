@@ -39,9 +39,25 @@ const { values } = parseArgs({
       type: "string",
       default: "5",
     },
+    help: { type: "boolean", short: "h", default: false },
   },
   strict: true,
 });
+
+if (values.help) {
+  console.log(
+    `Usage: node api-cli.js [options]
+
+Options:
+  --url <url>              Base API URL (default: JSONPlaceholder /posts)
+  --raw-dir <path>         Directory for raw JSON output (default: data/raw/api_posts)
+  --processed-dir <path>   Directory for processed output (default: data/bronze/api_posts)
+  --page-size <n>          Records per page (default: 10)
+  --max-pages <n>          Maximum pages to fetch (default: 5)
+  -h, --help               Show this help message`,
+  );
+  process.exit(0);
+}
 
 const summary = await runApiPipeline({
   baseUrl: values.url,

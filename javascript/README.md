@@ -43,6 +43,25 @@ Run tests:
 yarn test
 ```
 
+## CLI Entry Points
+
+Run the CSV ingestion pipeline against sample data:
+
+```bash
+node src/ingestion/cli.js \
+  --input-dir ../data/sample \
+  --output ../data/bronze/merged.csv \
+  --required-columns customer_id,email
+```
+
+Run the API ingestion pipeline (fetches from JSONPlaceholder by default):
+
+```bash
+node src/ingestion/api-cli.js --max-pages 2
+```
+
+Both commands accept `--help` for full option details.
+
 ## Module Layout
 
 ```text

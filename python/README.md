@@ -49,6 +49,25 @@ Run type checker:
 poetry run mypy src/
 ```
 
+## CLI Entry Points
+
+Run the CSV ingestion pipeline against sample data:
+
+```bash
+poetry run python -m data_platform_lab.ingestion \
+  --input-dir ../data/sample \
+  --output ../data/bronze/merged.csv \
+  --required-columns customer_id,email
+```
+
+Run the API ingestion pipeline (fetches from JSONPlaceholder by default):
+
+```bash
+poetry run python -m data_platform_lab.ingestion.api_cli --max-pages 2
+```
+
+Both commands accept `--help` for full option details.
+
 ## Package Layout
 
 ```text
