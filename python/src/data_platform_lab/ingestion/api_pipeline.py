@@ -12,7 +12,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -70,9 +70,7 @@ def fetch_page(
                 )
                 time.sleep(1)
             else:
-                if isinstance(exc, (TimeoutError, OSError)) and "timed out" in str(
-                    exc
-                ):
+                if isinstance(exc, (TimeoutError, OSError)) and "timed out" in str(exc):
                     raise TimeoutError(str(exc)) from exc
                 raise
     else:
@@ -90,7 +88,7 @@ def fetch_page(
         msg = f"Expected a JSON array, got {type(data).__name__}"
         raise ValueError(msg)
 
-    return data  # type: ignore[return-value]
+    return data
 
 
 def fetch_all_pages(
@@ -215,7 +213,7 @@ def run_api_pipeline(
     6. Return summary
     """
     start = time.monotonic()
-    run_id = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_id = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
     errors: list[str] = []
 
     logger.info("Starting API pipeline run %s against %s", run_id, base_url)

@@ -20,7 +20,6 @@ from data_platform_lab.transform.snapshot_diff import (
     write_diff_files,
 )
 
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -171,9 +170,7 @@ class TestCompareRows:
         old_row = {"id": "1", "name": "Alice", "updated_at": "2024-01-01"}
         new_row = {"id": "1", "name": "Alice", "updated_at": "2024-06-01"}
 
-        changes = compare_rows(
-            old_row, new_row, key_columns=["id"], ignore_columns=["updated_at"]
-        )
+        changes = compare_rows(old_row, new_row, key_columns=["id"], ignore_columns=["updated_at"])
 
         assert changes == []
 
@@ -358,9 +355,7 @@ class TestCompareSnapshots:
             [["US", "1", "150"], ["EU", "1", "200"]],
         )
 
-        result = compare_snapshots(
-            old_path, new_path, key_columns=["region", "id"]
-        )
+        result = compare_snapshots(old_path, new_path, key_columns=["region", "id"])
 
         assert result.inserts == 0
         assert result.deletes == 0

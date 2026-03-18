@@ -7,11 +7,8 @@ from typing import Any
 
 from data_platform_lab.orchestration.runner import (
     Pipeline,
-    PipelineResult,
-    StepResult,
     format_result,
 )
-
 
 # ---------------------------------------------------------------------------
 # Test helpers

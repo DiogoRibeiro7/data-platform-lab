@@ -103,10 +103,7 @@ def check_no_nulls(
             name="no_nulls",
             passed=False,
             severity=severity,
-            message=(
-                f"Found null/empty values in columns {columns} "
-                f"at rows: {failing}"
-            ),
+            message=(f"Found null/empty values in columns {columns} at rows: {failing}"),
             failing_rows=failing,
         )
 
@@ -144,10 +141,7 @@ def check_unique(
             name="unique",
             passed=False,
             severity=severity,
-            message=(
-                f"Duplicate values found for columns {columns} "
-                f"at rows: {failing}"
-            ),
+            message=(f"Duplicate values found for columns {columns} at rows: {failing}"),
             failing_rows=failing,
         )
 
@@ -178,9 +172,9 @@ def check_numeric_range(
         if not isinstance(value, (int, float)):
             continue
 
-        if min_value is not None and value < min_value:
-            failing.append(idx)
-        elif max_value is not None and value > max_value:
+        below = min_value is not None and value < min_value
+        above = max_value is not None and value > max_value
+        if below or above:
             failing.append(idx)
 
     if failing:
@@ -189,10 +183,7 @@ def check_numeric_range(
             name="numeric_range",
             passed=False,
             severity=severity,
-            message=(
-                f"Column '{column}' out of range {bounds} "
-                f"at rows: {failing}"
-            ),
+            message=(f"Column '{column}' out of range {bounds} at rows: {failing}"),
             failing_rows=failing,
         )
 
@@ -225,10 +216,7 @@ def check_allowed_values(
             name="allowed_values",
             passed=False,
             severity=severity,
-            message=(
-                f"Column '{column}' contains disallowed values "
-                f"at rows: {failing}"
-            ),
+            message=(f"Column '{column}' contains disallowed values at rows: {failing}"),
             failing_rows=failing,
         )
 
@@ -261,7 +249,7 @@ def check_date_format(
             failing.append(idx)
             continue
         try:
-            datetime.strptime(value, date_format)  # noqa: DTZ007
+            datetime.strptime(value, date_format)
         except ValueError:
             failing.append(idx)
 

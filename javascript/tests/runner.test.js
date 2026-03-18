@@ -8,18 +8,18 @@ import { Pipeline, formatResult } from "../src/orchestration/index.js";
 // ---------------------------------------------------------------------------
 
 function makeStep(returnValue = "ok") {
-  return async (ctx) => returnValue;
+  return async (_ctx) => returnValue;
 }
 
 function makeFailingStep(errorMsg = "boom") {
-  return async (ctx) => {
+  return async (_ctx) => {
     throw new Error(errorMsg);
   };
 }
 
 function makeFlakyStep(failCount, returnValue = "recovered") {
   let calls = 0;
-  return async (ctx) => {
+  return async (_ctx) => {
     calls++;
     if (calls <= failCount) throw new Error(`flaky failure #${calls}`);
     return returnValue;

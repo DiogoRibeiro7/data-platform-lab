@@ -28,7 +28,7 @@ from data_platform_lab.ingestion.csv_pipeline import (
     standardize_headers,
     trim_fields,
 )
-from data_platform_lab.orchestration.runner import Pipeline, format_result
+from data_platform_lab.orchestration.runner import Pipeline, PipelineResult
 from data_platform_lab.validation.rules import (
     check_date_format,
     check_no_nulls,
@@ -74,7 +74,7 @@ def validate(ctx: dict[str, Any]) -> dict[str, Any]:
     headers: list[str] = ctx["headers"]
     rows: list[list[str]] = ctx["rows"]
 
-    records = [dict(zip(headers, row)) for row in rows]
+    records = [dict(zip(headers, row, strict=False)) for row in rows]
     ctx["records"] = records
 
     checks: list[tuple[Any, dict[str, Any]]] = [
@@ -143,13 +143,11 @@ def report(ctx: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def build_customer_etl(
-    input_path: str | Path,
-    output_path: str | Path,
-) -> Pipeline:
+def build_customer_etl() -> Pipeline:
     """Build and return a Pipeline wired to the customer ETL steps.
 
-    Call ``.run()`` on the returned pipeline to execute.
+    The caller must pass a context dict with ``input_path`` and ``output_path``
+    keys when calling ``.run(context)``.
     """
     pipeline = Pipeline("customer_etl")
     pipeline.add_step("extract", extract)
@@ -157,21 +155,18 @@ def build_customer_etl(
     pipeline.add_step("clean", clean)
     pipeline.add_step("load", load)
     pipeline.add_step("report", report)
-
-    # Pre-populate context paths — run() will pass these to every step
-    pipeline._initial_context = {
-        "input_path": str(input_path),
-        "output_path": str(output_path),
-    }
-
     return pipeline
 
 
 def run_customer_etl(
     input_path: str | Path,
     output_path: str | Path,
-) -> dict[str, Any]:
+) -> PipelineResult:
     """Build and run the customer ETL pipeline. Returns the pipeline result."""
-    pipeline = build_customer_etl(input_path, output_path)
-    result = pipeline.run(pipeline._initial_context)
-    return result
+    pipeline = build_customer_etl()
+    return pipeline.run(
+        {
+            "input_path": str(input_path),
+            "output_path": str(output_path),
+        }
+    )

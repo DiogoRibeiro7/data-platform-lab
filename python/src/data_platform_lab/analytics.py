@@ -164,9 +164,7 @@ CREATE TABLE order_items (
 }
 
 
-def load_csv_into_table(
-    conn: sqlite3.Connection, table_name: str, csv_path: Path
-) -> int:
+def load_csv_into_table(conn: sqlite3.Connection, table_name: str, csv_path: Path) -> int:
     """Load a CSV file into an existing SQLite table. Returns row count."""
     with csv_path.open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
@@ -225,18 +223,14 @@ def create_database(silver_dir: Path, db_path: str = ":memory:") -> sqlite3.Conn
 # ---------------------------------------------------------------------------
 
 
-def run_query(
-    conn: sqlite3.Connection, name: str, sql: str
-) -> list[dict[str, Any]]:
+def run_query(conn: sqlite3.Connection, name: str, sql: str) -> list[dict[str, Any]]:
     """Execute a SQL query and return results as a list of dicts."""
     cursor = conn.execute(sql)
     columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
 
 
-def write_report_csv(
-    rows: list[dict[str, Any]], path: Path
-) -> None:
+def write_report_csv(rows: list[dict[str, Any]], path: Path) -> None:
     """Write query results to a CSV file."""
     if not rows:
         path.write_text("", encoding="utf-8")
@@ -275,12 +269,14 @@ def run_analytics(
     for name, description, sql in QUERIES:
         rows = run_query(conn, name, sql)
         write_report_csv(rows, report_dir / f"{name}.csv")
-        query_results.append({
-            "name": name,
-            "description": description,
-            "row_count": len(rows),
-            "rows": rows,
-        })
+        query_results.append(
+            {
+                "name": name,
+                "description": description,
+                "row_count": len(rows),
+                "rows": rows,
+            }
+        )
         logger.info("Query '%s': %d rows", name, len(rows))
 
     # Write a summary JSON

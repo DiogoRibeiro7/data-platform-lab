@@ -14,10 +14,10 @@ from data_platform_lab.ingestion.csv_pipeline import (
     validate_columns,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helper to write a small CSV inside a tmp directory
 # ---------------------------------------------------------------------------
+
 
 def _write_csv(path: Path, text: str) -> Path:
     path.write_text(text, encoding="utf-8")
@@ -40,15 +40,13 @@ class TestReadCsvFile:
         assert headers == ["id", "name", "age"]
         assert rows == [["1", "Alice", "30"], ["2", "Bob", "25"]]
 
-
     def test_read_csv_file_empty(self, tmp_path: Path) -> None:
         """Empty file raises ValueError."""
+        import pytest
+
         p = _write_csv(tmp_path / "empty.csv", "")
-        try:
+        with pytest.raises(ValueError, match=r"(?i)empty"):
             read_csv_file(p)
-            assert False, "Expected ValueError"
-        except ValueError as exc:
-            assert "empty" in str(exc).lower()
 
     def test_read_csv_file_header_only(self, tmp_path: Path) -> None:
         """Header-only CSV returns headers and empty rows list."""
@@ -146,7 +144,9 @@ class TestRunPipeline:
         )
         out = tmp_path / "out.csv"
         result = run_pipeline(
-            tmp_path, out, required_columns=["id", "name", "email"],
+            tmp_path,
+            out,
+            required_columns=["id", "name", "email"],
         )
 
         assert "good.csv" in result.files_processed

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from unittest.mock import patch
 
 from data_platform_lab.transform.incremental_etl import (
     Checkpoint,
-    RunSummary,
     load_checkpoint,
     read_events,
     run_incremental_etl,
@@ -106,9 +106,11 @@ class TestReadEvents:
     def test_read_events_from_jsonl(self, tmp_path: Path) -> None:
         """Reads events from JSONL files and skips blank lines."""
         content = (
-            json.dumps(SAMPLE_EVENTS[0]) + "\n"
+            json.dumps(SAMPLE_EVENTS[0])
+            + "\n"
             + "\n"  # blank line
-            + json.dumps(SAMPLE_EVENTS[1]) + "\n"
+            + json.dumps(SAMPLE_EVENTS[1])
+            + "\n"
         )
         (tmp_path / "events.jsonl").write_text(content)
 
@@ -125,9 +127,11 @@ class TestReadEvents:
     def test_read_events_skips_malformed_json(self, tmp_path: Path) -> None:
         """Malformed JSON lines are skipped instead of crashing the pipeline."""
         content = (
-            json.dumps(SAMPLE_EVENTS[0]) + "\n"
+            json.dumps(SAMPLE_EVENTS[0])
+            + "\n"
             + "NOT VALID JSON\n"
-            + json.dumps(SAMPLE_EVENTS[1]) + "\n"
+            + json.dumps(SAMPLE_EVENTS[1])
+            + "\n"
         )
         (tmp_path / "mixed.jsonl").write_text(content)
         events = read_events(tmp_path)
@@ -303,9 +307,7 @@ class TestRunIncrementalETL:
 
         # Checkpoint now has all 5 IDs
         cp = load_checkpoint(cp_path, "events_etl")
-        assert cp.processed_ids == {
-            "evt-001", "evt-002", "evt-003", "evt-004", "evt-005"
-        }
+        assert cp.processed_ids == {"evt-001", "evt-002", "evt-003", "evt-004", "evt-005"}
         assert cp.total_runs == 2
 
         # Output file contains exactly 2 records
@@ -323,14 +325,14 @@ class TestRunIncrementalETL:
 
         write_jsonl(input_dir / "batch1.jsonl", SAMPLE_EVENTS)
 
-        with patch(
-            "data_platform_lab.transform.incremental_etl.save_checkpoint",
-            side_effect=OSError("disk full"),
+        with (
+            patch(
+                "data_platform_lab.transform.incremental_etl.save_checkpoint",
+                side_effect=OSError("disk full"),
+            ),
+            contextlib.suppress(OSError),
         ):
-            try:
-                run_incremental_etl(input_dir, output_dir, cp_path)
-            except OSError:
-                pass
+            run_incremental_etl(input_dir, output_dir, cp_path)
 
         # Checkpoint file should not exist (never written)
         assert not cp_path.exists()
@@ -345,14 +347,14 @@ class TestRunIncrementalETL:
         write_jsonl(input_dir / "batch1.jsonl", SAMPLE_EVENTS)
 
         # First run fails on save
-        with patch(
-            "data_platform_lab.transform.incremental_etl.save_checkpoint",
-            side_effect=OSError("disk full"),
+        with (
+            patch(
+                "data_platform_lab.transform.incremental_etl.save_checkpoint",
+                side_effect=OSError("disk full"),
+            ),
+            contextlib.suppress(OSError),
         ):
-            try:
-                run_incremental_etl(input_dir, output_dir, cp_path)
-            except OSError:
-                pass
+            run_incremental_etl(input_dir, output_dir, cp_path)
 
         # Clear any output from the failed run
         if output_dir.exists():
@@ -427,9 +429,7 @@ class TestRunIncrementalETL:
         run_incremental_etl(input_dir, output_dir, cp_path)
 
         raw = json.loads(cp_path.read_text(encoding="utf-8"))
-        assert set(raw.keys()) == {
-            "pipeline_name", "last_run_at", "processed_ids", "total_runs"
-        }
+        assert set(raw.keys()) == {"pipeline_name", "last_run_at", "processed_ids", "total_runs"}
         assert isinstance(raw["pipeline_name"], str)
         assert isinstance(raw["last_run_at"], str)
         assert isinstance(raw["processed_ids"], list)

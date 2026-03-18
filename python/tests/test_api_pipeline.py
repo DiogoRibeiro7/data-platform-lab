@@ -23,10 +23,10 @@ from data_platform_lab.ingestion.api_pipeline import (
     transform_posts,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helper: mock response object for urllib.request.urlopen
 # ---------------------------------------------------------------------------
+
 
 class MockResponse:
     """Minimal stand-in for the object returned by ``urlopen``."""
@@ -60,6 +60,7 @@ SAMPLE_POSTS: list[dict[str, Any]] = [
 # TestFetchPage
 # ===================================================================
 
+
 class TestFetchPage:
     """Tests for ``fetch_page``."""
 
@@ -90,9 +91,7 @@ class TestFetchPage:
     @patch("data_platform_lab.ingestion.api_pipeline.urllib.request.urlopen")
     def test_fetch_page_timeout(self, mock_urlopen: Any) -> None:
         """Mock a timeout, verify it raises."""
-        mock_urlopen.side_effect = urllib.error.URLError(
-            reason=TimeoutError("timed out")
-        )
+        mock_urlopen.side_effect = urllib.error.URLError(reason=TimeoutError("timed out"))
 
         with pytest.raises((urllib.error.URLError, TimeoutError)):
             fetch_page("https://example.com/posts")
@@ -110,6 +109,7 @@ class TestFetchPage:
 # TestFetchAllPages
 # ===================================================================
 
+
 class TestFetchAllPages:
     """Tests for ``fetch_all_pages``."""
 
@@ -121,9 +121,7 @@ class TestFetchAllPages:
 
         mock_fetch.side_effect = [page_a, page_b]
 
-        records, pages = fetch_all_pages(
-            "https://example.com/posts", page_size=10, max_pages=2
-        )
+        records, pages = fetch_all_pages("https://example.com/posts", page_size=10, max_pages=2)
 
         assert pages == 2
         assert len(records) == 20
@@ -137,9 +135,7 @@ class TestFetchAllPages:
 
         mock_fetch.side_effect = [full_page, partial_page]
 
-        records, pages = fetch_all_pages(
-            "https://example.com/posts", page_size=10, max_pages=5
-        )
+        records, pages = fetch_all_pages("https://example.com/posts", page_size=10, max_pages=5)
 
         assert pages == 2
         assert len(records) == 12
@@ -150,6 +146,7 @@ class TestFetchAllPages:
 # ===================================================================
 # TestTransformPosts
 # ===================================================================
+
 
 class TestTransformPosts:
     """Tests for ``transform_posts``."""
@@ -215,6 +212,7 @@ class TestTransformPosts:
 # TestSaveRawAndProcessed
 # ===================================================================
 
+
 class TestSaveFiles:
     """Tests for ``save_raw`` and ``save_processed``."""
 
@@ -239,13 +237,12 @@ class TestSaveFiles:
 # TestRunApiPipeline
 # ===================================================================
 
+
 class TestRunApiPipeline:
     """Tests for ``run_api_pipeline``."""
 
     @patch("data_platform_lab.ingestion.api_pipeline.fetch_all_pages")
-    def test_run_api_pipeline_success(
-        self, mock_fetch_all: Any, tmp_path: Path
-    ) -> None:
+    def test_run_api_pipeline_success(self, mock_fetch_all: Any, tmp_path: Path) -> None:
         """Mock fetch, run full pipeline, verify files created and summary."""
         mock_fetch_all.return_value = (SAMPLE_POSTS, 1)
 
@@ -275,9 +272,7 @@ class TestRunApiPipeline:
         assert len(processed_data) == 3
 
     @patch("data_platform_lab.ingestion.api_pipeline.fetch_all_pages")
-    def test_run_api_pipeline_api_failure(
-        self, mock_fetch_all: Any, tmp_path: Path
-    ) -> None:
+    def test_run_api_pipeline_api_failure(self, mock_fetch_all: Any, tmp_path: Path) -> None:
         """Mock complete API failure, verify graceful handling."""
         mock_fetch_all.side_effect = urllib.error.URLError("Connection refused")
 

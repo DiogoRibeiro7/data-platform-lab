@@ -6,6 +6,18 @@ export default [
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",
+      globals: {
+        // Node.js globals
+        console: "readonly",
+        process: "readonly",
+        URL: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        performance: "readonly",
+        AbortController: "readonly",
+        AbortSignal: "readonly",
+        fetch: "readonly",
+      },
     },
     rules: {
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
@@ -13,6 +25,6 @@ export default [
     },
   },
   {
-    ignores: ["node_modules/", "coverage/"],
+    ignores: ["node_modules/", "coverage/", ".yarn/", ".pnp.*"],
   },
 ];

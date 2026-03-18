@@ -120,10 +120,7 @@ def run_pipeline(
         if required_columns is not None:
             missing = validate_columns(std_headers, required_columns)
             if missing:
-                reason = (
-                    f"{csv_file.name}: missing required columns "
-                    f"{missing}"
-                )
+                reason = f"{csv_file.name}: missing required columns {missing}"
                 logger.warning(reason)
                 result.files_rejected.append(reason)
                 continue
@@ -134,9 +131,7 @@ def run_pipeline(
 
         # Only keep rows whose width matches the header width.
         trimmed = trim_fields(raw_rows)
-        valid_rows = [
-            r for r in trimmed if len(r) == len(std_headers)
-        ]
+        valid_rows = [r for r in trimmed if len(r) == len(std_headers)]
         skipped = len(trimmed) - len(valid_rows)
         if skipped:
             logger.info(

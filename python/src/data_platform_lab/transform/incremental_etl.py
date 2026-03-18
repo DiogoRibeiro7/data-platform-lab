@@ -118,9 +118,7 @@ def read_events(input_dir: Path) -> list[dict[str, Any]]:
                     events.append(json.loads(stripped))
                 except json.JSONDecodeError:
                     malformed += 1
-                    logger.warning(
-                        "Skipping malformed JSON at %s:%d", path.name, line_no
-                    )
+                    logger.warning("Skipping malformed JSON at %s:%d", path.name, line_no)
 
     if malformed:
         logger.warning("Skipped %d malformed line(s) across input files", malformed)
@@ -215,9 +213,7 @@ def run_incremental_etl(
             unique_events.append(evt)
 
     # Filter out already-processed events
-    new_events = [
-        e for e in unique_events if e.get("event_id") not in checkpoint.processed_ids
-    ]
+    new_events = [e for e in unique_events if e.get("event_id") not in checkpoint.processed_ids]
     records_skipped = len(unique_events) - len(new_events)
 
     # Transform

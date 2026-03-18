@@ -113,7 +113,7 @@ describe("customer ETL workflow", () => {
   });
 
   test("pipeline builder returns correct structure", () => {
-    const pipeline = buildCustomerEtl("input.csv", "output.csv");
+    const pipeline = buildCustomerEtl();
 
     assert.equal(pipeline.name, "customer_etl");
     assert.equal(pipeline.steps.length, 5);

@@ -13,7 +13,6 @@ from data_platform_lab.validation.rules import (
     check_unique,
 )
 from data_platform_lab.validation.runner import (
-    ValidationReport,
     format_report,
     run_validation,
 )
@@ -93,16 +92,12 @@ class TestCheckRequiredColumns:
     """Tests for :func:`check_required_columns`."""
 
     def test_all_present(self) -> None:
-        result = check_required_columns(
-            VALID_RECORDS, required=["id", "name", "email"]
-        )
+        result = check_required_columns(VALID_RECORDS, required=["id", "name", "email"])
         assert result.passed is True
         assert result.failing_rows == []
 
     def test_missing_columns(self) -> None:
-        result = check_required_columns(
-            VALID_RECORDS, required=["id", "phone_number"]
-        )
+        result = check_required_columns(VALID_RECORDS, required=["id", "phone_number"])
         assert result.passed is False
         assert "phone_number" in result.message
 
@@ -168,16 +163,12 @@ class TestCheckNumericRange:
     """Tests for :func:`check_numeric_range`."""
 
     def test_within_range(self) -> None:
-        result = check_numeric_range(
-            VALID_RECORDS, column="age", min_value=0, max_value=150
-        )
+        result = check_numeric_range(VALID_RECORDS, column="age", min_value=0, max_value=150)
         assert result.passed is True
         assert result.failing_rows == []
 
     def test_out_of_range(self) -> None:
-        result = check_numeric_range(
-            BAD_RECORDS, column="age", min_value=0, max_value=150
-        )
+        result = check_numeric_range(BAD_RECORDS, column="age", min_value=0, max_value=150)
         assert result.passed is False
         # Row 1 has age=-5, row 2 has age=200
         assert 1 in result.failing_rows
@@ -185,18 +176,14 @@ class TestCheckNumericRange:
 
     def test_no_min_or_max(self) -> None:
         # Only upper bound
-        result = check_numeric_range(
-            BAD_RECORDS, column="age", max_value=150
-        )
+        result = check_numeric_range(BAD_RECORDS, column="age", max_value=150)
         assert result.passed is False
         assert 2 in result.failing_rows
         # Row 1 (age=-5) should pass because there is no min_value
         assert 1 not in result.failing_rows
 
         # Only lower bound
-        result2 = check_numeric_range(
-            BAD_RECORDS, column="age", min_value=0
-        )
+        result2 = check_numeric_range(BAD_RECORDS, column="age", min_value=0)
         assert result2.passed is False
         assert 1 in result2.failing_rows
         # Row 2 (age=200) should pass because there is no max_value
@@ -288,6 +275,7 @@ class TestRunValidation:
 
     def test_rule_that_raises_does_not_crash_runner(self) -> None:
         """If a rule function throws, it is recorded as a critical failure."""
+
         def exploding_rule(records: list[dict[str, object]], **kwargs: object) -> CheckResult:
             raise RuntimeError("unexpected error in rule")
 

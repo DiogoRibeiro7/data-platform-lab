@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from data_platform_lab.orchestration.customer_etl import (
-    build_customer_etl,
     clean,
     extract,
     load,
@@ -15,11 +14,12 @@ from data_platform_lab.orchestration.customer_etl import (
 )
 from data_platform_lab.orchestration.runner import format_result
 
-
-SAMPLE_CSV = "customer_id,first_name,last_name,email,city,country,created_at\n" \
-    "C001,Alice,Martins,alice@example.com,Lisbon,Portugal,2024-01-15\n" \
-    "C002,Bob,Silva,bob@example.com,Porto,Portugal,2024-02-20\n" \
+SAMPLE_CSV = (
+    "customer_id,first_name,last_name,email,city,country,created_at\n"
     "C001,Alice,Martins,alice@example.com,Lisbon,Portugal,2024-01-15\n"
+    "C002,Bob,Silva,bob@example.com,Porto,Portugal,2024-02-20\n"
+    "C001,Alice,Martins,alice@example.com,Lisbon,Portugal,2024-01-15\n"
+)
 
 
 def _write_sample(tmp_path: Path) -> Path:
@@ -67,9 +67,7 @@ class TestValidateStep:
     def test_validate_detects_quality_issues(self, tmp_path: Path) -> None:
         p = tmp_path / "bad.csv"
         p.write_text(
-            "customer_id,email,created_at\n"
-            "C001,a@b.com,2024-01-15\n"
-            "C001,c@d.com,not-a-date\n",
+            "customer_id,email,created_at\nC001,a@b.com,2024-01-15\nC001,c@d.com,not-a-date\n",
             encoding="utf-8",
         )
         ctx: dict = {"input_path": str(p)}
@@ -153,6 +151,7 @@ class TestRunCustomerEtl:
             return  # skip if sample data not available
 
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "cleaned.csv"
             result = run_customer_etl(str(sample), str(output))

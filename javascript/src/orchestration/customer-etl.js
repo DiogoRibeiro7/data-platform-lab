@@ -132,23 +132,18 @@ function report(ctx) {
 /**
  * Build and return a Pipeline wired to the customer ETL steps.
  *
- * @param {string} inputPath  - Path to the input CSV file
- * @param {string} outputPath - Path to write the cleaned CSV
+ * The caller must pass a context object with `input_path` and `output_path`
+ * when calling `.run(context)`.
+ *
  * @returns {Pipeline}
  */
-export function buildCustomerEtl(inputPath, outputPath) {
+export function buildCustomerEtl() {
   const pipeline = new Pipeline("customer_etl");
   pipeline.addStep("extract", extract);
   pipeline.addStep("validate", validate, { allowSkip: true });
   pipeline.addStep("clean", clean);
   pipeline.addStep("load", load);
   pipeline.addStep("report", report);
-
-  pipeline._initialContext = {
-    input_path: inputPath,
-    output_path: outputPath,
-  };
-
   return pipeline;
 }
 
@@ -160,9 +155,11 @@ export function buildCustomerEtl(inputPath, outputPath) {
  * @returns {Promise<object>} Pipeline result
  */
 export async function runCustomerEtl(inputPath, outputPath) {
-  const pipeline = buildCustomerEtl(inputPath, outputPath);
-  const result = await pipeline.run(pipeline._initialContext);
-  return result;
+  const pipeline = buildCustomerEtl();
+  return pipeline.run({
+    input_path: inputPath,
+    output_path: outputPath,
+  });
 }
 
 export { formatResult };

@@ -2,7 +2,6 @@ import { describe, test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
   mkdtempSync,
-  mkdirSync,
   writeFileSync,
   rmSync,
   readFileSync,
@@ -14,7 +13,6 @@ import { fileURLToPath } from "node:url";
 
 import {
   parseCsv,
-  readSnapshot,
   indexByKey,
   compareRows,
   compareSnapshots,

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { runDemo } from "../src/demo.js";
-import { createDatabase, runAnalytics, QUERIES } from "../src/analytics.js";
+import { createDatabase, runAnalytics } from "../src/analytics.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_DIR = join(__dirname, "..", "..", "data", "sample");

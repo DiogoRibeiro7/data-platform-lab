@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "javascript/**"
+      - "data/sample/**"
       - ".github/workflows/javascript.yml"
   pull_request:
     paths:
       - "javascript/**"
+      - "data/sample/**"
       - ".github/workflows/javascript.yml"
 
 defaults:
@@ -15,16 +17,15 @@ defaults:
     working-directory: javascript
 
 jobs:
-  check:
-    name: Lint & Test
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Enable Corepack
         run: corepack enable
@@ -35,5 +36,24 @@ jobs:
       - name: ESLint
         run: yarn lint
 
-      - name: Tests
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable || yarn install
+
+      - name: Run tests
         run: yarn test
+
+      - name: Demo smoke test
+        run: node src/demo.js --data-dir ../data/sample --output-dir /tmp/silver --manifest-dir /tmp/manifests

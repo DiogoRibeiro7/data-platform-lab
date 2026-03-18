@@ -12,7 +12,7 @@
  *   node src/demo.js --data-dir ../data/sample
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -31,7 +31,7 @@ import {
   checkDateFormat,
   Severity,
 } from "./validation/rules.js";
-import { runValidation, formatReport } from "./validation/runner.js";
+import { runValidation } from "./validation/runner.js";
 import { RunTracker, formatRunMetadata } from "./observability/tracker.js";
 
 // ---------------------------------------------------------------------------

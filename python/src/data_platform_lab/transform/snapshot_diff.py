@@ -106,7 +106,7 @@ def index_by_key(
         key = tuple(row[col] for col in key_columns)
         if key in index:
             raise ValueError(
-                f"Duplicate key {dict(zip(key_columns, key))} found in data"
+                f"Duplicate key {dict(zip(key_columns, key, strict=False))} found in data"
             )
         index[key] = row
 
@@ -183,7 +183,7 @@ def compare_snapshots(
             changes.append(
                 RowChange(
                     change_type="insert",
-                    key=dict(zip(key_columns, key)),
+                    key=dict(zip(key_columns, key, strict=False)),
                     row=row,
                 )
             )
@@ -194,7 +194,7 @@ def compare_snapshots(
             changes.append(
                 RowChange(
                     change_type="delete",
-                    key=dict(zip(key_columns, key)),
+                    key=dict(zip(key_columns, key, strict=False)),
                     row=row,
                 )
             )
@@ -202,14 +202,12 @@ def compare_snapshots(
     # Updates / unchanged: keys in both
     for key in old_index:
         if key in new_index:
-            col_changes = compare_rows(
-                old_index[key], new_index[key], key_columns, ignore_columns
-            )
+            col_changes = compare_rows(old_index[key], new_index[key], key_columns, ignore_columns)
             if col_changes:
                 changes.append(
                     RowChange(
                         change_type="update",
-                        key=dict(zip(key_columns, key)),
+                        key=dict(zip(key_columns, key, strict=False)),
                         row=new_index[key],
                         changed_columns=col_changes,
                     )
@@ -282,15 +280,13 @@ def write_diff_files(
     # --- updates.csv ---
     if updates:
         path = output_dir / "updates.csv"
-        fieldnames = list(updates[0].row.keys()) + ["changed_columns"]
+        fieldnames = [*list(updates[0].row.keys()), "changed_columns"]
         with path.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.DictWriter(fh, fieldnames=fieldnames)
             writer.writeheader()
             for change in updates:
                 row = dict(change.row)
-                row["changed_columns"] = ",".join(
-                    cc.column for cc in change.changed_columns
-                )
+                row["changed_columns"] = ",".join(cc.column for cc in change.changed_columns)
                 writer.writerow(row)
         result["updates"] = path
 

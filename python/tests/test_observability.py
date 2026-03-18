@@ -16,7 +16,6 @@ from data_platform_lab.observability.tracker import (
     metadata_to_dict,
 )
 
-
 # ---------------------------------------------------------------------------
 # Timer
 # ---------------------------------------------------------------------------
@@ -80,9 +79,8 @@ class TestRunTracker:
 
     def test_tracker_context_manager_failure(self) -> None:
         tracker = RunTracker("test")
-        with pytest.raises(ValueError, match="boom"):
-            with tracker:
-                raise ValueError("boom")
+        with pytest.raises(ValueError, match="boom"), tracker:
+            raise ValueError("boom")
 
         meta = tracker.metadata
         assert meta.status == "failed"

@@ -58,7 +58,7 @@ def run_validation(
                 name=rule_fn.__name__,
                 passed=False,
                 severity=Severity.CRITICAL,
-                message=f"Check raised an exception — see logs for details.",
+                message="Check raised an exception — see logs for details.",
                 failing_rows=[],
             )
         results.append(result)
@@ -66,12 +66,8 @@ def run_validation(
     passed = sum(1 for r in results if r.passed)
     failed_results = [r for r in results if not r.passed]
     failed = len(failed_results)
-    warnings = sum(
-        1 for r in failed_results if r.severity == Severity.WARNING
-    )
-    critical_failures = sum(
-        1 for r in failed_results if r.severity == Severity.CRITICAL
-    )
+    warnings = sum(1 for r in failed_results if r.severity == Severity.WARNING)
+    critical_failures = sum(1 for r in failed_results if r.severity == Severity.CRITICAL)
 
     if critical_failures > 0:
         status = "failed"
@@ -108,10 +104,7 @@ def format_report(report: ValidationReport) -> str:
 
     for check in report.checks:
         icon = "PASS" if check.passed else "FAIL"
-        lines.append(
-            f"[{icon}] {check.name} ({check.severity.value}): "
-            f"{check.message}"
-        )
+        lines.append(f"[{icon}] {check.name} ({check.severity.value}): {check.message}")
 
     lines.append("=" * 50)
     return "\n".join(lines)

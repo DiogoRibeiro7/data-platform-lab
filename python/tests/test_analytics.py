@@ -13,7 +13,6 @@ from data_platform_lab.analytics import (
 )
 from data_platform_lab.demo import run_demo
 
-
 SAMPLE_DIR = Path(__file__).parent.parent.parent / "data" / "sample"
 
 
@@ -133,9 +132,7 @@ class TestRunAnalytics:
         assert summary_path.exists()
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
         assert len(summary["queries"]) == 5
-        assert summary["tables_loaded"] == [
-            "customers", "products", "orders", "order_items"
-        ]
+        assert summary["tables_loaded"] == ["customers", "products", "orders", "order_items"]
 
     def test_query_row_counts(self, tmp_path: Path) -> None:
         silver_dir = _produce_silver(tmp_path)
@@ -161,16 +158,12 @@ class TestRunAnalytics:
             report_dir=str(tmp_path / "gold"),
         )
 
-        revenue_query = next(
-            q for q in result["queries"] if q["name"] == "daily_revenue"
-        )
+        revenue_query = next(q for q in result["queries"] if q["name"] == "daily_revenue")
         total_revenue = sum(r["daily_revenue"] for r in revenue_query["rows"])
         assert total_revenue > 0
 
         # Top product should be Mechanical Keyboard
-        top_query = next(
-            q for q in result["queries"] if q["name"] == "top_products"
-        )
+        top_query = next(q for q in result["queries"] if q["name"] == "top_products")
         assert top_query["rows"][0]["product_name"] == "Mechanical Keyboard"
         assert top_query["rows"][0]["total_revenue"] > 300
 

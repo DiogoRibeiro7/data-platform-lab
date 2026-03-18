@@ -9,7 +9,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -90,9 +89,7 @@ class Pipeline:
         allow_skip: bool = False,
     ) -> Pipeline:
         """Register a step. Returns self for chaining."""
-        self._steps.append(
-            StepDefinition(name=name, fn=fn, retries=retries, allow_skip=allow_skip)
-        )
+        self._steps.append(StepDefinition(name=name, fn=fn, retries=retries, allow_skip=allow_skip))
         return self
 
     def run(self, context: dict[str, Any] | None = None) -> PipelineResult:
@@ -141,7 +138,7 @@ class Pipeline:
                     result_value = step.fn(context)
                     succeeded = True
                     break
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     last_error = exc
                     self._logger.debug(
                         "Step %r attempt %d failed: %s",
@@ -198,9 +195,7 @@ class Pipeline:
                             attempts=attempts,
                         )
                     )
-                    self._logger.error(
-                        "Step %r failed: %s", step.name, error_msg
-                    )
+                    self._logger.error("Step %r failed: %s", step.name, error_msg)
                     pipeline_failed = True
                     break
 

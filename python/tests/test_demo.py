@@ -7,7 +7,6 @@ from pathlib import Path
 
 from data_platform_lab.demo import run_demo
 
-
 SAMPLE_DIR = Path(__file__).parent.parent.parent / "data" / "sample"
 
 
@@ -119,11 +118,13 @@ class TestRunDemo:
         assert len(lines) == 13
         assert lines[0] == "customer_id,first_name,last_name,email,city,country,created_at"
         # C003 duplicate removed — should appear exactly once
-        c003_rows = [l for l in lines[1:] if l.startswith("C003,")]
+        c003_rows = [row for row in lines[1:] if row.startswith("C003,")]
         assert len(c003_rows) == 1
         # No negative-price product P009 in products.csv
-        product_lines = (output_dir / "products.csv").read_text(encoding="utf-8").strip().split("\n")
-        p009_rows = [l for l in product_lines[1:] if l.startswith("P009,")]
+        product_lines = (
+            (output_dir / "products.csv").read_text(encoding="utf-8").strip().split("\n")
+        )
+        p009_rows = [row for row in product_lines[1:] if row.startswith("P009,")]
         assert len(p009_rows) == 0
 
     def test_manifest_json_shape(self, tmp_path: Path) -> None:
@@ -142,9 +143,20 @@ class TestRunDemo:
         # Run metadata shape
         run = manifest["run"]
         expected_run_keys = {
-            "pipeline_name", "run_id", "status", "started_at", "ended_at",
-            "duration_seconds", "rows_read", "rows_written", "rows_rejected",
-            "files_processed", "files_rejected", "warnings", "errors", "extra",
+            "pipeline_name",
+            "run_id",
+            "status",
+            "started_at",
+            "ended_at",
+            "duration_seconds",
+            "rows_read",
+            "rows_written",
+            "rows_rejected",
+            "files_processed",
+            "files_rejected",
+            "warnings",
+            "errors",
+            "extra",
         }
         assert set(run.keys()) == expected_run_keys
 

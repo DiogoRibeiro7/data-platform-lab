@@ -20,7 +20,6 @@ from __future__ import annotations
 import csv
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -61,11 +60,9 @@ def _read_and_prepare(path: Path) -> tuple[list[str], list[list[str]]]:
     return headers, rows
 
 
-def _rows_to_dicts(
-    headers: list[str], rows: list[list[str]]
-) -> list[dict[str, str]]:
+def _rows_to_dicts(headers: list[str], rows: list[list[str]]) -> list[dict[str, str]]:
     """Convert parallel arrays into a list of dicts."""
-    return [dict(zip(headers, row)) for row in rows]
+    return [dict(zip(headers, row, strict=False)) for row in rows]
 
 
 def _write_csv(path: Path, headers: list[str], rows: list[list[str]]) -> None:
@@ -103,9 +100,7 @@ def process_customers(
     )
 
     if report.failed > 0:
-        tracker.add_warning(
-            f"customers: {report.failed} validation check(s) failed"
-        )
+        tracker.add_warning(f"customers: {report.failed} validation check(s) failed")
 
     # Clean: deduplicate, standardise country casing
     unique_rows, dups = deduplicate(rows)
@@ -118,16 +113,20 @@ def process_customers(
 
     tracker.inc_rows_rejected(len(rows) - len(unique_rows))
 
-    return headers, unique_rows, {
-        "source": str(path),
-        "rows_read": len(rows),
-        "rows_out": len(unique_rows),
-        "duplicates_removed": dups,
-        "validation_status": report.status,
-        "validation_checks": report.total_checks,
-        "validation_passed": report.passed,
-        "validation_failed": report.failed,
-    }
+    return (
+        headers,
+        unique_rows,
+        {
+            "source": str(path),
+            "rows_read": len(rows),
+            "rows_out": len(unique_rows),
+            "duplicates_removed": dups,
+            "validation_status": report.status,
+            "validation_checks": report.total_checks,
+            "validation_passed": report.passed,
+            "validation_failed": report.failed,
+        },
+    )
 
 
 def process_products(
@@ -144,16 +143,28 @@ def process_products(
         [
             (check_required_columns, {"required": ["product_id", "name", "price"]}),
             (check_unique, {"columns": ["product_id"]}),
-            (check_numeric_range, {"column": "price", "min_value": 0, "severity": Severity.WARNING}),
-            (check_allowed_values, {"column": "currency", "allowed": {"EUR"}, "severity": Severity.WARNING}),
+            (
+                check_numeric_range,
+                {
+                    "column": "price",
+                    "min_value": 0,
+                    "severity": Severity.WARNING,
+                },
+            ),
+            (
+                check_allowed_values,
+                {
+                    "column": "currency",
+                    "allowed": {"EUR"},
+                    "severity": Severity.WARNING,
+                },
+            ),
         ],
         dataset_name="products",
     )
 
     if report.failed > 0:
-        tracker.add_warning(
-            f"products: {report.failed} validation check(s) failed"
-        )
+        tracker.add_warning(f"products: {report.failed} validation check(s) failed")
 
     # Clean: filter out rows with negative prices
     price_idx = headers.index("price")
@@ -174,13 +185,17 @@ def process_products(
 
     tracker.inc_rows_rejected(rejected)
 
-    return headers, clean_rows, {
-        "source": str(path),
-        "rows_read": len(rows),
-        "rows_out": len(clean_rows),
-        "rows_filtered": rejected,
-        "validation_status": report.status,
-    }
+    return (
+        headers,
+        clean_rows,
+        {
+            "source": str(path),
+            "rows_read": len(rows),
+            "rows_out": len(clean_rows),
+            "rows_filtered": rejected,
+            "validation_status": report.status,
+        },
+    )
 
 
 def process_orders(
@@ -199,15 +214,19 @@ def process_orders(
         [
             (check_required_columns, {"required": ["order_id", "customer_id", "order_date"]}),
             (check_unique, {"columns": ["order_id"]}),
-            (check_allowed_values, {"column": "status", "allowed": {"completed", "shipped", "pending", "cancelled"}}),
+            (
+                check_allowed_values,
+                {
+                    "column": "status",
+                    "allowed": {"completed", "shipped", "pending", "cancelled"},
+                },
+            ),
         ],
         dataset_name="orders",
     )
 
     if report.failed > 0:
-        tracker.add_warning(
-            f"orders: {report.failed} validation check(s) failed"
-        )
+        tracker.add_warning(f"orders: {report.failed} validation check(s) failed")
 
     # Clean: fix date format, flag orphan FKs
     cid_idx = headers.index("customer_id")
@@ -219,17 +238,19 @@ def process_orders(
             orphan_count += 1
 
     if orphan_count:
-        tracker.add_warning(
-            f"orders: {orphan_count} row(s) reference non-existent customer_id"
-        )
+        tracker.add_warning(f"orders: {orphan_count} row(s) reference non-existent customer_id")
 
-    return headers, rows, {
-        "source": str(path),
-        "rows_read": len(rows),
-        "rows_out": len(rows),
-        "orphan_customer_ids": orphan_count,
-        "validation_status": report.status,
-    }
+    return (
+        headers,
+        rows,
+        {
+            "source": str(path),
+            "rows_read": len(rows),
+            "rows_out": len(rows),
+            "orphan_customer_ids": orphan_count,
+            "validation_status": report.status,
+        },
+    )
 
 
 def process_order_items(
@@ -244,15 +265,18 @@ def process_order_items(
     report = run_validation(
         records,
         [
-            (check_required_columns, {"required": ["order_id", "product_id", "quantity", "unit_price"]}),
+            (
+                check_required_columns,
+                {
+                    "required": ["order_id", "product_id", "quantity", "unit_price"],
+                },
+            ),
         ],
         dataset_name="order_items",
     )
 
     if report.failed > 0:
-        tracker.add_warning(
-            f"order_items: {report.failed} validation check(s) failed"
-        )
+        tracker.add_warning(f"order_items: {report.failed} validation check(s) failed")
 
     # Clean: deduplicate
     unique_rows, dups = deduplicate(rows)
@@ -260,13 +284,17 @@ def process_order_items(
         tracker.add_warning(f"order_items: removed {dups} duplicate row(s)")
     tracker.inc_rows_rejected(dups)
 
-    return headers, unique_rows, {
-        "source": str(path),
-        "rows_read": len(rows),
-        "rows_out": len(unique_rows),
-        "duplicates_removed": dups,
-        "validation_status": report.status,
-    }
+    return (
+        headers,
+        unique_rows,
+        {
+            "source": str(path),
+            "rows_read": len(rows),
+            "rows_out": len(unique_rows),
+            "duplicates_removed": dups,
+            "validation_status": report.status,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -292,34 +320,26 @@ def run_demo(
 
     with tracker:
         # --- Customers ---
-        c_headers, c_rows, c_summary = process_customers(
-            data_dir / "customers.csv", tracker
-        )
+        c_headers, c_rows, c_summary = process_customers(data_dir / "customers.csv", tracker)
         _write_csv(output_dir / "customers.csv", c_headers, c_rows)
         tracker.inc_rows_written(len(c_rows))
         tables["customers"] = c_summary
 
         # --- Products ---
-        p_headers, p_rows, p_summary = process_products(
-            data_dir / "products.csv", tracker
-        )
+        p_headers, p_rows, p_summary = process_products(data_dir / "products.csv", tracker)
         _write_csv(output_dir / "products.csv", p_headers, p_rows)
         tracker.inc_rows_written(len(p_rows))
         tables["products"] = p_summary
 
         # --- Orders (needs valid customer IDs for FK check) ---
         valid_cids = {row[c_headers.index("customer_id")] for row in c_rows}
-        o_headers, o_rows, o_summary = process_orders(
-            data_dir / "orders.csv", valid_cids, tracker
-        )
+        o_headers, o_rows, o_summary = process_orders(data_dir / "orders.csv", valid_cids, tracker)
         _write_csv(output_dir / "orders.csv", o_headers, o_rows)
         tracker.inc_rows_written(len(o_rows))
         tables["orders"] = o_summary
 
         # --- Order Items ---
-        oi_headers, oi_rows, oi_summary = process_order_items(
-            data_dir / "order_items.csv", tracker
-        )
+        oi_headers, oi_rows, oi_summary = process_order_items(data_dir / "order_items.csv", tracker)
         _write_csv(output_dir / "order_items.csv", oi_headers, oi_rows)
         tracker.inc_rows_written(len(oi_rows))
         tables["order_items"] = oi_summary
