@@ -57,8 +57,8 @@ JavaScript implementations. They can be worked independently using SQLite.
 |--------|-------|
 | Implemented exercises (Python + JS) | 7 |
 | SQL exercise areas | 12 |
-| Python test files | 7 |
-| JavaScript test files | 7 |
+| Python test files | 10 |
+| JavaScript test files | 10 |
 | SQL scripts | 27 |
 | Exercise guides in `docs/` | 7 |
 | Planned exercises (not started) | 5 |

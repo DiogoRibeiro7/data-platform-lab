@@ -2,7 +2,7 @@
 
 JavaScript / Node.js implementation of the data platform lab. This project provides structured modules for practicing data engineering patterns: ingestion, transformation, validation, storage layout, orchestration, observability, streaming, warehouse loading, and CLI tooling.
 
-The project uses ESM modules, the Node.js built-in test runner, and minimal external dependencies. It targets Node.js 20+ to take advantage of native capabilities like `node:test`, `node:fs/promises`, and stable `ReadableStream` support.
+The project uses ESM modules, the Node.js built-in test runner, and minimal external dependencies. It targets Node.js 22+ to take advantage of native capabilities like `node:test`, `node:fs/promises`, and stable `ReadableStream` support.
 
 ## Installation
 
@@ -97,7 +97,7 @@ Each module directory contains an `index.js` entry point. Exercises and implemen
 
 ## Conventions
 
-- **Node.js 20+** is required.
+- **Node.js 22+** is required.
 - **ESM** (`"type": "module"`) is used throughout.
 - **Built-in modules** (`node:fs`, `node:path`, `node:stream`, `node:test`) are preferred over external packages where they suffice.
 - **ESLint** enforces code quality with the flat config format (`eslint.config.js`).

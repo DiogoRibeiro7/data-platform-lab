@@ -163,10 +163,10 @@ data/sample/order_items.csv > read + validate + deduplicate ──────�
 ## Tests
 
 ```bash
-# Python — 5 tests
+# Python — 8 tests
 cd python && poetry run pytest tests/test_demo.py -v
 
-# JavaScript — 4 tests
+# JavaScript — 7 tests
 cd javascript && node --test tests/demo.test.js
 ```
 

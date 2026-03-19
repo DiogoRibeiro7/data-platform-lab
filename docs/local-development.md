@@ -10,7 +10,7 @@ Everything you need to clone, set up, and work with this repository locally.
 |------|---------|---------------|-------|
 | Python | 3.11+ | `python --version` | Required for the Python exercises |
 | Poetry | 1.8+ | `poetry --version` | Python dependency manager ([install guide](https://python-poetry.org/docs/#installation)) |
-| Node.js | 20+ | `node --version` | Required for the JavaScript exercises |
+| Node.js | 22+ | `node --version` | Required for the JavaScript exercises (22+ needed for `node:sqlite`) |
 | Corepack | (bundled) | `corepack --version` | Ships with Node.js; used to enable Yarn |
 | SQLite | 3.35+ | `sqlite3 --version` | Optional; only needed for SQL exercises |
 
@@ -42,7 +42,7 @@ Verify:
 poetry run pytest
 ```
 
-Expected output: `110 passed`.
+All tests should pass with zero failures.
 
 ### 3. JavaScript
 
@@ -60,7 +60,7 @@ Verify:
 yarn test
 ```
 
-Expected output: `# pass 116`.
+All tests should pass with zero failures.
 
 ### 4. SQL (optional)
 

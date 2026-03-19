@@ -162,7 +162,7 @@ All seven exercises are implemented in both Python and JavaScript with full test
 ### Prerequisites
 
 - **Python 3.11+** and [Poetry](https://python-poetry.org/)
-- **Node.js 20+** (Yarn is enabled via [Corepack](https://nodejs.org/api/corepack.html))
+- **Node.js 22+** (Yarn is enabled via [Corepack](https://nodejs.org/api/corepack.html); the analytics module uses `node:sqlite` which requires Node 22)
 - **SQLite 3.35+** (for SQL exercises)
 
 ### Clone and set up
@@ -173,14 +173,14 @@ git clone <repo-url> && cd data-platform-lab
 # Python
 cd python
 poetry install          # installs package + dev tools (pytest, ruff, mypy)
-poetry run pytest       # run all tests (110 tests)
+poetry run pytest       # run all tests
 cd ..
 
 # JavaScript
 cd javascript
 corepack enable         # enables yarn via Node's built-in corepack
 yarn install            # installs dev dependencies (eslint)
-yarn test               # run all tests (116 tests)
+yarn test               # run all tests
 cd ..
 
 # SQL (optional)

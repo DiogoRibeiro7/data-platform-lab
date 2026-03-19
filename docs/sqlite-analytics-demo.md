@@ -164,7 +164,7 @@ automated pipelines.
 ## Tests
 
 ```bash
-# Python — 8 tests
+# Python — 10 tests
 cd python && poetry run pytest tests/test_analytics.py -v
 
 # JavaScript — 5 tests
