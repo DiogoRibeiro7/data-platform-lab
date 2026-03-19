@@ -155,3 +155,18 @@ failure, real sample data, and output format.
 |----------|----------------|-------|
 | Python | `python/src/data_platform_lab/orchestration/customer_etl.py` | `python/tests/test_customer_etl.py` |
 | JavaScript | `javascript/src/orchestration/customer-etl.js` | `javascript/tests/customer-etl.test.js` |
+
+---
+
+## Relationship to the end-to-end demo
+
+The repository also contains a larger [end-to-end demo](end-to-end-demo.md)
+that processes all 4 e-commerce tables.
+
+- **This workflow** demonstrates the orchestration runner (Exercise 06) with
+  real modules. It processes only customers through the `Pipeline` class.
+- **The end-to-end demo** is the main showcase. It processes all 4 tables
+  using direct function calls and `RunTracker` for observability.
+
+Both are runnable. The demo is the recommended starting point for visitors;
+this workflow is the recommended example for studying orchestration.

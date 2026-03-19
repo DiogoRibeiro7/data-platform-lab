@@ -73,32 +73,26 @@ Both commands accept `--help` for full option details.
 ```text
 src/data_platform_lab/
 ├── __init__.py
-├── ingestion/          → read from files, APIs, archives, external sources
-├── transform/          → clean, reshape, enrich, aggregate datasets
-├── validation/         → enforce schemas and data quality checks
-├── storage/            → write to layered storage with format and partition control
-├── orchestration/      → schedule and coordinate multi-step pipelines
-├── observability/      → structured logging, metrics, lineage tracking
-├── streaming/          → event-driven and near-real-time processing patterns
-├── warehouse/          → load into analytical stores, run warehouse-style queries
-├── utils/              → shared helpers: paths, I/O, config, type definitions
-└── cli/                → command-line entry points for pipelines and utilities
+├── ingestion/          → CSV and API ingestion (exercises 01–02)
+├── transform/          → incremental ETL and CDC snapshot diff (exercises 04–05)
+├── validation/         → composable data quality rules and runner (exercise 03)
+├── orchestration/      → sequential pipeline runner and customer ETL workflow (exercise 06)
+├── observability/      → timing, run metadata, and structured reporting (exercise 07)
+├── demo.py             → end-to-end e-commerce demo
+└── analytics.py        → SQLite analytical queries over curated output
 ```
 
-## Module Responsibilities
+Additional module directories (`cli/`, `storage/`, `streaming/`, `warehouse/`, `utils/`) exist as placeholders for future exercises. They contain only docstrings and no implementation.
 
-| Module | Responsibility |
+## Implemented Modules
+
+| Module | What it contains |
 | --- | --- |
-| `ingestion` | Read data from flat files (CSV, JSON), HTTP APIs with pagination and retries, compressed archives, and structured log files. |
-| `transform` | Apply column mapping, type casting, deduplication, filtering, derived fields, and medallion-layer promotion logic. |
-| `validation` | Define schemas, enforce contracts at pipeline boundaries, detect anomalies, and route invalid records to dead-letter storage. |
-| `storage` | Write to raw/bronze/silver/gold layers, select file formats (CSV, JSON, Parquet), apply partitioning, and track manifests. |
-| `orchestration` | Resolve task dependencies, execute DAG-based pipelines, manage retries and checkpoints, and load pipeline definitions from configuration. |
-| `observability` | Emit structured logs, record execution timing and row counts, track data lineage, and monitor pipeline health. |
-| `streaming` | Simulate event streams, apply windowed aggregation, bridge streaming to batch, and implement producer/consumer patterns locally. |
-| `warehouse` | Load silver/gold data into SQLite or DuckDB, write analytical queries (CTEs, window functions, SCDs), and produce consumption-layer datasets. |
-| `utils` | Resolve paths, handle file I/O, format timestamps, load configuration, and define shared types. |
-| `cli` | Expose entry points for running pipelines, inspecting data, and executing developer utilities from the command line. |
+| `ingestion` | CSV pipeline (read, validate, standardize, deduplicate, write) and API pipeline (paginated fetch, retry, transform, save raw + processed). |
+| `transform` | Incremental ETL with checkpoint-based deduplication and CDC snapshot comparison (inserts, updates, deletes). |
+| `validation` | Six composable check functions (required columns, no nulls, unique, numeric range, allowed values, date format) and a runner that aggregates results. |
+| `orchestration` | Sequential pipeline runner with retry, skip, shared context, and timing. Plus a customer ETL workflow wired to real modules. |
+| `observability` | Timer, RunTracker (context manager with counters, warnings, extras), run metadata formatting. |
 
 ## Conventions
 

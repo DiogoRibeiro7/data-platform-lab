@@ -181,3 +181,20 @@ country casing normalisation.
 |----------|------------|-------|
 | Python | `python/src/data_platform_lab/demo.py` | `python/tests/test_demo.py` |
 | JavaScript | `javascript/src/demo.js` | `javascript/tests/demo.test.js` |
+
+---
+
+## Relationship to the orchestrated workflow
+
+The repository also contains a smaller [orchestrated workflow](orchestrated-workflow.md)
+that processes only the customers table through the orchestration runner (Exercise 06).
+
+The two serve different purposes:
+
+- **This demo** is the main showcase — it processes all 4 tables using direct
+  function calls and `RunTracker` for observability. It is the recommended
+  entry point for visitors.
+- **The orchestrated workflow** is a focused example of Exercise 06 — it
+  demonstrates the `Pipeline` class with real modules (extract, validate,
+  clean, load, report). It is the recommended entry point for studying how
+  the orchestration runner works.

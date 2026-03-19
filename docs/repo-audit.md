@@ -1,4 +1,8 @@
-# Repository Audit
+# Repository Audit (Historical Snapshot)
+
+> **This is a point-in-time snapshot from 2026-03-16.** Numbers and findings
+> reflect the state of the repository at that date and are no longer current.
+> For the latest assessment, see [current-state-review.md](current-state-review.md).
 
 Audit date: 2026-03-16
 
