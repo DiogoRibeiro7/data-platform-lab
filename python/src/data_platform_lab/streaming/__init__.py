@@ -1,5 +1,24 @@
-"""Streaming — process data with event-driven and near-real-time patterns.
+"""Streaming — process event data with validation, deduplication, and aggregation.
 
-Covers event simulation, windowed aggregation, stream-to-batch bridging,
-and consumer/producer patterns without requiring external brokers.
+Simulates near-real-time event processing locally using JSONL input files.
+Events are validated, deduplicated, and routed to accepted or dead-letter
+outputs with per-sensor aggregate statistics.
 """
+
+from data_platform_lab.streaming.processor import (
+    EventResult,
+    StreamSummary,
+    compute_aggregates,
+    deduplicate_key,
+    process_stream,
+    validate_event,
+)
+
+__all__ = [
+    "EventResult",
+    "StreamSummary",
+    "compute_aggregates",
+    "deduplicate_key",
+    "process_stream",
+    "validate_event",
+]

@@ -1,6 +1,14 @@
 /**
- * Streaming — process data with event-driven and near-real-time patterns.
+ * Streaming — process event data with validation, deduplication, and aggregation.
  *
- * Covers event simulation, windowed aggregation, stream-to-batch bridging,
- * and consumer/producer patterns using Node.js streams and async iterators.
+ * Simulates near-real-time event processing locally using JSONL input files.
+ * Events are validated, deduplicated, and routed to accepted or dead-letter
+ * outputs with per-sensor aggregate statistics.
  */
+
+export {
+  validateEvent,
+  deduplicateKey,
+  computeAggregates,
+  processStream,
+} from "./processor.js";
