@@ -1,0 +1,25 @@
+{
+  "pipeline_name": "warehouse",
+  "run_id": "20260320_084650",
+  "created_at": "2026-03-20T08:46:50.997181+00:00",
+  "source": "C:\\Users\\diogo\\work_code\\data-platform-lab\\data\\sample",
+  "output": "C:\\Users\\diogo\\AppData\\Local\\Temp\\pytest-of-diogo\\pytest-527\\test_run_warehouse_pipeline_sa0\\warehouse.db",
+  "row_count": 441,
+  "status": "success",
+  "staging_tables": {
+    "customers": 13,
+    "products": 12,
+    "orders": 15,
+    "order_items": 20,
+    "events": 20
+  },
+  "warehouse_tables": {
+    "dim_customer": 12,
+    "dim_product": 11,
+    "dim_date": 366,
+    "fact_order": 14,
+    "fact_order_item": 19,
+    "fact_event": 19
+  },
+  "db_path": "C:\\Users\\diogo\\AppData\\Local\\Temp\\pytest-of-diogo\\pytest-527\\test_run_warehouse_pipeline_sa0\\warehouse.db"
+}

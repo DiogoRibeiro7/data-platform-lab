@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { generateRunId, writeManifest } from "../manifest.js";
 
 /**
  * @typedef {object} SensorEvent
@@ -369,6 +370,26 @@ export async function processStream(inputPath, outputDir, { pipelineName = "sens
     `${eventsRejected} rejected, ${eventsDuplicate} duplicate ` +
     `(${durationSeconds}s)`,
   );
+
+  try {
+    const manifestPath = writeManifest({
+      pipeline_name: pipelineName,
+      run_id: generateRunId(),
+      source: inputPath,
+      output: acceptedPath,
+      row_count: eventsAccepted,
+      extras: {
+        events_seen: eventsSeen,
+        events_rejected: eventsRejected,
+        events_duplicate: eventsDuplicate,
+        events_late: lateEvents.length,
+        dead_letter_path: deadLetterPath,
+      },
+    });
+    summary.manifest_path = manifestPath;
+  } catch {
+    // Manifest writing is best-effort — skip in test environments
+  }
 
   return summary;
 }

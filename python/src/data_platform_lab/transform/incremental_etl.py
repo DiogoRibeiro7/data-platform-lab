@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from data_platform_lab.manifest import write_manifest
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,6 +40,7 @@ class RunSummary:
     records_processed: int
     records_failed: int
     checkpoint_updated: bool
+    manifest_path: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +255,23 @@ def run_incremental_etl(
     else:
         logger.info("No new events processed — checkpoint unchanged.")
 
+    # Write manifest
+    output_file = str(output_path) if transformed else ""
+    manifest_path = write_manifest(
+        pipeline_name=pipeline_name,
+        run_id=datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S"),
+        source=str(input_dir),
+        output=output_file,
+        row_count=records_processed,
+        status="success",
+        extras={
+            "records_seen": records_seen,
+            "records_skipped": records_skipped,
+            "records_failed": records_failed,
+            "checkpoint_updated": checkpoint_updated,
+        },
+    )
+
     return RunSummary(
         pipeline_name=pipeline_name,
         run_at=run_at,
@@ -260,4 +280,5 @@ def run_incremental_etl(
         records_processed=records_processed,
         records_failed=records_failed,
         checkpoint_updated=checkpoint_updated,
+        manifest_path=str(manifest_path),
     )

@@ -17,8 +17,11 @@ import csv
 import json
 import logging
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from data_platform_lab.manifest import write_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -351,10 +354,25 @@ def run_warehouse_pipeline(
         logger.exception("Warehouse pipeline failed")
         status = "failed"
 
+    manifest_path = write_manifest(
+        pipeline_name="warehouse",
+        run_id=datetime.now(UTC).strftime("%Y%m%d_%H%M%S"),
+        source=str(data_dir),
+        output=str(report_dir) if report_dir else db_path,
+        row_count=sum(warehouse_tables.values()),
+        status=status,
+        extras={
+            "staging_tables": staging_tables,
+            "warehouse_tables": warehouse_tables,
+            "db_path": db_path,
+        },
+    )
+
     return {
         "db_path": db_path,
         "staging_tables": staging_tables,
         "warehouse_tables": warehouse_tables,
         "queries": query_results,
         "status": status,
+        "manifest_path": str(manifest_path),
     }

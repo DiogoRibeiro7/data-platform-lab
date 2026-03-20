@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from data_platform_lab.manifest import write_manifest
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +34,7 @@ class ApiRunResult:
     processed_path: str
     errors: list[str]
     duration_seconds: float
+    manifest_path: str = ""
 
 
 def fetch_page(
@@ -264,5 +267,21 @@ def run_api_pipeline(
         errors=errors,
         duration_seconds=round(duration, 3),
     )
+    manifest_path = write_manifest(
+        pipeline_name="api_ingestion",
+        run_id=run_id,
+        source=base_url,
+        output=str(processed_path),
+        row_count=len(processed),
+        status="success" if not errors else "failed",
+        warnings=errors if errors else None,
+        extras={
+            "pages_fetched": pages_fetched,
+            "total_records": len(raw_records),
+            "raw_path": str(raw_path),
+        },
+    )
+    result.manifest_path = str(manifest_path)
+
     logger.info("Pipeline complete: %s", result)
     return result

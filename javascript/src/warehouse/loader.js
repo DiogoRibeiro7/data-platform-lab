@@ -9,6 +9,7 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { generateRunId, writeManifest } from "../manifest.js";
 
 // ---------------------------------------------------------------------------
 // Analytical queries against the warehouse star schema
@@ -296,7 +297,7 @@ export function runWarehousePipeline({
   db.close();
 
   // 9. Return structured summary
-  return {
+  const summary = {
     status: "success",
     db_path: dbPath,
     staging_tables: stagingTables,
@@ -307,4 +308,25 @@ export function runWarehousePipeline({
       row_count,
     })),
   };
+
+  try {
+    const manifestPath = writeManifest({
+      pipeline_name: "warehouse",
+      run_id: generateRunId(),
+      source: dataDir,
+      output: reportDir || dbPath,
+      row_count: Object.values(warehouseTables).reduce((a, b) => a + b, 0),
+      status: summary.status,
+      extras: {
+        staging_tables: stagingTables,
+        warehouse_tables: warehouseTables,
+        db_path: dbPath,
+      },
+    });
+    summary.manifest_path = manifestPath;
+  } catch {
+    // Manifest writing is best-effort — skip in test environments
+  }
+
+  return summary;
 }

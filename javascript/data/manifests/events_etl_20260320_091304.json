@@ -1,0 +1,13 @@
+{
+  "pipeline_name": "events_etl",
+  "run_id": "20260320_091304",
+  "created_at": "2026-03-20T09:13:04.137Z",
+  "source": "C:\\Users\\diogo\\AppData\\Local\\Temp\\incremental-etl-test-pEhoBO\\input",
+  "output": "C:\\Users\\diogo\\AppData\\Local\\Temp\\incremental-etl-test-pEhoBO\\output",
+  "row_count": 3,
+  "status": "success",
+  "records_seen": 3,
+  "records_skipped": 0,
+  "records_failed": 0,
+  "checkpoint_updated": true
+}

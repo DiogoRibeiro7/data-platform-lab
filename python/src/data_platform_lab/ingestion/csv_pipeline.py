@@ -11,6 +11,8 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from data_platform_lab.manifest import generate_run_id, write_manifest
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,6 +25,7 @@ class PipelineResult:
     rows_read: int = 0
     rows_written: int = 0
     duplicates_removed: int = 0
+    manifest_path: str = ""
 
 
 def read_csv_file(path: Path) -> tuple[list[str], list[list[str]]]:
@@ -152,4 +155,23 @@ def run_pipeline(
     result.rows_written = len(unique_rows)
 
     _write_csv(output_path, merged_headers, unique_rows)
+
+    # Write manifest
+    manifest_path = write_manifest(
+        pipeline_name="csv_ingestion",
+        run_id=generate_run_id(),
+        source=[str(f) for f in csv_files],
+        output=str(output_path),
+        row_count=result.rows_written,
+        status="success",
+        schema_hint=merged_headers if merged_headers else None,
+        warnings=result.files_rejected if result.files_rejected else None,
+        extras={
+            "rows_read": result.rows_read,
+            "duplicates_removed": result.duplicates_removed,
+            "files_processed": result.files_processed,
+        },
+    )
+    result.manifest_path = str(manifest_path)
+
     return result

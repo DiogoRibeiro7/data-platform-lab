@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from data_platform_lab.manifest import write_manifest
+
 logger = logging.getLogger(__name__)
 
 REQUIRED_FIELDS: list[str] = [
@@ -60,6 +62,7 @@ class StreamSummary:
     lateness_threshold_seconds: float = 0.0
     aggregates: dict[str, Any] = field(default_factory=dict)
     rejection_reasons: dict[str, int] = field(default_factory=dict)
+    manifest_path: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -333,5 +336,22 @@ def process_stream(
         events_duplicate,
         duration,
     )
+
+    manifest_path = write_manifest(
+        pipeline_name=pipeline_name,
+        run_id=datetime.now(UTC).strftime("%Y%m%d_%H%M%S"),
+        source=str(input_path),
+        output=str(accepted_path),
+        row_count=events_accepted,
+        status="success",
+        extras={
+            "events_seen": len(results),
+            "events_rejected": events_rejected,
+            "events_duplicate": events_duplicate,
+            "events_late": len(late_events),
+            "dead_letter_path": str(dead_letter_path),
+        },
+    )
+    summary.manifest_path = str(manifest_path)
 
     return summary
