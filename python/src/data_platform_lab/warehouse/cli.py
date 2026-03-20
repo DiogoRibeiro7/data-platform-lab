@@ -6,6 +6,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 from data_platform_lab.warehouse.loader import run_warehouse_pipeline
 
@@ -18,28 +19,80 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--data-dir",
         type=Path,
-        default=Path("../data/sample"),
+        default=None,
         help="Directory with raw CSVs and events.json (default: ../data/sample).",
     )
     parser.add_argument(
         "--db-path",
         type=str,
-        default=":memory:",
+        default=None,
         help="SQLite database path (default: :memory:).",
     )
     parser.add_argument(
         "--report-dir",
         type=Path,
-        default=Path("../data/gold/warehouse"),
+        default=None,
         help="Directory for report CSVs and summary JSON (default: ../data/gold/warehouse).",
     )
     parser.add_argument(
         "--sql-dir",
         type=Path,
-        default=Path("../sql"),
+        default=None,
         help="Root of the SQL assets tree (default: ../sql).",
     )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to a JSON config file. CLI flags override config values.",
+    )
     return parser
+
+
+def _resolve_config(args: argparse.Namespace) -> dict[str, Any]:
+    """Merge defaults, config file, and CLI flags.
+
+    Precedence: defaults < config file < CLI flags.
+    """
+    resolved: dict[str, Any] = {
+        "data_dir": "../data/sample",
+        "db_path": ":memory:",
+        "report_dir": "../data/gold/warehouse",
+        "sql_dir": "../sql",
+    }
+
+    # Config file layer
+    if args.config:
+        from data_platform_lab.config import ConfigError, load_config, validate_config
+
+        try:
+            config_data = load_config(args.config)
+        except ConfigError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        errors = validate_config(
+            config_data,
+            known=list(resolved.keys()),
+        )
+        if errors:
+            for e in errors:
+                print(f"Config error: {e}", file=sys.stderr)
+            sys.exit(1)
+        for key in resolved:
+            if key in config_data:
+                resolved[key] = config_data[key]
+
+    # CLI flag layer (only override if explicitly provided, i.e. not None)
+    if args.data_dir is not None:
+        resolved["data_dir"] = str(args.data_dir)
+    if args.db_path is not None:
+        resolved["db_path"] = args.db_path
+    if args.report_dir is not None:
+        resolved["report_dir"] = str(args.report_dir)
+    if args.sql_dir is not None:
+        resolved["sql_dir"] = str(args.sql_dir)
+
+    return resolved
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -48,12 +101,13 @@ def main(argv: list[str] | None = None) -> None:
 
     parser = _build_parser()
     args = parser.parse_args(argv)
+    cfg = _resolve_config(args)
 
     result = run_warehouse_pipeline(
-        data_dir=args.data_dir,
-        db_path=args.db_path,
-        report_dir=args.report_dir,
-        sql_dir=args.sql_dir,
+        data_dir=cfg["data_dir"],
+        db_path=cfg["db_path"],
+        report_dir=cfg["report_dir"],
+        sql_dir=cfg["sql_dir"],
     )
 
     # --- Print summary ---
@@ -84,8 +138,9 @@ def main(argv: list[str] | None = None) -> None:
             if len(qr["rows"]) > 5:
                 print(f"      ... ({len(qr['rows']) - 5} more)")
 
-    if args.report_dir:
-        print(f"\nReports written to: {args.report_dir}")
+    report_dir = Path(cfg["report_dir"])
+    if report_dir:
+        print(f"\nReports written to: {report_dir}")
 
 
 if __name__ == "__main__":

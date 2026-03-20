@@ -1,0 +1,6 @@
+{
+  "data_dir": "data/sample",
+  "db_path": "data/gold/warehouse.db",
+  "report_dir": "data/gold/warehouse",
+  "sql_dir": "sql"
+}

@@ -3,6 +3,7 @@
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
 import { processStream } from "./processor.js";
+import { loadConfig, validateConfig } from "../config.js";
 
 const { values } = parseArgs({
   options: {
@@ -10,12 +11,13 @@ const { values } = parseArgs({
     "output-dir": { type: "string", short: "o" },
     "pipeline-name": { type: "string", short: "n" },
     "lateness-threshold": { type: "string", short: "l" },
+    config: { type: "string", short: "c" },
     help: { type: "boolean", short: "h" },
   },
   strict: true,
 });
 
-if (values.help || !values.input || !values["output-dir"]) {
+if (values.help) {
   console.log(
     `Usage: node cli.js --input <path> --output-dir <path> [options]
 
@@ -24,19 +26,48 @@ Options:
   -o, --output-dir         Directory for output files
   -n, --pipeline-name      Name for this pipeline run (default: sensor_stream)
   -l, --lateness-threshold Allowed lateness in seconds (default: 0)
+  -c, --config             Path to a JSON config file
   -h, --help               Show this help message`,
   );
-  process.exit(values.help ? 0 : 1);
+  process.exit(0);
 }
 
-const inputPath = resolve(values.input);
-const outputDir = resolve(values["output-dir"]);
-const pipelineName = values["pipeline-name"] || "sensor_stream";
+// Load config if provided
+let configData = {};
+if (values.config) {
+  try {
+    configData = loadConfig(values.config);
+  } catch (err) {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  }
+  const errors = validateConfig(configData, {
+    known: ["input", "output_dir", "pipeline_name", "lateness_threshold"],
+  });
+  if (errors.length > 0) {
+    for (const e of errors) console.error(`Config error: ${e}`);
+    process.exit(1);
+  }
+}
+
+// Merge: defaults < config < CLI flags
+const inputPath = values.input || configData.input;
+const outputDir = values["output-dir"] || configData.output_dir;
+const pipelineName = values["pipeline-name"] || configData.pipeline_name || "sensor_stream";
 const latenessThresholdSeconds = values["lateness-threshold"]
   ? parseFloat(values["lateness-threshold"])
-  : 0;
+  : configData.lateness_threshold ?? 0;
 
-const summary = await processStream(inputPath, outputDir, {
+if (!inputPath) {
+  console.error("Error: --input is required (provide via CLI or config file)");
+  process.exit(1);
+}
+if (!outputDir) {
+  console.error("Error: --output-dir is required (provide via CLI or config file)");
+  process.exit(1);
+}
+
+const summary = await processStream(resolve(inputPath), resolve(outputDir), {
   pipelineName,
   latenessThresholdSeconds,
 });
@@ -68,4 +99,4 @@ if (sensorCount > 0) {
   console.log(`\nSensors tracked : ${sensorCount}`);
 }
 
-console.log(`\nFull summary written to ${outputDir}/summary.json`);
+console.log(`\nFull summary written to ${resolve(outputDir)}/summary.json`);
