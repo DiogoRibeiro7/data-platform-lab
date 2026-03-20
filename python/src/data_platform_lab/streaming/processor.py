@@ -54,6 +54,10 @@ class StreamSummary:
     events_rejected: int = 0
     events_duplicate: int = 0
     dead_letter_count: int = 0
+    events_late: int = 0
+    max_lateness_seconds: float = 0.0
+    watermark: str = ""          # ISO timestamp of final watermark
+    lateness_threshold_seconds: float = 0.0
     aggregates: dict[str, Any] = field(default_factory=dict)
     rejection_reasons: dict[str, int] = field(default_factory=dict)
 
@@ -61,6 +65,29 @@ class StreamSummary:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def parse_event_time(timestamp_str: str) -> datetime:
+    """Parse an ISO 8601 timestamp string into a timezone-aware datetime."""
+    return datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+
+
+def classify_lateness(
+    event_time: datetime,
+    watermark: datetime | None,
+    threshold_seconds: float,
+) -> tuple[bool, float]:
+    """Determine if an event is late relative to the current watermark.
+
+    Returns (is_late, lateness_seconds). If there is no watermark yet
+    (first event), the event is never late.
+    """
+    if watermark is None:
+        return False, 0.0
+    lateness = (watermark - event_time).total_seconds()
+    # lateness > 0 means the event is behind the watermark
+    is_late = lateness > threshold_seconds
+    return is_late, max(lateness, 0.0)
 
 
 def validate_event(event: dict[str, Any]) -> EventResult:
@@ -158,6 +185,7 @@ def process_stream(
     input_path: str | Path,
     output_dir: str | Path,
     pipeline_name: str = "sensor_stream",
+    lateness_threshold_seconds: float = 0.0,
 ) -> StreamSummary:
     """Process a JSONL file of sensor events end-to-end.
 
@@ -182,6 +210,9 @@ def process_stream(
     seen_keys: set[str] = set()
     accepted_events: list[dict[str, Any]] = []
     rejection_reasons: dict[str, int] = {}
+    watermark: datetime | None = None
+    late_events: list[dict[str, Any]] = []
+    max_lateness: float = 0.0
 
     with input_path.open(encoding="utf-8") as fh:
         for line in fh:
@@ -227,6 +258,20 @@ def process_stream(
 
             seen_keys.add(key)
             accepted_events.append(event)
+
+            # --- Lateness check -----------------------------------------------
+            event_time = parse_event_time(event["timestamp"])
+            is_late, lateness = classify_lateness(
+                event_time, watermark, lateness_threshold_seconds,
+            )
+            if is_late:
+                late_events.append(event)
+                if lateness > max_lateness:
+                    max_lateness = lateness
+            # Advance watermark
+            if watermark is None or event_time > watermark:
+                watermark = event_time
+
             results.append(result)
 
     # --- Compute aggregates -----------------------------------------------
@@ -246,6 +291,11 @@ def process_stream(
                 record = {"event": r.event, "status": r.status, "reason": r.reason}
                 fh.write(json.dumps(record) + "\n")
 
+    late_events_path = output_dir / "late_events.jsonl"
+    with late_events_path.open("w", encoding="utf-8") as fh:
+        for evt in late_events:
+            fh.write(json.dumps(evt) + "\n")
+
     duration = time.monotonic() - start
 
     events_accepted = sum(1 for r in results if r.status == "accepted")
@@ -262,6 +312,10 @@ def process_stream(
         events_rejected=events_rejected,
         events_duplicate=events_duplicate,
         dead_letter_count=events_rejected + events_duplicate,
+        events_late=len(late_events),
+        max_lateness_seconds=round(max_lateness, 2),
+        watermark=watermark.isoformat() if watermark else "",
+        lateness_threshold_seconds=lateness_threshold_seconds,
         aggregates=aggregates,
         rejection_reasons=rejection_reasons,
     )
@@ -271,9 +325,10 @@ def process_stream(
         json.dump(asdict(summary), fh, indent=2)
 
     logger.info(
-        "Pipeline '%s' complete — %d accepted, %d rejected, %d duplicate (%.3fs)",
+        "Pipeline '%s' complete — %d accepted (%d late), %d rejected, %d duplicate (%.3fs)",
         pipeline_name,
         events_accepted,
+        len(late_events),
         events_rejected,
         events_duplicate,
         duration,

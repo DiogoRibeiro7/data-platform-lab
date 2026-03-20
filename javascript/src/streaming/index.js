@@ -11,4 +11,6 @@ export {
   deduplicateKey,
   computeAggregates,
   processStream,
+  parseEventTime,
+  classifyLateness,
 } from "./processor.js";

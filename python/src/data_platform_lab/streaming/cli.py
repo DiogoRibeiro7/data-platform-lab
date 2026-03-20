@@ -33,6 +33,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default="sensor_stream",
         help="Name for this pipeline run (default: sensor_stream).",
     )
+    parser.add_argument(
+        "--lateness-threshold",
+        type=float,
+        default=0.0,
+        help="Allowed lateness in seconds before flagging an event (default: 0).",
+    )
     return parser
 
 
@@ -43,7 +49,10 @@ def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    summary = process_stream(args.input, args.output_dir, args.pipeline_name)
+    summary = process_stream(
+        args.input, args.output_dir, args.pipeline_name,
+        lateness_threshold_seconds=args.lateness_threshold,
+    )
 
     print("\n=== Stream Processing Summary ===")
     print(f"Pipeline        : {summary.pipeline_name}")
@@ -52,8 +61,12 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Events accepted : {summary.events_accepted}")
     print(f"Events rejected : {summary.events_rejected}")
     print(f"Events duplicate: {summary.events_duplicate}")
+    print(f"Events late     : {summary.events_late}")
     print(f"Dead letter     : {summary.dead_letter_count}")
     print(f"Duration        : {summary.duration_seconds}s")
+    if summary.events_late > 0:
+        print(f"Max lateness    : {summary.max_lateness_seconds}s")
+        print(f"Watermark       : {summary.watermark}")
 
     if summary.rejection_reasons:
         print("\nRejection reasons:")

@@ -1,7 +1,7 @@
 # Exercise 08 — Streaming Event Processor
 
 Process sensor events one by one with validation, deduplication, dead-letter
-routing, and per-sensor aggregation.
+routing, per-sensor aggregation, and event-time lateness detection.
 
 ---
 
@@ -67,7 +67,8 @@ All outputs are written to the specified output directory:
 |------|----------|
 | `accepted.jsonl` | Valid, deduplicated events (one JSON object per line) |
 | `dead_letter.jsonl` | Rejected and duplicate events with status and reason |
-| `summary.json` | Structured run summary with counts and aggregates |
+| `late_events.jsonl` | Accepted events that arrived late relative to the watermark |
+| `summary.json` | Structured run summary with counts, aggregates, and lateness stats |
 
 ### Dead-letter format
 
@@ -94,6 +95,10 @@ Each line in `dead_letter.jsonl`:
   "events_rejected": 1,
   "events_duplicate": 1,
   "dead_letter_count": 2,
+  "events_late": 8,
+  "max_lateness_seconds": 1200.0,
+  "watermark": "2024-06-01T08:20:00+00:00",
+  "lateness_threshold_seconds": 0.0,
   "aggregates": {
     "by_sensor": {
       "sensor-01": { "count": 5, "min_value": -40.0, "max_value": 23.5, "avg_value": 10.38 }
@@ -133,10 +138,10 @@ Both produce identical output counts and file structures.
 ## Running the tests
 
 ```bash
-# Python (20 tests)
+# Python (33 tests)
 cd python && python -m pytest tests/test_streaming.py -v
 
-# JavaScript (20 tests)
+# JavaScript (33 tests)
 cd javascript && node --test tests/streaming.test.js
 ```
 
@@ -160,10 +165,16 @@ cd javascript && node --test tests/streaming.test.js
   accepted.jsonl
       │
       ▼
+  Classify lateness ── late? ───────► late_events.jsonl (also in accepted)
+      │
+      ▼
+  Advance watermark
+      │
+      ▼
   Compute aggregates (by_sensor, by_type, by_location)
       │
       ▼
-  summary.json
+  summary.json (includes lateness stats)
 ```
 
 ---
@@ -180,6 +191,59 @@ times. The dedup key assumes a sensor produces at most one reading per timestamp
 
 ---
 
+## Event time vs processing time
+
+In real streaming systems, two clocks matter:
+
+- **Event time**: when the event actually happened (the `timestamp` field)
+- **Processing time**: when the system processes the event (wall clock)
+
+Events often arrive out of order. A sensor reading from 08:00 might arrive
+after a reading from 08:10 because of network delays, buffering, or retries.
+
+### Watermark
+
+The **watermark** is the maximum event timestamp seen so far. It advances as
+events are processed. When a new event's timestamp is older than the watermark,
+the event is out of order.
+
+### Lateness
+
+**Lateness** = `watermark - event_time` (in seconds). An event is classified
+as **late** when its lateness exceeds a configurable threshold.
+
+- `lateness_threshold_seconds = 0` (default): any out-of-order event is late
+- `lateness_threshold_seconds = 600`: events within 10 minutes are tolerated
+- `lateness_threshold_seconds = 1200`: events within 20 minutes are tolerated
+
+Late events are still **accepted** — they appear in `accepted.jsonl` — but
+they are also written to `late_events.jsonl` for inspection.
+
+### Sample data lateness
+
+The 16 sample events are not in timestamp order. With the default threshold:
+
+| Threshold | Late events | Max lateness |
+|-----------|-------------|-------------|
+| 0s (default) | 8 | 1200s (20 min) |
+| 600s (10 min) | 2 | 1200s |
+| 1200s (20 min) | 0 | — |
+
+### What is simplified
+
+This implementation uses a simple monotonic watermark: it only advances
+forward. Real systems use more sophisticated watermark strategies:
+
+- **Per-partition watermarks** that track each source independently
+- **Heuristic watermarks** that estimate completeness based on observed gaps
+- **Allowed lateness windows** that hold state open for late arrivals
+- **Side outputs** that route late data to separate correction pipelines
+
+The exercise demonstrates the core concepts — event-time ordering, watermark
+advancement, and lateness classification — without the distributed complexity.
+
+---
+
 ## Limitations compared with real streaming systems
 
 | This exercise | Real streaming |
@@ -188,13 +252,14 @@ times. The dedup key assumes a sensor produces at most one reading per timestamp
 | Processes all events in one run | Runs continuously |
 | In-memory dedup set | Distributed state store (RocksDB, Redis) |
 | No windowing | Time windows, session windows, tumbling windows |
-| No watermarks | Event-time watermarks for late data |
+| Simple monotonic watermark | Per-partition heuristic watermarks |
 | No backpressure | Consumer flow control |
 | No partitioning | Parallel consumers across partitions |
 | Single-node | Distributed across workers |
 
 The exercise teaches the core concepts — per-event validation, dead-letter
-routing, deduplication, and aggregation — without the operational complexity.
+routing, deduplication, aggregation, and event-time awareness — without the
+operational complexity.
 
 ---
 
@@ -205,3 +270,4 @@ routing, deduplication, and aggregation — without the operational complexity.
 - Watch a directory for new JSONL files instead of reading one file
 - Add a checkpoint so reruns skip already-processed files
 - Convert aggregates to a time-series output format
+- Route late events to a separate correction pipeline
