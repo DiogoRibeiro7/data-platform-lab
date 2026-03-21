@@ -1,10 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
 
 import {
   validateEvent,
@@ -14,9 +11,7 @@ import {
   parseEventTime,
   classifyLateness,
 } from "../src/streaming/processor.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SAMPLE_DIR = join(__dirname, "..", "..", "data", "sample");
+import { SAMPLE_DIR, writeJsonl, makeTempDir } from "./helpers.js";
 
 function makeEvent(overrides = {}) {
   return {
@@ -28,12 +23,6 @@ function makeEvent(overrides = {}) {
     timestamp: "2024-06-01T08:00:00Z",
     ...overrides,
   };
-}
-
-async function writeJsonl(filePath, events) {
-  const content =
-    events.map((e) => (typeof e === "string" ? e : JSON.stringify(e))).join("\n") + "\n";
-  await writeFile(filePath, content, "utf-8");
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +139,7 @@ describe("processStream", () => {
   let outDir;
 
   beforeEach(async () => {
-    outDir = await mkdtemp(join(tmpdir(), "stream-test-"));
+    outDir = await makeTempDir("stream-test-");
   });
 
   afterEach(async () => {
@@ -364,7 +353,7 @@ describe("processStream lateness", () => {
   let outDir;
 
   beforeEach(async () => {
-    outDir = await mkdtemp(join(tmpdir(), "stream-late-"));
+    outDir = await makeTempDir("stream-late-");
   });
 
   afterEach(async () => {

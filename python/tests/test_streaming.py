@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from conftest import SAMPLE_DIR, write_jsonl
+
 from data_platform_lab.streaming.processor import (
     EventResult,  # noqa: F401
     StreamSummary,  # noqa: F401
@@ -33,13 +35,6 @@ def make_event(**overrides):
     }
     base.update(overrides)
     return base
-
-
-def write_jsonl(path, events):
-    """Write a list of dicts as newline-delimited JSON."""
-    with open(path, "w", encoding="utf-8") as f:
-        for e in events:
-            f.write(json.dumps(e) + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -175,12 +170,7 @@ def test_aggregates_empty():
 # process_stream end-to-end tests
 # ---------------------------------------------------------------------------
 
-SAMPLE_DATA = (
-    Path(__file__).resolve().parent.parent.parent
-    / "data"
-    / "sample"
-    / "sensor_events.json"
-)
+SAMPLE_DATA = SAMPLE_DIR / "sensor_events.json"
 
 
 def test_process_stream_sample_data(tmp_path: Path):

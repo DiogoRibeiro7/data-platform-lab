@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+from conftest import write_jsonl
+
 from data_platform_lab.transform.incremental_etl import (
     Checkpoint,
     load_checkpoint,
@@ -43,13 +45,6 @@ SAMPLE_EVENTS: list[dict[str, object]] = [
         "timestamp": "2024-06-01T12:00:00Z",
     },
 ]
-
-
-def write_jsonl(path: Path, events: list[dict[str, object]]) -> None:
-    """Write a list of event dicts as a JSONL file."""
-    with open(path, "w") as f:
-        for event in events:
-            f.write(json.dumps(event) + "\n")
 
 
 # ===================================================================

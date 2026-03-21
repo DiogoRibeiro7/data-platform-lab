@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from conftest import write_csv_text
+
 from data_platform_lab.ingestion.csv_pipeline import (
     PipelineResult,
     deduplicate,
@@ -15,16 +17,6 @@ from data_platform_lab.ingestion.csv_pipeline import (
 )
 
 # ---------------------------------------------------------------------------
-# Helper to write a small CSV inside a tmp directory
-# ---------------------------------------------------------------------------
-
-
-def _write_csv(path: Path, text: str) -> Path:
-    path.write_text(text, encoding="utf-8")
-    return path
-
-
-# ---------------------------------------------------------------------------
 # Unit tests
 # ---------------------------------------------------------------------------
 
@@ -33,7 +25,7 @@ class TestReadCsvFile:
     def test_read_csv_file(self, tmp_path: Path) -> None:
         """Reads a valid CSV and returns headers + rows."""
         csv_text = "id,name,age\n1,Alice,30\n2,Bob,25\n"
-        p = _write_csv(tmp_path / "data.csv", csv_text)
+        p = write_csv_text(tmp_path / "data.csv", csv_text)
 
         headers, rows = read_csv_file(p)
 
@@ -44,13 +36,13 @@ class TestReadCsvFile:
         """Empty file raises ValueError."""
         import pytest
 
-        p = _write_csv(tmp_path / "empty.csv", "")
+        p = write_csv_text(tmp_path / "empty.csv", "")
         with pytest.raises(ValueError, match=r"(?i)empty"):
             read_csv_file(p)
 
     def test_read_csv_file_header_only(self, tmp_path: Path) -> None:
         """Header-only CSV returns headers and empty rows list."""
-        p = _write_csv(tmp_path / "header_only.csv", "id,name,age\n")
+        p = write_csv_text(tmp_path / "header_only.csv", "id,name,age\n")
         headers, rows = read_csv_file(p)
         assert headers == ["id", "name", "age"]
         assert rows == []
@@ -109,11 +101,11 @@ class TestDeduplicate:
 class TestRunPipeline:
     def test_run_pipeline_valid(self, tmp_path: Path) -> None:
         """Full pipeline merges two valid CSVs, deduplicates, and writes."""
-        _write_csv(
+        write_csv_text(
             tmp_path / "a.csv",
             "id,name\n1,Alice\n2,Bob\n",
         )
-        _write_csv(
+        write_csv_text(
             tmp_path / "b.csv",
             "id,name\n2,Bob\n3,Carla\n",
         )
@@ -134,11 +126,11 @@ class TestRunPipeline:
 
     def test_run_pipeline_missing_columns(self, tmp_path: Path) -> None:
         """Files missing required columns are rejected."""
-        _write_csv(
+        write_csv_text(
             tmp_path / "good.csv",
             "id,name,email\n1,Alice,a@b.com\n",
         )
-        _write_csv(
+        write_csv_text(
             tmp_path / "bad.csv",
             "id,name\n2,Bob\n",
         )
@@ -165,8 +157,8 @@ class TestRunPipeline:
 
     def test_run_pipeline_empty_csv_file(self, tmp_path: Path) -> None:
         """An empty CSV file is rejected (no header), but pipeline continues."""
-        _write_csv(tmp_path / "good.csv", "id,name\n1,Alice\n")
-        _write_csv(tmp_path / "empty.csv", "")
+        write_csv_text(tmp_path / "good.csv", "id,name\n1,Alice\n")
+        write_csv_text(tmp_path / "empty.csv", "")
         out = tmp_path / "out.csv"
         result = run_pipeline(tmp_path, out)
 
@@ -176,7 +168,7 @@ class TestRunPipeline:
 
     def test_run_pipeline_header_only_csv(self, tmp_path: Path) -> None:
         """A header-only CSV is processed successfully with zero data rows."""
-        _write_csv(tmp_path / "header_only.csv", "id,name\n")
+        write_csv_text(tmp_path / "header_only.csv", "id,name\n")
         out = tmp_path / "out.csv"
         result = run_pipeline(tmp_path, out)
 
@@ -186,7 +178,7 @@ class TestRunPipeline:
 
     def test_run_pipeline_rerun_produces_identical_output(self, tmp_path: Path) -> None:
         """Running the pipeline twice on the same input produces identical output."""
-        _write_csv(tmp_path / "data.csv", "id,name\n1,Alice\n2,Bob\n1,Alice\n")
+        write_csv_text(tmp_path / "data.csv", "id,name\n1,Alice\n2,Bob\n1,Alice\n")
         out = tmp_path / "out.csv"
 
         run_pipeline(tmp_path, out)
@@ -199,8 +191,8 @@ class TestRunPipeline:
 
     def test_run_pipeline_whitespace_only_csv(self, tmp_path: Path) -> None:
         """A file with only whitespace lines is handled gracefully."""
-        _write_csv(tmp_path / "spaces.csv", "   \n  \n\n")
-        _write_csv(tmp_path / "good.csv", "id,name\n1,Alice\n")
+        write_csv_text(tmp_path / "spaces.csv", "   \n  \n\n")
+        write_csv_text(tmp_path / "good.csv", "id,name\n1,Alice\n")
         out = tmp_path / "out.csv"
         result = run_pipeline(tmp_path, out)
 
@@ -210,7 +202,7 @@ class TestRunPipeline:
 
     def test_run_pipeline_malformed_csv(self, tmp_path: Path) -> None:
         """Handles a CSV with inconsistent column counts gracefully."""
-        _write_csv(
+        write_csv_text(
             tmp_path / "messy.csv",
             "id,name,email\n1,Alice,a@b.com\n2,Bob\n3,Carla,c@d.com,extra\n",
         )

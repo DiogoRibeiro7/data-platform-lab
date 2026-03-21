@@ -4,17 +4,15 @@ import json
 import sqlite3
 from pathlib import Path
 
+from conftest import SAMPLE_DIR as DATA_DIR
+from conftest import SQL_DIR
+
 from data_platform_lab.warehouse.loader import (
     load_raw_csv,
     load_raw_events_json,
     run_sql_file,
     run_warehouse_pipeline,
 )
-
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = REPO_ROOT / "data" / "sample"
-SQL_DIR = REPO_ROOT / "sql"
-
 
 # ---------------------------------------------------------------------------
 # Helpers

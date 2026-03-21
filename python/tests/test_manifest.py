@@ -6,6 +6,8 @@ import json
 import re
 from pathlib import Path
 
+from conftest import write_csv_text
+
 from data_platform_lab.manifest import (
     MANIFEST_REQUIRED_KEYS,
     generate_run_id,
@@ -225,11 +227,6 @@ def test_write_manifest_source_as_list(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _write_csv(path: Path, text: str) -> Path:
-    path.write_text(text, encoding="utf-8")
-    return path
-
-
 def test_csv_pipeline_generates_manifest(tmp_path: Path, monkeypatch: object) -> None:
     """CSV pipeline produces a manifest file with correct fields."""
     from data_platform_lab.ingestion.csv_pipeline import run_pipeline
@@ -239,7 +236,7 @@ def test_csv_pipeline_generates_manifest(tmp_path: Path, monkeypatch: object) ->
 
     input_dir = tmp_path / "input"
     input_dir.mkdir()
-    _write_csv(input_dir / "data.csv", "id,name\n1,Alice\n2,Bob\n")
+    write_csv_text(input_dir / "data.csv", "id,name\n1,Alice\n2,Bob\n")
 
     output_path = tmp_path / "output.csv"
     result = run_pipeline(input_dir, output_path)

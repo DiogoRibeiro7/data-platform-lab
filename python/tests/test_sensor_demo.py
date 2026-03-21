@@ -5,11 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from conftest import SAMPLE_DIR as DATA_DIR
+
 from data_platform_lab.sensor_demo import run_sensor_demo
-
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = REPO_ROOT / "data" / "sample"
-
 
 # ---------------------------------------------------------------------------
 # Helpers
