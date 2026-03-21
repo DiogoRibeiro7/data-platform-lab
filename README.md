@@ -174,7 +174,8 @@ data-platform-lab/
 
 | Document | Purpose |
 | --- | --- |
-| [Milestone M1](docs/milestone-m1.md) | What is implemented and what comes next |
+| [Milestone M2](docs/milestone-m2.md) | Current milestone — streaming, warehouse, benchmarks, manifests |
+| [Milestone M1](docs/milestone-m1.md) | First milestone — core exercises and e-commerce demo |
 | [Exercise index](docs/exercise-index.md) | Quick reference for all exercises |
 | [Roadmap](docs/roadmap.md) | Recommended learning order |
 | [End-to-end demo](docs/end-to-end-demo.md) | E-commerce showcase (direct function calls) |
