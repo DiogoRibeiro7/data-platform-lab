@@ -34,6 +34,20 @@ node src/analytics.js
 
 See [docs/end-to-end-demo.md](docs/end-to-end-demo.md) and [docs/sqlite-analytics-demo.md](docs/sqlite-analytics-demo.md) for details.
 
+### Sensor pipeline demo
+
+A second showcase that processes event data through the orchestration runner (Exercise 06):
+
+```bash
+# Python
+cd python && poetry run python -m data_platform_lab.sensor_demo
+
+# JavaScript
+cd javascript && node src/sensor-demo.js
+```
+
+Output: 16 events in, 14 accepted, 1 rejected, 1 duplicate. Hourly aggregates, dead-letter file, and JSON manifest. See [docs/sensor-pipeline-demo.md](docs/sensor-pipeline-demo.md).
+
 ## What is implemented
 
 Seven exercises, each in both Python and JavaScript with full test coverage:
@@ -48,10 +62,10 @@ Seven exercises, each in both Python and JavaScript with full test coverage:
 | 06 | Orchestration runner | Sequential step execution, retry logic, shared context | [guide](docs/06-orchestration-runner.md) |
 | 07 | Observability | Execution timing, run metadata, counters, structured reporting | [guide](docs/07-observability.md) |
 
-Plus:
-- **End-to-end demo** — processes all 4 e-commerce tables through the full pipeline ([guide](docs/end-to-end-demo.md))
+Plus two showcase demos and supporting assets:
+- **E-commerce demo** — processes all 4 tables through direct function calls with `RunTracker` ([guide](docs/end-to-end-demo.md))
+- **Sensor pipeline demo** — processes event data through the orchestration runner with dead-letter routing ([guide](docs/sensor-pipeline-demo.md))
 - **SQLite analytics** — loads curated output into SQLite and runs 5 analytical queries ([guide](docs/sqlite-analytics-demo.md))
-- **Orchestrated workflow** — the orchestration runner wired to real ingestion and validation modules ([guide](docs/orchestrated-workflow.md))
 - **27 SQL scripts** — DDL, DML, analytical queries, and warehouse ETL patterns in `sql/`
 
 See [docs/exercise-index.md](docs/exercise-index.md) for file locations and dependencies. See [docs/roadmap.md](docs/roadmap.md) for learning order.
@@ -155,8 +169,6 @@ data-platform-lab/
 | Exercise | Concepts |
 | --- | --- |
 | Log parsing | Semi-structured text to structured records |
-| Event processing | Windowed aggregation, simulated real-time |
-| Warehouse loading CLI | Python/JS wrapper around the SQL assets |
 
 ## Documentation
 
@@ -165,9 +177,10 @@ data-platform-lab/
 | [Milestone M1](docs/milestone-m1.md) | What is implemented and what comes next |
 | [Exercise index](docs/exercise-index.md) | Quick reference for all exercises |
 | [Roadmap](docs/roadmap.md) | Recommended learning order |
-| [End-to-end demo](docs/end-to-end-demo.md) | Main showcase pipeline |
+| [End-to-end demo](docs/end-to-end-demo.md) | E-commerce showcase (direct function calls) |
+| [Sensor pipeline demo](docs/sensor-pipeline-demo.md) | Event showcase (orchestration runner) |
 | [SQLite analytics](docs/sqlite-analytics-demo.md) | Analytical queries over curated output |
-| [Orchestrated workflow](docs/orchestrated-workflow.md) | Orchestration runner with real modules |
+| [Orchestration in the repo](docs/orchestrated-workflow.md) | How the runner is used across demos |
 | [Platform conventions](docs/platform-conventions.md) | Naming, status strings, result shapes |
 | [Testing strategy](docs/testing-strategy.md) | Test categories and coverage |
 | [Local development](docs/local-development.md) | Setup, commands, pitfalls |

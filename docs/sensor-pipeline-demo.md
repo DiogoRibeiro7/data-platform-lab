@@ -86,6 +86,22 @@ Both demos are runnable from a fresh clone with one command.
 
 ---
 
+## Orchestration runner usage
+
+This demo is the repository's primary example of the orchestration runner
+(Exercise 06) in a real workflow. All 5 steps are registered with
+`Pipeline.add_step()` and executed through `pipeline.run(context)`.
+
+The e-commerce demo intentionally does not use the runner — it shows that
+simple pipelines work fine with direct function calls. The sensor demo shows
+the value of the runner when you need structured step reporting, shared
+context, and fail-fast control.
+
+For a comparison of both approaches and a smaller tutorial example
+(customer_etl), see [orchestrated-workflow.md](orchestrated-workflow.md).
+
+---
+
 ## Tests
 
 ```bash

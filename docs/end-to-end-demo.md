@@ -184,17 +184,16 @@ country casing normalisation.
 
 ---
 
-## Relationship to the orchestrated workflow
+## Why this demo does not use the orchestration runner
 
-The repository also contains a smaller [orchestrated workflow](orchestrated-workflow.md)
-that processes only the customers table through the orchestration runner (Exercise 06).
+This demo uses direct function calls and `RunTracker` (Exercise 07) rather
+than the `Pipeline` class (Exercise 06). This is intentional — it shows
+that simple pipelines with a fixed set of steps don't need a formal runner.
 
-The two serve different purposes:
+The [sensor pipeline demo](sensor-pipeline-demo.md) shows the same data
+engineering patterns (ingest, validate, output) but executed through the
+orchestration runner with structured step reporting. Together, the two
+demos illustrate when a formal runner adds value and when direct calls
+are sufficient.
 
-- **This demo** is the main showcase — it processes all 4 tables using direct
-  function calls and `RunTracker` for observability. It is the recommended
-  entry point for visitors.
-- **The orchestrated workflow** is a focused example of Exercise 06 — it
-  demonstrates the `Pipeline` class with real modules (extract, validate,
-  clean, load, report). It is the recommended entry point for studying how
-  the orchestration runner works.
+See [orchestrated-workflow.md](orchestrated-workflow.md) for a comparison.
