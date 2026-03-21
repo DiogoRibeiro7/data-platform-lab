@@ -5,11 +5,13 @@ on:
     paths:
       - "python/**"
       - "data/sample/**"
+      - "sql/**"
       - ".github/workflows/python.yml"
   pull_request:
     paths:
       - "python/**"
       - "data/sample/**"
+      - "sql/**"
       - ".github/workflows/python.yml"
 
 defaults:
@@ -18,7 +20,7 @@ defaults:
 
 jobs:
   lint:
-    name: Lint
+    name: Lint & type-check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,11 +29,18 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: python/.venv
+          key: py-venv-${{ runner.os }}-${{ hashFiles('python/pyproject.toml') }}
+          restore-keys: py-venv-${{ runner.os }}-
+
       - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install poetry
-          poetry install --no-interaction
+        run: poetry install --no-interaction
 
       - name: Ruff lint
         run: poetry run ruff check .
@@ -39,11 +48,11 @@ jobs:
       - name: Ruff format check
         run: poetry run ruff format --check .
 
-      - name: Mypy
+      - name: Mypy strict type-check
         run: poetry run mypy src/
 
   test:
-    name: Test
+    name: Test & smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,14 +61,24 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: python/.venv
+          key: py-venv-${{ runner.os }}-${{ hashFiles('python/pyproject.toml') }}
+          restore-keys: py-venv-${{ runner.os }}-
+
       - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install poetry
-          poetry install --no-interaction
+        run: poetry install --no-interaction
 
       - name: Run tests
         run: poetry run pytest
 
-      - name: Demo smoke test
-        run: poetry run python -m data_platform_lab.demo --data-dir ../data/sample --output-dir /tmp/silver --manifest-dir /tmp/manifests
+      - name: "Smoke: e-commerce demo"
+        run: poetry run python -m data_platform_lab.demo --data-dir ../data/sample --output-dir /tmp/demo/silver --manifest-dir /tmp/demo/manifests
+
+      - name: "Smoke: sensor demo"
+        run: poetry run python -m data_platform_lab.sensor_demo --data-dir ../data/sample --output-dir /tmp/sensor/silver --manifest-dir /tmp/sensor/manifests

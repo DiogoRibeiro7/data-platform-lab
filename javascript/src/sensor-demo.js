@@ -13,7 +13,8 @@
  */
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { Pipeline, formatResult } from "./orchestration/runner.js";
@@ -409,8 +410,8 @@ Options:
 }
 
 // Only run CLI when executed directly (not when imported)
-const isMain = process.argv[1] && new URL(process.argv[1], "file://").pathname
-  === new URL(import.meta.url).pathname;
+const isMain = process.argv[1]
+  && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
 
 if (isMain) {
   main().catch((err) => {
