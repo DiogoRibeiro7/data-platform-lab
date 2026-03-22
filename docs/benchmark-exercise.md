@@ -73,7 +73,7 @@ async               0.0698       50      5000      5000         0
 
 Relative to sequential:
   threaded: 2.52x
-  concurrent: 2.64x
+  async: 2.64x
 ```
 
 The report is also saved as `benchmark_report.json` in the work directory.

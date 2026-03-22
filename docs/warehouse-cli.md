@@ -186,6 +186,7 @@ transformation pipeline including the star schema pattern.
 - Fact tables use plain `INSERT` (not `INSERT OR REPLACE`), so re-running
   against the same file-backed database will duplicate fact rows. Use
   `:memory:` or delete the DB file between runs.
-- The simple CSV parser splits on commas and does not handle quoted fields
-  containing commas.
+- The JavaScript CSV parser splits on commas and does not handle quoted
+  fields containing commas. The Python implementation uses `csv.DictReader`,
+  which handles quoting correctly.
 - `node:sqlite` (JavaScript) is experimental in Node 22.

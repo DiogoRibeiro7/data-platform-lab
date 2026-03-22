@@ -69,8 +69,8 @@ Full ELT pipeline from raw files to star-schema analytics:
 2. Execute SQL transforms from `sql/warehouse/` to populate dimension tables
    (`dim_customer`, `dim_product`, `dim_date`) and fact tables (`fact_order`,
    `fact_order_item`, `fact_event`)
-3. Run four analytical queries over the resulting star schema (row counts,
-   revenue by status, top products, average order value by customer)
+3. Run five analytical queries over the resulting star schema (row counts,
+   revenue by status, top products, daily revenue, customer spend)
 4. Write query results as CSVs to `data/gold/warehouse/`
 
 The SQL assets in `sql/warehouse/` include staging-to-dimension transforms,
