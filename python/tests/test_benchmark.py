@@ -48,11 +48,7 @@ class TestGenerateTestFiles:
             rows = list(reader)
 
         empty_emails = [r for r in rows if not r["email"]]
-        casing_issues = [
-            r
-            for r in rows
-            if r["country"] != r["country"].title() and r["country"]
-        ]
+        casing_issues = [r for r in rows if r["country"] != r["country"].title() and r["country"]]
 
         # ~10% of 10 rows = 1 empty email (row_id % 10 == 0)
         assert len(empty_emails) >= 1

@@ -306,20 +306,28 @@ def run_warehouse_pipeline(
                 run_sql_file(conn, wh_file)
 
         # 7. Gather warehouse table row counts
-        for tbl in ("dim_customer", "dim_product", "dim_date", "fact_order",
-                     "fact_order_item", "fact_event"):
+        for tbl in (
+            "dim_customer",
+            "dim_product",
+            "dim_date",
+            "fact_order",
+            "fact_order_item",
+            "fact_event",
+        ):
             cursor = conn.execute(f"SELECT COUNT(*) FROM {tbl}")
             warehouse_tables[tbl] = cursor.fetchone()[0]
 
         # 8. Run analytical queries
         for name, description, sql in WAREHOUSE_QUERIES:
             rows = _run_query(conn, sql)
-            query_results.append({
-                "name": name,
-                "description": description,
-                "row_count": len(rows),
-                "rows": rows,
-            })
+            query_results.append(
+                {
+                    "name": name,
+                    "description": description,
+                    "row_count": len(rows),
+                    "rows": rows,
+                }
+            )
             logger.info("Query '%s': %d rows", name, len(rows))
 
         # 9. Write reports if requested

@@ -101,15 +101,17 @@ def read_manifest(path: str | Path) -> dict[str, Any]:
     return data
 
 
-MANIFEST_REQUIRED_KEYS = frozenset({
-    "pipeline_name",
-    "run_id",
-    "created_at",
-    "source",
-    "output",
-    "row_count",
-    "status",
-})
+MANIFEST_REQUIRED_KEYS = frozenset(
+    {
+        "pipeline_name",
+        "run_id",
+        "created_at",
+        "source",
+        "output",
+        "row_count",
+        "status",
+    }
+)
 
 
 def validate_manifest(data: dict[str, Any]) -> list[str]:

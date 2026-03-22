@@ -128,25 +128,29 @@ def test_aggregates_single_sensor():
     assert sensor["count"] == 3
     assert sensor["min_value"] == 10.0
     assert sensor["max_value"] == 30.0
-    assert sensor["avg_value"] == round(
-        (10.0 + 20.0 + 30.0) / 3, 2
-    )
+    assert sensor["avg_value"] == round((10.0 + 20.0 + 30.0) / 3, 2)
 
 
 def test_aggregates_multiple_sensors():
     """Two sensors produce correct by_sensor, by_type, by_location."""
     events = [
         make_event(
-            sensor_id="s1", type="temperature",
-            location="A", value=10.0,
+            sensor_id="s1",
+            type="temperature",
+            location="A",
+            value=10.0,
         ),
         make_event(
-            sensor_id="s1", type="temperature",
-            location="A", value=20.0,
+            sensor_id="s1",
+            type="temperature",
+            location="A",
+            value=20.0,
         ),
         make_event(
-            sensor_id="s2", type="humidity",
-            location="B", value=50.0,
+            sensor_id="s2",
+            type="humidity",
+            location="B",
+            value=50.0,
         ),
     ]
     agg = compute_aggregates(events)
@@ -196,9 +200,7 @@ def test_process_stream_sample_data(tmp_path: Path):
 
     summary_path = tmp_path / "summary.json"
     assert summary_path.exists()
-    summary_data = json.loads(
-        summary_path.read_text(encoding="utf-8")
-    )
+    summary_data = json.loads(summary_path.read_text(encoding="utf-8"))
     assert isinstance(summary_data, dict)
 
     assert len(summary.aggregates["by_sensor"]) == 5
@@ -302,9 +304,7 @@ def test_process_stream_summary_json_shape(tmp_path: Path):
     process_stream(SAMPLE_DATA, summary_dir)
 
     summary_path = summary_dir / "summary.json"
-    summary_data = json.loads(
-        summary_path.read_text(encoding="utf-8")
-    )
+    summary_data = json.loads(summary_path.read_text(encoding="utf-8"))
 
     expected_keys = {
         "pipeline_name",
@@ -451,7 +451,9 @@ def test_process_stream_within_threshold_not_late(tmp_path: Path):
     write_jsonl(input_file, events)
 
     summary = process_stream(
-        input_file, tmp_path / "out", lateness_threshold_seconds=600.0,
+        input_file,
+        tmp_path / "out",
+        lateness_threshold_seconds=600.0,
     )
     assert summary.events_late == 0
 
@@ -466,7 +468,9 @@ def test_process_stream_beyond_threshold_is_late(tmp_path: Path):
     write_jsonl(input_file, events)
 
     summary = process_stream(
-        input_file, tmp_path / "out", lateness_threshold_seconds=600.0,
+        input_file,
+        tmp_path / "out",
+        lateness_threshold_seconds=600.0,
     )
     assert summary.events_late == 1
     assert summary.max_lateness_seconds == 3600.0
@@ -513,12 +517,16 @@ def test_process_stream_sample_data_lateness(tmp_path: Path):
 
     # With 600s threshold: only 2 events are more than 10 min late
     summary2 = process_stream(
-        SAMPLE_DATA, tmp_path, lateness_threshold_seconds=600.0,
+        SAMPLE_DATA,
+        tmp_path,
+        lateness_threshold_seconds=600.0,
     )
     assert summary2.events_late == 2
 
     # With 1200s threshold: nothing is more than 20 min late
     summary3 = process_stream(
-        SAMPLE_DATA, tmp_path, lateness_threshold_seconds=1200.0,
+        SAMPLE_DATA,
+        tmp_path,
+        lateness_threshold_seconds=1200.0,
     )
     assert summary3.events_late == 0

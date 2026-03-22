@@ -58,7 +58,7 @@ class StreamSummary:
     dead_letter_count: int = 0
     events_late: int = 0
     max_lateness_seconds: float = 0.0
-    watermark: str = ""          # ISO timestamp of final watermark
+    watermark: str = ""  # ISO timestamp of final watermark
     lateness_threshold_seconds: float = 0.0
     aggregates: dict[str, Any] = field(default_factory=dict)
     rejection_reasons: dict[str, int] = field(default_factory=dict)
@@ -228,7 +228,9 @@ def process_stream(
                 event = json.loads(line)
             except json.JSONDecodeError:
                 result = EventResult(
-                    event={"_raw": line}, status="rejected", reason="malformed JSON",
+                    event={"_raw": line},
+                    status="rejected",
+                    reason="malformed JSON",
                 )
                 rejection_reasons["malformed JSON"] = rejection_reasons.get("malformed JSON", 0) + 1
                 logger.warning("Rejected event (malformed JSON): %s", line[:120])
@@ -265,7 +267,9 @@ def process_stream(
             # --- Lateness check -----------------------------------------------
             event_time = parse_event_time(event["timestamp"])
             is_late, lateness = classify_lateness(
-                event_time, watermark, lateness_threshold_seconds,
+                event_time,
+                watermark,
+                lateness_threshold_seconds,
             )
             if is_late:
                 late_events.append(event)

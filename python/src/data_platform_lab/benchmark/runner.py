@@ -17,9 +17,15 @@ logger = logging.getLogger(__name__)
 # ── Synthetic data generation ────────────────────────────────────────────
 
 SAMPLE_NAMES = [
-    ("Alice", "Martins"), ("Bob", "Silva"), ("Carol", "Santos"),
-    ("David", "Costa"), ("Eva", "Ferreira"), ("Frank", "Oliveira"),
-    ("Grace", "Rodrigues"), ("Hugo", "Almeida"), ("Iris", "Pereira"),
+    ("Alice", "Martins"),
+    ("Bob", "Silva"),
+    ("Carol", "Santos"),
+    ("David", "Costa"),
+    ("Eva", "Ferreira"),
+    ("Frank", "Oliveira"),
+    ("Grace", "Rodrigues"),
+    ("Hugo", "Almeida"),
+    ("Iris", "Pereira"),
     ("Jack", "Sousa"),
 ]
 
@@ -49,10 +55,17 @@ def generate_test_files(
         file_path = output_dir / f"batch_{f_idx:04d}.csv"
         with file_path.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
-            writer.writerow([
-                "customer_id", "first_name", "last_name",
-                "email", "city", "country", "created_at",
-            ])
+            writer.writerow(
+                [
+                    "customer_id",
+                    "first_name",
+                    "last_name",
+                    "email",
+                    "city",
+                    "country",
+                    "created_at",
+                ]
+            )
             for r_idx in range(rows_per_file):
                 row_id = f_idx * rows_per_file + r_idx
                 first, last = SAMPLE_NAMES[row_id % len(SAMPLE_NAMES)]
@@ -68,10 +81,17 @@ def generate_test_files(
                 if row_id % 10 == 7:
                     country = country.lower()
 
-                writer.writerow([
-                    f"C{row_id:06d}", first, last, email, city, country,
-                    "2024-01-15",
-                ])
+                writer.writerow(
+                    [
+                        f"C{row_id:06d}",
+                        first,
+                        last,
+                        email,
+                        city,
+                        country,
+                        "2024-01-15",
+                    ]
+                )
         files.append(file_path)
 
     return files
@@ -79,9 +99,11 @@ def generate_test_files(
 
 # ── Single-file processing ───────────────────────────────────────────────
 
+
 @dataclass
 class FileResult:
     """Result of processing a single file."""
+
     file_name: str
     rows_read: int = 0
     rows_valid: int = 0
@@ -144,6 +166,7 @@ def process_file(input_path: Path, output_dir: Path) -> FileResult:
 
 # ── Strategy implementations ─────────────────────────────────────────────
 
+
 def run_sequential(files: list[Path], output_dir: Path) -> list[FileResult]:
     """Process all files sequentially in a for-loop."""
     return [process_file(f, output_dir) for f in files]
@@ -168,10 +191,7 @@ async def _run_async_inner(
     """Async wrapper: delegates to thread executor for file I/O."""
     loop = asyncio.get_running_loop()
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        tasks = [
-            loop.run_in_executor(pool, process_file, f, output_dir)
-            for f in files
-        ]
+        tasks = [loop.run_in_executor(pool, process_file, f, output_dir) for f in files]
         return list(await asyncio.gather(*tasks))
 
 
@@ -186,9 +206,11 @@ def run_async(
 
 # ── Benchmark orchestrator ───────────────────────────────────────────────
 
+
 @dataclass
 class StrategyResult:
     """Result for one benchmark strategy run."""
+
     strategy: str
     total_seconds: float = 0.0
     files_processed: int = 0
@@ -200,6 +222,7 @@ class StrategyResult:
 @dataclass
 class BenchmarkReport:
     """Complete benchmark report."""
+
     num_files: int = 0
     rows_per_file: int = 0
     total_rows: int = 0

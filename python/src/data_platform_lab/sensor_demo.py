@@ -146,22 +146,26 @@ def _aggregate(ctx: dict[str, Any]) -> dict[str, Any]:
     hourly_aggregates: list[dict[str, Any]] = []
     for bucket_key, values in sorted(hourly.items()):
         sensor_id, hour = bucket_key.split("|", 1)
-        hourly_aggregates.append({
-            "sensor_id": sensor_id,
-            "hour": hour,
-            "count": len(values),
-            "min": min(values),
-            "max": max(values),
-            "avg": round(sum(values) / len(values), 4),
-        })
+        hourly_aggregates.append(
+            {
+                "sensor_id": sensor_id,
+                "hour": hour,
+                "count": len(values),
+                "min": min(values),
+                "max": max(values),
+                "avg": round(sum(values) / len(values), 4),
+            }
+        )
 
     location_summary: list[dict[str, Any]] = []
     for loc in sorted(location_events):
-        location_summary.append({
-            "location": loc,
-            "event_count": location_events[loc],
-            "sensor_count": len(location_sensors[loc]),
-        })
+        location_summary.append(
+            {
+                "location": loc,
+                "event_count": location_events[loc],
+                "sensor_count": len(location_sensors[loc]),
+            }
+        )
 
     ctx["hourly_aggregates"] = hourly_aggregates
     ctx["location_summary"] = location_summary
@@ -197,7 +201,8 @@ def _output(ctx: dict[str, Any]) -> dict[str, Any]:
     agg_path = output_dir / "hourly_aggregates.csv"
     with agg_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(
-            fh, fieldnames=["sensor_id", "hour", "count", "min", "max", "avg"],
+            fh,
+            fieldnames=["sensor_id", "hour", "count", "min", "max", "avg"],
         )
         writer.writeheader()
         writer.writerows(ctx["hourly_aggregates"])
@@ -206,7 +211,8 @@ def _output(ctx: dict[str, Any]) -> dict[str, Any]:
     loc_path = output_dir / "location_summary.csv"
     with loc_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(
-            fh, fieldnames=["location", "event_count", "sensor_count"],
+            fh,
+            fieldnames=["location", "event_count", "sensor_count"],
         )
         writer.writeheader()
         writer.writerows(ctx["location_summary"])
