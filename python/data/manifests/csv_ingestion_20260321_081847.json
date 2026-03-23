@@ -1,0 +1,25 @@
+{
+  "pipeline_name": "csv_ingestion",
+  "run_id": "20260321_081847",
+  "created_at": "2026-03-21T08:18:47.995792+00:00",
+  "source": [
+    "C:\\Users\\diogo\\AppData\\Local\\Temp\\pytest-of-diogo\\pytest-561\\test_run_pipeline_missing_colu0\\bad.csv",
+    "C:\\Users\\diogo\\AppData\\Local\\Temp\\pytest-of-diogo\\pytest-561\\test_run_pipeline_missing_colu0\\good.csv"
+  ],
+  "output": "C:\\Users\\diogo\\AppData\\Local\\Temp\\pytest-of-diogo\\pytest-561\\test_run_pipeline_missing_colu0\\out.csv",
+  "row_count": 1,
+  "status": "success",
+  "schema_hint": [
+    "id",
+    "name",
+    "email"
+  ],
+  "warnings": [
+    "bad.csv: missing required columns ['email']"
+  ],
+  "rows_read": 1,
+  "duplicates_removed": 0,
+  "files_processed": [
+    "good.csv"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "pipeline_name": "events_etl",
+  "run_id": "20260320_091301",
+  "created_at": "2026-03-20T09:13:01.303618+00:00",
+  "source": "C:\\Users\\diogo\\AppData\\Local\\Temp\\pytest-of-diogo\\pytest-530\\test_empty_string_event_id_tre0\\input",
+  "output": "C:\\Users\\diogo\\AppData\\Local\\Temp\\pytest-of-diogo\\pytest-530\\test_empty_string_event_id_tre0\\output\\20260320_091301.jsonl",
+  "row_count": 2,
+  "status": "success",
+  "records_seen": 2,
+  "records_skipped": 0,
+  "records_failed": 0,
+  "checkpoint_updated": true
+}

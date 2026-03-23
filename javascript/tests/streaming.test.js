@@ -1,20 +1,17 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
 
 import {
   validateEvent,
   deduplicateKey,
   computeAggregates,
   processStream,
+  parseEventTime,
+  classifyLateness,
 } from "../src/streaming/processor.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SAMPLE_DIR = join(__dirname, "..", "..", "data", "sample");
+import { SAMPLE_DIR, writeJsonl, makeTempDir } from "./helpers.js";
 
 function makeEvent(overrides = {}) {
   return {
@@ -26,12 +23,6 @@ function makeEvent(overrides = {}) {
     timestamp: "2024-06-01T08:00:00Z",
     ...overrides,
   };
-}
-
-async function writeJsonl(filePath, events) {
-  const content =
-    events.map((e) => (typeof e === "string" ? e : JSON.stringify(e))).join("\n") + "\n";
-  await writeFile(filePath, content, "utf-8");
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +139,7 @@ describe("processStream", () => {
   let outDir;
 
   beforeEach(async () => {
-    outDir = await mkdtemp(join(tmpdir(), "stream-test-"));
+    outDir = await makeTempDir("stream-test-");
   });
 
   afterEach(async () => {
@@ -189,6 +180,10 @@ describe("processStream", () => {
       "events_rejected",
       "events_duplicate",
       "dead_letter_count",
+      "events_late",
+      "max_lateness_seconds",
+      "watermark",
+      "lateness_threshold_seconds",
       "aggregates",
       "rejection_reasons",
     ];
@@ -271,6 +266,10 @@ describe("processStream", () => {
       "events_rejected",
       "events_duplicate",
       "dead_letter_count",
+      "events_late",
+      "max_lateness_seconds",
+      "watermark",
+      "lateness_threshold_seconds",
       "aggregates",
       "rejection_reasons",
     ];
@@ -292,5 +291,168 @@ describe("processStream", () => {
     const acceptedRaw = await readFile(join(outDir, "accepted.jsonl"), "utf-8");
     const acceptedLines = acceptedRaw.split("\n").filter((l) => l.length > 0);
     assert.equal(acceptedLines.length, 2, "rerun should overwrite, not append");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseEventTime and classifyLateness
+// ---------------------------------------------------------------------------
+describe("parseEventTime", () => {
+  it("parses a Z-suffix ISO timestamp into a Date", () => {
+    const d = parseEventTime("2024-06-01T08:00:00Z");
+    assert.equal(d.getUTCFullYear(), 2024);
+    assert.equal(d.getUTCHours(), 8);
+  });
+});
+
+describe("classifyLateness", () => {
+  it("first event (no watermark) is never late", () => {
+    const et = parseEventTime("2024-06-01T08:00:00Z");
+    const { is_late, lateness_seconds } = classifyLateness(et, null, 0);
+    assert.equal(is_late, false);
+    assert.equal(lateness_seconds, 0);
+  });
+
+  it("event at the watermark is not late", () => {
+    const wm = parseEventTime("2024-06-01T08:10:00Z");
+    const et = parseEventTime("2024-06-01T08:10:00Z");
+    const { is_late, lateness_seconds } = classifyLateness(et, wm, 0);
+    assert.equal(is_late, false);
+    assert.equal(lateness_seconds, 0);
+  });
+
+  it("event behind watermark but within threshold is on-time", () => {
+    const wm = parseEventTime("2024-06-01T08:10:00Z");
+    const et = parseEventTime("2024-06-01T08:05:00Z");
+    const { is_late, lateness_seconds } = classifyLateness(et, wm, 600);
+    assert.equal(is_late, false);
+    assert.equal(lateness_seconds, 300);
+  });
+
+  it("event behind watermark beyond threshold is late", () => {
+    const wm = parseEventTime("2024-06-01T08:20:00Z");
+    const et = parseEventTime("2024-06-01T08:00:00Z");
+    const { is_late, lateness_seconds } = classifyLateness(et, wm, 600);
+    assert.equal(is_late, true);
+    assert.equal(lateness_seconds, 1200);
+  });
+
+  it("event ahead of watermark is not late, lateness clamped to 0", () => {
+    const wm = parseEventTime("2024-06-01T08:00:00Z");
+    const et = parseEventTime("2024-06-01T08:10:00Z");
+    const { is_late, lateness_seconds } = classifyLateness(et, wm, 0);
+    assert.equal(is_late, false);
+    assert.equal(lateness_seconds, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// processStream lateness (end-to-end)
+// ---------------------------------------------------------------------------
+describe("processStream lateness", () => {
+  let outDir;
+
+  beforeEach(async () => {
+    outDir = await makeTempDir("stream-late-");
+  });
+
+  afterEach(async () => {
+    await rm(outDir, { recursive: true, force: true });
+  });
+
+  it("ordered events produce zero late events", async () => {
+    const inputPath = join(outDir, "input.jsonl");
+    await writeJsonl(inputPath, [
+      makeEvent({ sensor_id: "s1", timestamp: "2024-06-01T08:00:00Z" }),
+      makeEvent({ sensor_id: "s2", timestamp: "2024-06-01T08:05:00Z" }),
+      makeEvent({ sensor_id: "s3", timestamp: "2024-06-01T08:10:00Z" }),
+    ]);
+
+    const result = await processStream(inputPath, outDir);
+    assert.equal(result.events_late, 0);
+  });
+
+  it("out-of-order events are late with default threshold", async () => {
+    const inputPath = join(outDir, "input.jsonl");
+    await writeJsonl(inputPath, [
+      makeEvent({ sensor_id: "s1", timestamp: "2024-06-01T08:10:00Z" }),
+      makeEvent({ sensor_id: "s2", timestamp: "2024-06-01T08:00:00Z" }),
+    ]);
+
+    const result = await processStream(inputPath, outDir);
+    assert.equal(result.events_late, 1);
+    assert.equal(result.max_lateness_seconds, 600);
+  });
+
+  it("event within threshold is not late", async () => {
+    const inputPath = join(outDir, "input.jsonl");
+    await writeJsonl(inputPath, [
+      makeEvent({ sensor_id: "s1", timestamp: "2024-06-01T08:10:00Z" }),
+      makeEvent({ sensor_id: "s2", timestamp: "2024-06-01T08:05:00Z" }),
+    ]);
+
+    const result = await processStream(inputPath, outDir, {
+      latenessThresholdSeconds: 600,
+    });
+    assert.equal(result.events_late, 0);
+  });
+
+  it("event beyond threshold is late", async () => {
+    const inputPath = join(outDir, "input.jsonl");
+    await writeJsonl(inputPath, [
+      makeEvent({ sensor_id: "s1", timestamp: "2024-06-01T09:00:00Z" }),
+      makeEvent({ sensor_id: "s2", timestamp: "2024-06-01T08:00:00Z" }),
+    ]);
+
+    const result = await processStream(inputPath, outDir, {
+      latenessThresholdSeconds: 600,
+    });
+    assert.equal(result.events_late, 1);
+    assert.equal(result.max_lateness_seconds, 3600);
+  });
+
+  it("late events are written to late_events.jsonl", async () => {
+    const inputPath = join(outDir, "input.jsonl");
+    await writeJsonl(inputPath, [
+      makeEvent({ sensor_id: "s1", timestamp: "2024-06-01T08:10:00Z" }),
+      makeEvent({ sensor_id: "s2", timestamp: "2024-06-01T08:00:00Z" }),
+    ]);
+
+    await processStream(inputPath, outDir);
+
+    const raw = await readFile(join(outDir, "late_events.jsonl"), "utf-8");
+    const lines = raw.split("\n").filter((l) => l.length > 0);
+    assert.equal(lines.length, 1);
+    const evt = JSON.parse(lines[0]);
+    assert.equal(evt.sensor_id, "s2");
+  });
+
+  it("summary contains the final watermark", async () => {
+    const inputPath = join(outDir, "input.jsonl");
+    await writeJsonl(inputPath, [
+      makeEvent({ sensor_id: "s1", timestamp: "2024-06-01T08:00:00Z" }),
+      makeEvent({ sensor_id: "s2", timestamp: "2024-06-01T08:20:00Z" }),
+    ]);
+
+    const result = await processStream(inputPath, outDir);
+    assert.ok(result.watermark.includes("2024-06-01T08:20:00"));
+  });
+
+  it("sample data lateness with different thresholds", async () => {
+    const inputPath = join(SAMPLE_DIR, "sensor_events.json");
+
+    const s0 = await processStream(inputPath, outDir);
+    assert.equal(s0.events_late, 8);
+    assert.equal(s0.max_lateness_seconds, 1200);
+
+    const s600 = await processStream(inputPath, outDir, {
+      latenessThresholdSeconds: 600,
+    });
+    assert.equal(s600.events_late, 2);
+
+    const s1200 = await processStream(inputPath, outDir, {
+      latenessThresholdSeconds: 1200,
+    });
+    assert.equal(s1200.events_late, 0);
   });
 });

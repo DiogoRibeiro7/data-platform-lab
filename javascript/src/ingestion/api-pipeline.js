@@ -7,6 +7,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { writeManifest } from "../manifest.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -322,6 +323,26 @@ export async function runApiPipeline({
   const durationSeconds =
     Math.round(((performance.now() - startTime) / 1000) * 1000) / 1000;
 
+  let manifestPath = "";
+  try {
+    manifestPath = writeManifest({
+      pipeline_name: "api_ingestion",
+      run_id: runId,
+      source: baseUrl,
+      output: processedPath,
+      row_count: transformed.length,
+      status: errors.length > 0 ? "failed" : "success",
+      warnings: errors.length > 0 ? errors : undefined,
+      extras: {
+        pages_fetched: pagesFetched,
+        total_records: records.length,
+        raw_path: rawPath,
+      },
+    });
+  } catch {
+    // Manifest writing is best-effort — skip in test environments
+  }
+
   const summary = {
     run_id: runId,
     api_url: baseUrl,
@@ -332,6 +353,7 @@ export async function runApiPipeline({
     processed_path: processedPath,
     errors,
     duration_seconds: durationSeconds,
+    manifest_path: manifestPath,
   };
 
   console.info("[runApiPipeline] Pipeline complete:", summary);

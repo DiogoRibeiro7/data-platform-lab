@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { generateRunId, writeManifest } from "../manifest.js";
 
 /**
  * @typedef {object} SensorEvent
@@ -36,6 +37,10 @@ import { join } from "node:path";
  * @property {number}  events_rejected
  * @property {number}  events_duplicate
  * @property {number}  dead_letter_count
+ * @property {number}  events_late
+ * @property {number}  max_lateness_seconds
+ * @property {string}  watermark
+ * @property {number}  lateness_threshold_seconds
  * @property {SensorAggregates} aggregates
  * @property {Object<string, number>} rejection_reasons
  */
@@ -54,6 +59,34 @@ function isValidTimestamp(ts) {
   } catch {
     return false;
   }
+}
+
+/**
+ * Parse an ISO 8601 timestamp string into a Date object.
+ *
+ * @param {string} ts - ISO timestamp string.
+ * @returns {Date} Parsed Date object.
+ */
+export function parseEventTime(ts) {
+  return new Date(ts);
+}
+
+/**
+ * Determine if an event is late relative to the current watermark.
+ *
+ * @param {Date} eventTime - The event's timestamp as a Date.
+ * @param {Date|null} watermark - The current watermark (max event time seen).
+ * @param {number} thresholdSeconds - Allowed lateness in seconds.
+ * @returns {{is_late: boolean, lateness_seconds: number}}
+ */
+export function classifyLateness(eventTime, watermark, thresholdSeconds) {
+  if (watermark === null) {
+    return { is_late: false, lateness_seconds: 0 };
+  }
+  const latenessMs = watermark.getTime() - eventTime.getTime();
+  const latenessSeconds = Math.max(latenessMs / 1000, 0);
+  const isLate = latenessSeconds > thresholdSeconds;
+  return { is_late: isLate, lateness_seconds: latenessSeconds };
 }
 
 /**
@@ -183,7 +216,7 @@ export function computeAggregates(events) {
  * @param {string} [options.pipelineName="sensor_stream"] - Name for the pipeline run.
  * @returns {Promise<PipelineSummary>} The pipeline run summary.
  */
-export async function processStream(inputPath, outputDir, { pipelineName = "sensor_stream" } = {}) {
+export async function processStream(inputPath, outputDir, { pipelineName = "sensor_stream", latenessThresholdSeconds = 0 } = {}) {
   const startTime = performance.now();
   const runAt = new Date().toISOString();
 
@@ -206,6 +239,11 @@ export async function processStream(inputPath, outputDir, { pipelineName = "sens
   let eventsDuplicate = 0;
 
   let status = "success";
+  /** @type {Date|null} */
+  let watermark = null;
+  /** @type {SensorEvent[]} */
+  const lateEvents = [];
+  let maxLateness = 0;
 
   try {
     const raw = await readFile(inputPath, "utf-8");
@@ -263,6 +301,20 @@ export async function processStream(inputPath, outputDir, { pipelineName = "sens
       // Accept
       eventsAccepted += 1;
       acceptedEvents.push(event);
+
+      // Lateness check
+      const eventTime = parseEventTime(event.timestamp);
+      const { is_late: isLate, lateness_seconds: lateness } = classifyLateness(
+        eventTime, watermark, latenessThresholdSeconds,
+      );
+      if (isLate) {
+        lateEvents.push(event);
+        if (lateness > maxLateness) maxLateness = lateness;
+      }
+      // Advance watermark
+      if (watermark === null || eventTime > watermark) {
+        watermark = eventTime;
+      }
     }
   } catch (err) {
     status = "failed";
@@ -278,6 +330,11 @@ export async function processStream(inputPath, outputDir, { pipelineName = "sens
   const deadLetterPath = join(outputDir, "dead_letter.jsonl");
   const deadLetterContent = deadLetterEvents.map((e) => JSON.stringify(e)).join("\n");
   await writeFile(deadLetterPath, deadLetterContent.length > 0 ? deadLetterContent + "\n" : "", "utf-8");
+
+  // Write late events
+  const lateEventsPath = join(outputDir, "late_events.jsonl");
+  const lateEventsContent = lateEvents.map((e) => JSON.stringify(e)).join("\n");
+  await writeFile(lateEventsPath, lateEventsContent.length > 0 ? lateEventsContent + "\n" : "", "utf-8");
 
   // Compute aggregates
   const aggregates = computeAggregates(acceptedEvents);
@@ -296,6 +353,10 @@ export async function processStream(inputPath, outputDir, { pipelineName = "sens
     events_rejected: eventsRejected,
     events_duplicate: eventsDuplicate,
     dead_letter_count: eventsRejected + eventsDuplicate,
+    events_late: lateEvents.length,
+    max_lateness_seconds: Math.round(maxLateness * 100) / 100,
+    watermark: watermark ? watermark.toISOString() : "",
+    lateness_threshold_seconds: latenessThresholdSeconds,
     aggregates,
     rejection_reasons: rejectionReasons,
   };
@@ -305,10 +366,30 @@ export async function processStream(inputPath, outputDir, { pipelineName = "sens
   await writeFile(summaryPath, JSON.stringify(summary, null, 2) + "\n", "utf-8");
 
   console.info(
-    `[${pipelineName}] Complete: ${eventsAccepted} accepted, ` +
+    `[${pipelineName}] Complete: ${eventsAccepted} accepted (${lateEvents.length} late), ` +
     `${eventsRejected} rejected, ${eventsDuplicate} duplicate ` +
     `(${durationSeconds}s)`,
   );
+
+  try {
+    const manifestPath = writeManifest({
+      pipeline_name: pipelineName,
+      run_id: generateRunId(),
+      source: inputPath,
+      output: acceptedPath,
+      row_count: eventsAccepted,
+      extras: {
+        events_seen: eventsSeen,
+        events_rejected: eventsRejected,
+        events_duplicate: eventsDuplicate,
+        events_late: lateEvents.length,
+        dead_letter_path: deadLetterPath,
+      },
+    });
+    summary.manifest_path = manifestPath;
+  } catch {
+    // Manifest writing is best-effort — skip in test environments
+  }
 
   return summary;
 }

@@ -5,11 +5,13 @@ on:
     paths:
       - "javascript/**"
       - "data/sample/**"
+      - "sql/**"
       - ".github/workflows/javascript.yml"
   pull_request:
     paths:
       - "javascript/**"
       - "data/sample/**"
+      - "sql/**"
       - ".github/workflows/javascript.yml"
 
 defaults:
@@ -30,6 +32,13 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      - name: Cache Yarn
+        uses: actions/cache@v4
+        with:
+          path: javascript/.yarn/cache
+          key: yarn-${{ runner.os }}-${{ hashFiles('javascript/package.json') }}
+          restore-keys: yarn-${{ runner.os }}-
+
       - name: Install dependencies
         run: yarn install --immutable || yarn install
 
@@ -37,7 +46,7 @@ jobs:
         run: yarn lint
 
   test:
-    name: Test
+    name: Test & smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,11 +58,21 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      - name: Cache Yarn
+        uses: actions/cache@v4
+        with:
+          path: javascript/.yarn/cache
+          key: yarn-${{ runner.os }}-${{ hashFiles('javascript/package.json') }}
+          restore-keys: yarn-${{ runner.os }}-
+
       - name: Install dependencies
         run: yarn install --immutable || yarn install
 
       - name: Run tests
         run: yarn test
 
-      - name: Demo smoke test
-        run: node src/demo.js --data-dir ../data/sample --output-dir /tmp/silver --manifest-dir /tmp/manifests
+      - name: "Smoke: e-commerce demo"
+        run: node src/demo.js --data-dir ../data/sample --output-dir /tmp/demo/silver --manifest-dir /tmp/demo/manifests
+
+      - name: "Smoke: sensor demo"
+        run: node src/sensor-demo.js --data-dir ../data/sample --output-dir /tmp/sensor/silver --manifest-dir /tmp/sensor/manifests

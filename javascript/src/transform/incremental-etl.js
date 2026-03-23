@@ -1,5 +1,6 @@
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
+import { generateRunId, writeManifest } from "../manifest.js";
 
 /**
  * Load checkpoint from file, or return empty checkpoint if not found.
@@ -211,7 +212,27 @@ export async function runIncrementalEtl({
     checkpointUpdated = true;
   }
 
-  // 8. Return run summary
+  // 8. Write manifest (best-effort)
+  let manifestPath = "";
+  try {
+    manifestPath = writeManifest({
+      pipeline_name: pipelineName,
+      run_id: generateRunId(),
+      source: inputDir,
+      output: outputDir,
+      row_count: recordsProcessed,
+      extras: {
+        records_seen: recordsSeen,
+        records_skipped: recordsSkipped,
+        records_failed: recordsFailed,
+        checkpoint_updated: checkpointUpdated,
+      },
+    });
+  } catch {
+    // Manifest writing is best-effort — skip in test environments
+  }
+
+  // 9. Return run summary
   return {
     pipeline_name: pipelineName,
     run_at: runAtIso,
@@ -220,5 +241,6 @@ export async function runIncrementalEtl({
     records_processed: recordsProcessed,
     records_failed: recordsFailed,
     checkpoint_updated: checkpointUpdated,
+    manifest_path: manifestPath,
   };
 }

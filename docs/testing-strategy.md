@@ -122,8 +122,14 @@ input order.
 | Orchestration runner | x | x | | x | | |
 | Customer ETL workflow | x | x | | x | | |
 | Observability tracker | x | | | | | |
+| Streaming processor | x | x | x | x | | x |
+| Warehouse loader | x | x | x | | x | |
+| Benchmark runner | x | x | | | | x |
 | Demo pipeline | | x | x | | x | x |
+| Sensor demo | | x | x | | | x |
 | SQLite analytics | x | x | | | x | x |
+| Manifest utility | x | x | | | | x |
+| Config loader | x | | | x | | |
 
 ---
 
@@ -137,8 +143,31 @@ input order.
 | File permission errors | OS-specific and difficult to test portably |
 | SQLite file-backed databases | Tests use `:memory:` for speed; file I/O is trivially different |
 | CLI argument parsing | Thin wrappers over tested library functions |
-| Streaming exercises | Not yet implemented |
-| Warehouse / storage exercises | Not yet implemented |
+| Benchmark timing assertions | Machine-dependent, would produce flaky tests |
+
+---
+
+## Shared test infrastructure
+
+Duplicated test helpers are extracted into shared files:
+
+**Python — `tests/conftest.py`:**
+- `SAMPLE_DIR`, `SQL_DIR` — path constants (avoid repeated `Path(__file__).resolve().parent...`)
+- `write_csv_text(path, text)` — write raw CSV text (used by csv_pipeline, manifest tests)
+- `write_csv_rows(path, headers, rows)` — write structured CSV
+- `write_jsonl(path, records)` — write JSONL (used by streaming, incremental_etl tests)
+- `sample_dir`, `sql_dir` fixtures — pytest fixtures for the path constants
+
+**JavaScript — `tests/helpers.js`:**
+- `SAMPLE_DIR`, `SQL_DIR` — path constants
+- `writeJsonl(filePath, records)` — write JSONL
+- `makeTempDir(prefix)` — create a temp directory
+
+**Philosophy:** only genuinely duplicated code lives in shared files.
+Module-specific factories (like `makeEvent` for sensor tests or
+`makeStep` for runner tests) stay in their test files because their
+behaviour is part of what makes those tests readable. The shared helpers
+are data-format utilities that have no domain knowledge.
 
 ---
 
@@ -168,5 +197,11 @@ Tests use two kinds of input data:
 | `test_runner.py` | `runner.test.js` | Orchestration runner |
 | `test_observability.py` | `observability.test.js` | Timer, RunTracker |
 | `test_customer_etl.py` | `customer-etl.test.js` | Orchestrated customer workflow |
+| `test_streaming.py` | `streaming.test.js` | Streaming processor + lateness |
+| `test_warehouse.py` | `warehouse.test.js` | Warehouse loader + transforms |
+| `test_benchmark.py` | `benchmark.test.js` | Benchmark runner |
 | `test_demo.py` | `demo.test.js` | End-to-end demo pipeline |
+| `test_sensor_demo.py` | `sensor-demo.test.js` | Sensor pipeline demo |
 | `test_analytics.py` | `analytics.test.js` | SQLite analytics layer |
+| `test_manifest.py` | `manifest.test.js` | Shared manifest utility |
+| `test_config.py` | `config.test.js` | Config loader |

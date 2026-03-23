@@ -1,0 +1,6 @@
+{
+  "input": "data/sample/sensor_events.json",
+  "output_dir": "data/silver/sensor_stream",
+  "pipeline_name": "sensor_stream",
+  "lateness_threshold": 600
+}

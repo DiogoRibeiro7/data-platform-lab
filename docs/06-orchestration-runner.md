@@ -216,6 +216,23 @@ cd javascript && node --test tests/runner.test.js
 - **No dependency injection.** Steps communicate through the shared context dict, which is simple but untyped and can lead to implicit coupling between steps.
 - **Retry has no backoff.** Retries happen immediately with no delay. A production runner would support configurable backoff (fixed, exponential).
 
+## See it in action
+
+The orchestration runner is used in two repository workflows:
+
+- **[Sensor pipeline demo](sensor-pipeline-demo.md)** — the primary showcase.
+  Processes sensor events through 5 steps (ingest, validate, deduplicate,
+  aggregate, output) with dead-letter routing, hourly aggregation, and
+  manifest generation.
+- **[Customer ETL](orchestrated-workflow.md)** — a focused tutorial example
+  that wires CSV ingestion and validation modules as pipeline steps.
+
+The sensor demo is the recommended starting point for seeing the runner in
+a real workflow. See [orchestrated-workflow.md](orchestrated-workflow.md)
+for a comparison of both.
+
+---
+
 ## Future Extensions
 
 - Add per-step timeout support with configurable duration.

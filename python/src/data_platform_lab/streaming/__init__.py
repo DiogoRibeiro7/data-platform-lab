@@ -8,8 +8,10 @@ outputs with per-sensor aggregate statistics.
 from data_platform_lab.streaming.processor import (
     EventResult,
     StreamSummary,
+    classify_lateness,
     compute_aggregates,
     deduplicate_key,
+    parse_event_time,
     process_stream,
     validate_event,
 )
@@ -17,8 +19,10 @@ from data_platform_lab.streaming.processor import (
 __all__ = [
     "EventResult",
     "StreamSummary",
+    "classify_lateness",
     "compute_aggregates",
     "deduplicate_key",
+    "parse_event_time",
     "process_stream",
     "validate_event",
 ]
