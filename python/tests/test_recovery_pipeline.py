@@ -70,7 +70,9 @@ def _message() -> BrokerMessage:
     return BrokerMessage("sensor-events", 0, 7, b"sensor-1", payload)
 
 
-def _pipeline(tmp_path: Path) -> tuple[RecoverableIngestionPipeline, FakeBroker, FakeRunStore, FakeIcebergStore]:
+def _pipeline(
+    tmp_path: Path,
+) -> tuple[RecoverableIngestionPipeline, FakeBroker, FakeRunStore, FakeIcebergStore]:
     broker = FakeBroker()
     run_store = FakeRunStore()
     iceberg_store = FakeIcebergStore()
