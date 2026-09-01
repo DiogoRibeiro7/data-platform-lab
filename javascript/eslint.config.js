@@ -8,6 +8,7 @@ export default [
       sourceType: "module",
       globals: {
         // Node.js globals
+        Buffer: "readonly",
         console: "readonly",
         process: "readonly",
         URL: "readonly",
