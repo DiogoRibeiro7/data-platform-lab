@@ -4,6 +4,22 @@ A hands-on data-engineering laboratory implemented in Python and JavaScript. The
 
 Milestone 3 adds optional infrastructure adapters without making those vendors part of the workflow architecture.
 
+## Platform architecture
+
+```mermaid
+flowchart LR
+    CLI[Unified CLI] --> Workflows[Workflow logic]
+    Workflows --> Contract[BlobStore contract]
+    Contract --> Local[LocalBlobStore]
+    Contract --> S3[S3BlobStore]
+    Local --> FS[(Local filesystem)]
+    S3 --> API[S3-compatible API]
+    API --> Garage[(Garage - local)]
+    API -. portable endpoint .-> AWS[(AWS S3 / compatible service)]
+```
+
+The important boundary is `workflow logic -> platform contracts -> adapters`. Workflows do not import Garage-specific APIs, boto3, or AWS SDK clients directly.
+
 ## Run the core demos
 
 ```bash
@@ -30,13 +46,7 @@ cd javascript && node src/sensor-demo.js
 
 ## Local S3-compatible platform
 
-Milestone 3 introduces a common object-storage boundary:
-
-```text
-workflow -> BlobStore semantics -> local filesystem or S3-compatible storage
-```
-
-The local integration stack uses Garage as a disposable S3-compatible service. The image is pinned in `compose.yaml`, and deterministic development-only credentials are kept under `infra/garage/` so the stack can be reproduced in CI and on a laptop.
+Milestone 3 introduces a common object-storage boundary. The local integration stack uses Garage as a disposable S3-compatible service. The image is pinned in `compose.yaml`, and deterministic development-only credentials are kept under `infra/garage/` so the stack can be reproduced in CI and on a laptop.
 
 ```bash
 sh infra/garage/bootstrap.sh
@@ -114,34 +124,9 @@ yarn test
 yarn lint
 ```
 
-## Architecture
+## Data architecture
 
-The core rule for Milestone 3 is:
-
-```text
-workflow logic -> platform contracts -> local or infrastructure adapters
-```
-
-The current storage path is:
-
-```text
-                         +------------------+
-                         |  workflow logic  |
-                         +---------+--------+
-                                   |
-                              BlobStore
-                                   |
-                 +-----------------+-----------------+
-                 |                                   |
-        +--------v---------+                +--------v---------+
-        | LocalBlobStore   |                |   S3BlobStore    |
-        | local filesystem |                | S3-compatible API|
-        +------------------+                +------------------+
-                                                     |
-                                    Garage locally / AWS S3 remotely
-```
-
-Data examples still follow the medallion model: raw, bronze, silver, gold, checkpoints, and manifests.
+Data examples still follow the medallion model: raw, bronze, silver, gold, checkpoints, and manifests. Milestone 3 changes how platform services are reached; it does not discard the dependency-light educational workflows.
 
 ## Technology stack
 
