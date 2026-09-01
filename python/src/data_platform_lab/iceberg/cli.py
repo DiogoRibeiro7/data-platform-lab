@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from datetime import UTC, datetime
 from importlib import import_module
 
 from data_platform_lab.iceberg import IcebergCatalogConfig, IcebergTableStore, build_catalog
@@ -66,7 +67,7 @@ def main(argv: list[str] | None = None) -> None:
         [
             {
                 "event_id": "smoke-1",
-                "event_time": "2026-09-01T00:00:00+00:00",
+                "event_time": datetime(2026, 9, 1, tzinfo=UTC),
                 "value": 1.0,
             }
         ],
