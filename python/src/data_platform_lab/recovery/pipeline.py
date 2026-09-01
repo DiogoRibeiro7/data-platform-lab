@@ -89,8 +89,10 @@ class RecoverableIngestionPipeline:
         )
 
         appended = False
+        raw_stored = False
         try:
             self._blob_store.put_bytes(raw_key, message.value)
+            raw_stored = True
             event = self._decode_event(message.value)
             schema, batch = self._arrow_batch(ingestion_id, message, event)
             self._iceberg_store.ensure_table(self._table_identifier, schema)
@@ -135,7 +137,7 @@ class RecoverableIngestionPipeline:
                     duration_seconds=(ended_at - started_at).total_seconds(),
                     rows_read=1,
                     rows_written=1 if appended else 0,
-                    files_processed=1 if self._blob_store.exists(raw_key) else 0,
+                    files_processed=1 if raw_stored else 0,
                     errors=[str(exc)],
                     extra={"raw_object_key": raw_key, "table": self._table_identifier},
                 )
