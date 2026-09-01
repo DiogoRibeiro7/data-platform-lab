@@ -1,0 +1,46 @@
+name: PostgreSQL Integration
+
+on:
+  push:
+    paths:
+      - "compose.yaml"
+      - "sql/platform/**"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/metadata/**"
+      - "python/src/data_platform_lab/cli/main.py"
+      - ".github/workflows/postgres-integration.yml"
+  pull_request:
+    paths:
+      - "compose.yaml"
+      - "sql/platform/**"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/metadata/**"
+      - "python/src/data_platform_lab/cli/main.py"
+      - ".github/workflows/postgres-integration.yml"
+
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start PostgreSQL
+        run: docker compose up -d --wait postgres
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Install Python dependencies
+        working-directory: python
+        run: poetry install --no-interaction
+      - name: Run metadata smoke
+        working-directory: python
+        run: poetry run data-platform-lab metadata
+      - name: Inspect persisted run
+        run: docker compose exec -T postgres psql -U data_platform_lab -d data_platform_lab -c "TABLE pipeline_runs;"
+      - name: Diagnostics
+        if: failure()
+        run: docker compose logs postgres
+      - name: Stop services
+        if: always()
+        run: docker compose down -v
