@@ -64,10 +64,7 @@ class FakeS3Client:
         page = keys[start : start + 1]
         truncated = start + 1 < len(keys)
         return {
-            "Contents": [
-                {"Key": key, "Size": len(self.objects[(bucket, key)])}
-                for key in page
-            ],
+            "Contents": [{"Key": key, "Size": len(self.objects[(bucket, key)])} for key in page],
             "IsTruncated": truncated,
             "NextContinuationToken": "page-2" if truncated else None,
         }
