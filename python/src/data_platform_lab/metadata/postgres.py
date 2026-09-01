@@ -104,8 +104,7 @@ class PostgresRunStore:
     def get(self, pipeline_name: str, run_id: str) -> RunMetadata | None:
         """Return one persisted run snapshot, if it exists."""
         query = (
-            f"SELECT {', '.join(_COLUMNS)} FROM pipeline_runs "
-            "WHERE pipeline_name=%s AND run_id=%s"
+            f"SELECT {', '.join(_COLUMNS)} FROM pipeline_runs WHERE pipeline_name=%s AND run_id=%s"
         )
         row = self._connection.execute(query, (pipeline_name, run_id)).fetchone()
         return self._to_metadata(row) if row is not None else None
@@ -148,11 +147,7 @@ class PostgresRunStore:
         errors = row[12] if isinstance(row[12], list) else json.loads(row[12])
         extra = row[13] if isinstance(row[13], dict) else json.loads(row[13])
 
-        started_at = (
-            row[3].isoformat()
-            if hasattr(row[3], "isoformat")
-            else str(row[3] or "")
-        )
+        started_at = row[3].isoformat() if hasattr(row[3], "isoformat") else str(row[3] or "")
         ended_at = (
             row[4].isoformat()
             if hasattr(row[4], "isoformat")
