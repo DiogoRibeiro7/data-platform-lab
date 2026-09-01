@@ -1,0 +1,87 @@
+name: S3 Integration
+
+on:
+  push:
+    paths:
+      - "compose.yaml"
+      - "infra/garage/**"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/storage/**"
+      - "python/src/data_platform_lab/cli/main.py"
+      - "javascript/package.json"
+      - "javascript/yarn.lock"
+      - "javascript/src/storage/**"
+      - "javascript/src/cli/main.js"
+      - ".github/workflows/s3-integration.yml"
+  pull_request:
+    paths:
+      - "compose.yaml"
+      - "infra/garage/**"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/storage/**"
+      - "python/src/data_platform_lab/cli/main.py"
+      - "javascript/package.json"
+      - "javascript/yarn.lock"
+      - "javascript/src/storage/**"
+      - "javascript/src/cli/main.js"
+      - ".github/workflows/s3-integration.yml"
+
+jobs:
+  garage:
+    name: Garage S3 contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start and bootstrap Garage
+        run: sh infra/garage/bootstrap.sh
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Install Python dependencies
+        working-directory: python
+        run: poetry install --no-interaction
+
+      - name: Python S3 smoke
+        working-directory: python
+        shell: bash
+        run: |
+          set -a
+          source ../infra/garage/dev.env
+          set +a
+          poetry run data-platform-lab storage --backend s3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install JavaScript dependencies
+        working-directory: javascript
+        run: yarn install --immutable
+
+      - name: JavaScript S3 smoke
+        working-directory: javascript
+        shell: bash
+        run: |
+          set -a
+          source ../infra/garage/dev.env
+          set +a
+          node src/cli/main.js storage --backend s3
+
+      - name: Garage diagnostics
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs garage
+
+      - name: Stop Garage
+        if: always()
+        run: docker compose down -v

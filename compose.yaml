@@ -1,0 +1,22 @@
+name: data-platform-lab
+
+services:
+  garage:
+    image: dxflrs/garage:v2.3.0
+    command: /garage server --single-node --default-bucket
+    restart: unless-stopped
+    environment:
+      GARAGE_DEFAULT_ACCESS_KEY: GK891f3bf63f6f2d8d207a0c37
+      GARAGE_DEFAULT_SECRET_KEY: 79d8fe0bc2ee28ecc9f293e1ab9201b90122ce215b32d6058cde1a7e21dfa626
+      GARAGE_DEFAULT_BUCKET: data-platform-lab
+    ports:
+      - "127.0.0.1:3900:3900"
+      - "127.0.0.1:3903:3903"
+    volumes:
+      - ./infra/garage/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+
+volumes:
+  garage-meta:
+  garage-data:

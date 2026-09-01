@@ -1,12 +1,26 @@
 # Data Platform Lab
 
-A hands-on data engineering laboratory implemented in both Python and JavaScript. Seven exercises cover batch ingestion, schema validation, data quality, incremental ETL, change data capture, orchestration, and observability. An end-to-end demo processes four e-commerce datasets through the full pipeline — from raw CSV to cleaned output to SQLite analytics.
+A hands-on data-engineering laboratory implemented in Python and JavaScript. The repository starts from dependency-light implementations of core pipeline patterns and is evolving into a small local data platform behind explicit application contracts.
 
-All implementations use only standard library modules. No pandas, no Spark, no external frameworks — just the core patterns, built from scratch.
+Milestone 3 adds optional infrastructure adapters without making those vendors part of the workflow architecture.
 
-## Run the demo
+## Platform architecture
 
-The fastest way to see the repository in action. Processes customers, products, orders, and order items through ingestion, validation, cleaning, and analytical queries.
+```mermaid
+flowchart LR
+    CLI[Unified CLI] --> Workflows[Workflow logic]
+    Workflows --> Contract[BlobStore contract]
+    Contract --> Local[LocalBlobStore]
+    Contract --> S3[S3BlobStore]
+    Local --> FS[(Local filesystem)]
+    S3 --> API[S3-compatible API]
+    API --> Garage[(Garage - local)]
+    API -. portable endpoint .-> AWS[(AWS S3 / compatible service)]
+```
+
+The important boundary is `workflow logic -> platform contracts -> adapters`. Workflows do not import Garage-specific APIs, boto3, or AWS SDK clients directly.
+
+## Run the core demos
 
 ```bash
 # Python
@@ -20,23 +34,7 @@ corepack enable && yarn install
 node src/demo.js
 ```
 
-Output: 60 rows in, 57 rows out, 3 rejected, 6 data-quality warnings. Cleaned CSVs in `data/silver/demo/`, JSON manifest in `data/manifests/`.
-
-Then load into SQLite and run analytical queries:
-
-```bash
-# Python
-poetry run python -m data_platform_lab.analytics
-
-# JavaScript
-node src/analytics.js
-```
-
-See [docs/end-to-end-demo.md](docs/end-to-end-demo.md) and [docs/sqlite-analytics-demo.md](docs/sqlite-analytics-demo.md) for details.
-
-### Sensor pipeline demo
-
-A second showcase that processes event data through the orchestration runner (Exercise 06):
+The sensor demo exercises orchestration, validation, deduplication, hourly aggregation, dead-letter routing, and run metadata.
 
 ```bash
 # Python
@@ -46,146 +44,109 @@ cd python && poetry run python -m data_platform_lab.sensor_demo
 cd javascript && node src/sensor-demo.js
 ```
 
-Output: 16 events in, 14 accepted, 1 rejected, 1 duplicate. Hourly aggregates, dead-letter file, and JSON manifest. See [docs/sensor-pipeline-demo.md](docs/sensor-pipeline-demo.md).
+## Local S3-compatible platform
+
+Milestone 3 introduces a common object-storage boundary. The local integration stack uses Garage as a disposable S3-compatible service. The image is pinned in `compose.yaml`, and deterministic development-only credentials are kept under `infra/garage/` so the stack can be reproduced in CI and on a laptop.
+
+```bash
+sh infra/garage/bootstrap.sh
+```
+
+Run the same storage smoke contract from either runtime:
+
+```bash
+# Python
+cd python
+. ../infra/garage/dev.env
+poetry install
+poetry run data-platform-lab storage --backend s3
+
+# JavaScript
+cd javascript
+. ../infra/garage/dev.env
+corepack enable && yarn install
+node src/cli/main.js storage --backend s3
+```
+
+See [S3-compatible object storage](docs/s3-object-storage.md) for architecture and local setup.
 
 ## What is implemented
 
-Seven exercises, each in both Python and JavaScript with full test coverage:
+| # | Exercise | Key concepts |
+| --- | --- | --- |
+| 01 | CSV ingestion | Header standardisation, deduplication, bronze writes |
+| 02 | API ingestion | Pagination, retries, raw and processed outputs |
+| 03 | Validation framework | Composable rules, severity, pass/fail gating |
+| 04 | Incremental ETL | Checkpoints, idempotent reruns, new-record processing |
+| 05 | Snapshot diff / CDC | Inserts, updates, and deletes between snapshots |
+| 06 | Orchestration runner | Sequential execution, retry logic, shared context |
+| 07 | Observability | Timing, counters, run metadata, structured reports |
+| 08 | Streaming processor | Event-time watermarks, lateness, dead-letter routing |
+| 09 | Benchmark runner | Sequential, concurrent, and asynchronous ingestion |
 
-| # | Exercise | Key concepts | Guide |
-| --- | --- | --- | --- |
-| 01 | CSV ingestion | Read flat files, standardize headers, deduplicate, write to bronze | [guide](docs/01-csv-ingestion-pipeline.md) |
-| 02 | API ingestion | Fetch paginated JSON, retry with backoff, store raw + processed | [guide](docs/02-api-ingestion-pipeline.md) |
-| 03 | Validation framework | Composable rules, severity levels, pass/fail gating | [guide](docs/03-validation-framework.md) |
-| 04 | Incremental ETL | Checkpoint persistence, idempotent reruns, process only new records | [guide](docs/04-incremental-etl-pipeline.md) |
-| 05 | Snapshot diff (CDC) | Compare snapshots to detect inserts, updates, and deletes | [guide](docs/05-snapshot-diff.md) |
-| 06 | Orchestration runner | Sequential step execution, retry logic, shared context | [guide](docs/06-orchestration-runner.md) |
-| 07 | Observability | Execution timing, run metadata, counters, structured reporting | [guide](docs/07-observability.md) |
+Supporting platform capabilities include SQLite warehouse ELT, config precedence, shared manifests, a unified CLI, local and S3-compatible object-store adapters, and live S3 integration checks.
 
-Plus two showcase demos and supporting assets:
-- **E-commerce demo** — processes all 4 tables through direct function calls with `RunTracker` ([guide](docs/end-to-end-demo.md))
-- **Sensor pipeline demo** — processes event data through the orchestration runner with dead-letter routing ([guide](docs/sensor-pipeline-demo.md))
-- **SQLite analytics** — loads curated output into SQLite and runs 5 analytical queries ([guide](docs/sqlite-analytics-demo.md))
-- **27 SQL scripts** — DDL, DML, analytical queries, and warehouse ETL patterns in `sql/`
+## Unified CLI
 
-See [docs/exercise-index.md](docs/exercise-index.md) for file locations and dependencies. See [docs/roadmap.md](docs/roadmap.md) for learning order.
+```text
+data-platform-lab benchmark ...
+data-platform-lab storage ...
+data-platform-lab stream ...
+data-platform-lab warehouse ...
+```
+
+The root CLI delegates to the existing workflow CLIs rather than duplicating their arguments.
 
 ## Quickstart
 
 ### Prerequisites
 
-- **Python 3.11+** and [Poetry](https://python-poetry.org/)
-- **Node.js 22+** (Yarn is enabled via [Corepack](https://nodejs.org/api/corepack.html); the analytics module uses `node:sqlite`)
-- **SQLite 3.35+** (for SQL exercises, optional)
+- Python 3.11+ and Poetry
+- Node.js 22+ and Corepack/Yarn
+- SQLite 3.35+ for warehouse exercises
+- Docker Compose for the optional local infrastructure stack
 
-### Set up
+### Tests
 
 ```bash
-git clone <repo-url> && cd data-platform-lab
-
 # Python
 cd python
 poetry install
 poetry run pytest
-cd ..
+poetry run ruff check .
+poetry run mypy src/
 
 # JavaScript
 cd javascript
 corepack enable
 yarn install
 yarn test
-cd ..
+yarn lint
 ```
-
-See [docs/local-development.md](docs/local-development.md) for detailed setup, common commands, and known pitfalls.
-
-## Why this repository exists
-
-Most data engineering learning resources stop at "read a CSV and load it into a database." Real-world pipelines involve checkpointing, schema evolution, idempotent loads, layered storage, quality gates, and observable execution.
-
-This repository closes that gap through deliberate practice — building small, focused pipelines that exercise production-grade patterns without requiring production-scale infrastructure. Every exercise is self-contained, runnable locally, and focused on one or two core concepts.
-
-### Dual implementation
-
-Each exercise is implemented in both Python and JavaScript. The goal is not identical code, but solving the same data engineering problems using each language's idiomatic tools. Both languages use only built-in modules — no external data processing libraries.
 
 ## Data architecture
 
-Data follows a layered storage model (medallion architecture):
-
-| Layer | Directory | Purpose |
-| --- | --- | --- |
-| Raw | `data/raw/` | Landing zone — untouched source files |
-| Bronze | `data/bronze/` | Lightly parsed, append-only |
-| Silver | `data/silver/` | Cleaned, deduplicated, conformed |
-| Gold | `data/gold/` | Business aggregates and analytics outputs |
-| Checkpoints | `data/checkpoints/` | Pipeline state for incremental loads |
-| Manifests | `data/manifests/` | Run metadata and lineage |
-| Sample | `data/sample/` | Committed sample datasets for tests |
-
-Generated data is git-ignored. Only `data/sample/` is committed.
-
-## Repository structure
-
-```text
-data-platform-lab/
-├── python/                        # Python implementations
-│   ├── pyproject.toml
-│   ├── src/data_platform_lab/
-│   │   ├── ingestion/             #   exercises 01–02
-│   │   ├── transform/             #   exercises 04–05
-│   │   ├── validation/            #   exercise 03
-│   │   ├── orchestration/         #   exercise 06 + customer ETL workflow
-│   │   ├── observability/         #   exercise 07
-│   │   ├── demo.py                #   end-to-end demo
-│   │   └── analytics.py           #   SQLite analytics
-│   └── tests/
-├── javascript/                    # JavaScript implementations (same structure)
-│   ├── package.json
-│   ├── src/
-│   └── tests/
-├── sql/                           # 27 standalone SQL scripts
-│   ├── ddl/                       #   table definitions
-│   ├── dml/                       #   data loading
-│   ├── analytics/                 #   analytical queries
-│   └── warehouse/                 #   star-schema ETL patterns
-├── data/
-│   └── sample/                    # committed sample datasets
-├── docs/                          # exercise guides, conventions, review docs
-└── .github/workflows/             # CI for both Python and JavaScript
-```
+Data examples still follow the medallion model: raw, bronze, silver, gold, checkpoints, and manifests. Milestone 3 changes how platform services are reached; it does not discard the dependency-light educational workflows.
 
 ## Technology stack
 
 | Area | Tools |
 | --- | --- |
-| Python | Poetry, pytest, Ruff, mypy (strict) |
-| JavaScript | Yarn, Node.js built-in test runner, ESLint |
-| SQL | SQLite |
-| CI | GitHub Actions |
+| Python | Poetry, pytest, Ruff, mypy strict, boto3 for S3 access |
+| JavaScript | Yarn, Node.js test runner, ESLint, AWS SDK v3 for S3 access |
+| SQL | SQLite today; PostgreSQL is the next M3 metadata-store step |
+| Object storage | Local filesystem or S3-compatible API; Garage for local integration |
+| CI | GitHub Actions, including a live S3 integration workflow |
 
-## Planned (not yet implemented)
+## Milestones
 
-| Exercise | Concepts |
-| --- | --- |
-| Log parsing | Semi-structured text to structured records |
+- [Milestone 3](docs/milestone-m3.md) — local platform contracts and infrastructure adapters.
+- [Milestone 2](docs/milestone-m2.md) — streaming, warehouse, benchmarks, config, manifests.
+- [Milestone 1](docs/milestone-m1.md) — core exercises and the e-commerce workflow.
 
-## Documentation
+The next Milestone 3 slice is a PostgreSQL-backed run and metadata store, followed by Iceberg analytical tables and a broker-backed streaming adapter.
 
-| Document | Purpose |
-| --- | --- |
-| [Milestone M2](docs/milestone-m2.md) | Current milestone — streaming, warehouse, benchmarks, manifests |
-| [Milestone M1](docs/milestone-m1.md) | First milestone — core exercises and e-commerce demo |
-| [Exercise index](docs/exercise-index.md) | Quick reference for all exercises |
-| [Roadmap](docs/roadmap.md) | Recommended learning order |
-| [End-to-end demo](docs/end-to-end-demo.md) | E-commerce showcase (direct function calls) |
-| [Sensor pipeline demo](docs/sensor-pipeline-demo.md) | Event showcase (orchestration runner) |
-| [SQLite analytics](docs/sqlite-analytics-demo.md) | Analytical queries over curated output |
-| [Orchestration in the repo](docs/orchestrated-workflow.md) | How the runner is used across demos |
-| [Platform conventions](docs/platform-conventions.md) | Naming, status strings, result shapes |
-| [Testing strategy](docs/testing-strategy.md) | Test categories and coverage |
-| [Local development](docs/local-development.md) | Setup, commands, pitfalls |
-| [Current state review](docs/current-state-review.md) | Honest quality assessment |
+Additional documentation is indexed in [docs/exercise-index.md](docs/exercise-index.md) and [docs/roadmap.md](docs/roadmap.md).
 
 ## License
 

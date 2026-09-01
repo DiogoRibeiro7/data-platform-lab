@@ -1,0 +1,18 @@
+# Single-node Garage configuration for local development only.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "lmdb"
+replication_factor = 1
+compression_level = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_secret = "4d2cec27eb9b8865b11f87e1bfd756468805c4e21e90f9d11515271807091e19"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "data-platform-lab-local-admin"
+metrics_token = "data-platform-lab-local-metrics"

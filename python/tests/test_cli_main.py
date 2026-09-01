@@ -14,6 +14,7 @@ def test_main_without_command_prints_help(capsys: object) -> None:
 
     assert "Unified entry point" in captured.out
     assert "benchmark" in captured.out
+    assert "storage" in captured.out
     assert "stream" in captured.out
     assert "warehouse" in captured.out
 
