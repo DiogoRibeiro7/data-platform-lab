@@ -22,11 +22,18 @@ class KafkaEventBroker:
 
         producer_factory = getattr(kafka, "Producer", None)
         consumer_factory = getattr(kafka, "Consumer", None)
-        if not callable(producer_factory) or not callable(consumer_factory):
-            raise RuntimeError("confluent-kafka does not expose Producer and Consumer")
+        topic_partition_factory = getattr(kafka, "TopicPartition", None)
+        if not all(
+            callable(factory)
+            for factory in (producer_factory, consumer_factory, topic_partition_factory)
+        ):
+            raise RuntimeError(
+                "confluent-kafka does not expose Producer, Consumer, and TopicPartition"
+            )
 
         self._producer = producer_factory({"bootstrap.servers": bootstrap_servers})
         self._consumer_factory = consumer_factory
+        self._topic_partition_factory = topic_partition_factory
         self._bootstrap_servers = bootstrap_servers
         self._consumer: Any | None = None
 
@@ -56,7 +63,7 @@ class KafkaEventBroker:
         group_id: str,
         timeout_seconds: float = 10.0,
     ) -> BrokerMessage | None:
-        """Consume one message from *topic* using a fresh group subscription."""
+        """Consume one message from *topic* without committing its offset."""
         if not topic.strip():
             raise ValueError("topic must not be empty")
         if not group_id.strip():
@@ -92,6 +99,17 @@ class KafkaEventBroker:
             key=message.key(),
             value=bytes(value),
         )
+
+    def acknowledge(self, message: BrokerMessage) -> None:
+        """Synchronously commit the position immediately after *message*."""
+        if self._consumer is None:
+            raise RuntimeError("cannot acknowledge without an active Kafka consumer")
+        if not isinstance(message, BrokerMessage):
+            raise TypeError("message must be a BrokerMessage")
+
+        next_offset = message.offset + 1
+        position = self._topic_partition_factory(message.topic, message.partition, next_offset)
+        self._consumer.commit(offsets=[position], asynchronous=False)
 
     def close(self) -> None:
         """Flush producer state and close any active consumer."""
