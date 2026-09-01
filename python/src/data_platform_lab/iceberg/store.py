@@ -18,7 +18,7 @@ class Catalog(Protocol):
 
 
 class IcebergTableStore:
-    """Create, append to, and scan Iceberg analytical tables."""
+    """Create, append to, scan, and reconcile Iceberg analytical tables."""
 
     def __init__(self, catalog: Catalog) -> None:
         self._catalog = catalog
@@ -53,6 +53,25 @@ class IcebergTableStore:
         self._namespace(identifier)
         table = self._catalog.load_table(identifier)
         table.append(table_data)
+
+    def contains_value(self, identifier: str, field_name: str, value: object) -> bool:
+        """Return whether *field_name* already contains *value* in the table.
+
+        This intentionally uses a full Arrow scan. It is a simple reconciliation
+        primitive for the local recovery demo, not a substitute for a production
+        index or merge-on-read strategy.
+        """
+        self._namespace(identifier)
+        if not isinstance(field_name, str) or not field_name.strip():
+            raise ValueError("field_name must not be empty")
+
+        table = self._catalog.load_table(identifier)
+        arrow_table = table.scan(selected_fields=(field_name,)).to_arrow()
+        try:
+            column = arrow_table.column(field_name)
+        except (KeyError, ValueError) as exc:
+            raise ValueError(f"Iceberg table does not contain field: {field_name}") from exc
+        return value in column.to_pylist()
 
     def row_count(self, identifier: str) -> int:
         """Scan an Iceberg table and return its current row count."""
