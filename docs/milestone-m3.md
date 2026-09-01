@@ -17,6 +17,33 @@ workflow logic -> platform contracts -> local or infrastructure adapters
 
 Vendor clients must not become the application architecture.
 
+## Platform architecture
+
+```mermaid
+flowchart LR
+    subgraph Runtime[Application runtimes]
+        PY[Python CLI / workflows]
+        JS[JavaScript CLI / workflows]
+    end
+
+    PY --> Contract[BlobStore semantics]
+    JS --> Contract
+
+    Contract --> Local[LocalBlobStore]
+    Contract --> S3[S3BlobStore]
+
+    Local --> FS[(Local filesystem)]
+    S3 --> API[S3-compatible API]
+    API --> Garage[(Garage local stack)]
+    API -. endpoint portability .-> Remote[(AWS S3 / compatible service)]
+
+    Garage --> Meta[(Garage metadata volume)]
+    Garage --> Data[(Garage data volume)]
+```
+
+The contract is the architectural seam. Local and remote storage are adapter
+choices below workflow logic, not separate workflow implementations.
+
 ## Phase 1 — storage and command boundaries
 
 Phase 1 replaced two placeholder areas with stable application boundaries.
@@ -88,12 +115,22 @@ security boundary around the committed development credentials.
 ### Wire-level integration gate
 
 Mocked unit tests exercise pagination, namespace mapping, object round trips,
-and S3 error classification. A separate GitHub Actions workflow then starts
-Garage and runs:
+and S3 error classification. A separate GitHub Actions workflow then validates
+the real endpoint path:
 
-```text
-Python storage CLI -> boto3 -> S3 API -> Garage
-JavaScript storage CLI -> AWS SDK v3 -> S3 API -> Garage
+```mermaid
+flowchart LR
+    CI[GitHub Actions] --> Boot[Start Garage]
+    Boot --> P[Python storage smoke]
+    P --> Boto[boto3]
+    Boto --> S3[S3 API]
+    S3 --> G[(Garage)]
+    G --> J[JavaScript storage smoke]
+    J --> SDK[AWS SDK v3]
+    SDK --> S3
+
+    P -. verifies .-> Checks[put / get / exists / list]
+    J -. verifies .-> Checks
 ```
 
 This prevents a useful distinction from being lost: an adapter can satisfy its
