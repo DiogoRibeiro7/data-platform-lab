@@ -1,0 +1,67 @@
+name: Iceberg Integration
+
+on:
+  push:
+    paths:
+      - "compose.yaml"
+      - "infra/garage/**"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/iceberg/**"
+      - "python/src/data_platform_lab/cli/main.py"
+      - ".github/workflows/iceberg-integration.yml"
+  pull_request:
+    paths:
+      - "compose.yaml"
+      - "infra/garage/**"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/iceberg/**"
+      - "python/src/data_platform_lab/cli/main.py"
+      - ".github/workflows/iceberg-integration.yml"
+
+jobs:
+  iceberg:
+    name: PostgreSQL catalog + Garage warehouse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start PostgreSQL
+        run: docker compose up -d --wait postgres
+
+      - name: Start Garage
+        run: sh infra/garage/bootstrap.sh
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Install Python dependencies
+        working-directory: python
+        run: poetry install --no-interaction
+
+      - name: Iceberg round trip
+        working-directory: python
+        shell: bash
+        run: |
+          set -a
+          source ../infra/garage/dev.env
+          set +a
+          poetry run data-platform-lab iceberg
+
+      - name: Inspect Iceberg catalog tables
+        run: |
+          docker compose exec -T postgres psql -U data_platform_lab -d data_platform_lab \
+            -c "SELECT tablename FROM pg_tables WHERE tablename LIKE 'iceberg%';"
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker compose logs postgres
+          docker compose logs garage
+
+      - name: Stop services
+        if: always()
+        run: docker compose down -v
