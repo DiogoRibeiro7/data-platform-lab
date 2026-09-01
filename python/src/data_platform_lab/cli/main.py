@@ -23,16 +23,34 @@ _COMMANDS: dict[str, CommandHandler] = {
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="data-platform-lab", description="Unified entry point for Data Platform Lab workflows.")
-    parser.add_argument("command", nargs="?", choices=sorted(_COMMANDS), help="Workflow to run. Remaining arguments are passed to that workflow.")
-    parser.add_argument("arguments", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
+    """Build the top-level parser without duplicating child command options."""
+    parser = argparse.ArgumentParser(
+        prog="data-platform-lab",
+        description="Unified entry point for Data Platform Lab workflows.",
+    )
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=sorted(_COMMANDS),
+        help="Workflow to run. Remaining arguments are passed to that workflow.",
+    )
+    parser.add_argument(
+        "arguments",
+        nargs=argparse.REMAINDER,
+        help=argparse.SUPPRESS,
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = _build_parser(); args = parser.parse_args(argv)
+    """Dispatch to a workflow CLI while preserving its existing arguments."""
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
     if args.command is None:
-        parser.print_help(); return
+        parser.print_help()
+        return
+
     _COMMANDS[args.command](args.arguments)
 
 
