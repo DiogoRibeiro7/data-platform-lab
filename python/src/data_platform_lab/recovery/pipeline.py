@@ -145,7 +145,12 @@ class RecoverableIngestionPipeline:
             raise
 
         self._broker.acknowledge(message)
-        return RecoveryResult(ingestion_id, raw_key, replayed=previous is not None, appended=appended)
+        return RecoveryResult(
+            ingestion_id,
+            raw_key,
+            replayed=previous is not None,
+            appended=appended,
+        )
 
     @staticmethod
     def _decode_event(payload: bytes) -> dict[str, Any]:
