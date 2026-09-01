@@ -8,6 +8,9 @@
   "engines": {
     "node": ">=22.0.0"
   },
+  "bin": {
+    "data-platform-lab": "src/cli/main.js"
+  },
   "scripts": {
     "test": "node --test 'tests/*.test.js'",
     "lint": "eslint src/ tests/",
