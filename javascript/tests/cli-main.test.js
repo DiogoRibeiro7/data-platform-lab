@@ -6,6 +6,7 @@ import { helpText, resolveCommand } from "../src/cli/main.js";
 test("helpText exposes all unified commands", () => {
   const help = helpText();
   assert.match(help, /benchmark/);
+  assert.match(help, /storage/);
   assert.match(help, /stream/);
   assert.match(help, /warehouse/);
 });
@@ -27,6 +28,14 @@ test("resolveCommand forwards child arguments unchanged", () => {
     "--output-dir",
     "out",
   ]);
+});
+
+test("resolveCommand exposes the storage child CLI", () => {
+  const resolved = resolveCommand(["storage", "--backend", "s3"]);
+
+  assert.ok(resolved);
+  assert.match(resolved.script, /storage[\\/]cli\.js$/);
+  assert.deepEqual(resolved.args, ["--backend", "s3"]);
 });
 
 test("resolveCommand rejects unknown commands", () => {

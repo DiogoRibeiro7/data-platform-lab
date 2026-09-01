@@ -9,6 +9,7 @@ packages = [{ include = "data_platform_lab", from = "src" }]
 
 [tool.poetry.dependencies]
 python = ">=3.11"
+boto3 = ">=1.40,<2.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0"
