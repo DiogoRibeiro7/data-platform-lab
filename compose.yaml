@@ -16,12 +16,6 @@ services:
       - ./infra/garage/garage.toml:/etc/garage.toml:ro
       - garage-meta:/var/lib/garage/meta
       - garage-data:/var/lib/garage/data
-    healthcheck:
-      test: ["CMD", "/garage", "stats", "-a"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-      start_period: 5s
 
 volumes:
   garage-meta:

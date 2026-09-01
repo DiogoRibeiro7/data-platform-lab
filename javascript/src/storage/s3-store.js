@@ -106,12 +106,16 @@ export class S3BlobStore {
 
     return objects.sort((left, right) => left.key.localeCompare(right.key));
   }
+
+  destroy() {
+    if (typeof this.client.destroy === "function") this.client.destroy();
+  }
 }
 
 export async function createAwsS3BlobStore({
   bucket,
   endpointUrl,
-  region = "us-east-1",
+  region,
   accessKeyId,
   secretAccessKey,
   keyPrefix = "",
@@ -123,9 +127,9 @@ export async function createAwsS3BlobStore({
 
   const sdk = await import("@aws-sdk/client-s3");
   const clientOptions = {
-    region,
     forcePathStyle: forcePathStyle ?? Boolean(endpointUrl),
   };
+  if (region !== undefined) clientOptions.region = region;
   if (endpointUrl) clientOptions.endpoint = endpointUrl;
   if (accessKeyId !== undefined && secretAccessKey !== undefined) {
     clientOptions.credentials = { accessKeyId, secretAccessKey };
@@ -137,6 +141,7 @@ export async function createAwsS3BlobStore({
     getObject: (input) => sdkClient.send(new sdk.GetObjectCommand(input)),
     headObject: (input) => sdkClient.send(new sdk.HeadObjectCommand(input)),
     listObjectsV2: (input) => sdkClient.send(new sdk.ListObjectsV2Command(input)),
+    destroy: () => sdkClient.destroy(),
   };
 
   return new S3BlobStore({ client, bucket, keyPrefix });

@@ -9,6 +9,7 @@ on:
       - "python/src/data_platform_lab/storage/**"
       - "python/src/data_platform_lab/cli/main.py"
       - "javascript/package.json"
+      - "javascript/yarn.lock"
       - "javascript/src/storage/**"
       - "javascript/src/cli/main.js"
       - ".github/workflows/s3-integration.yml"
@@ -20,6 +21,7 @@ on:
       - "python/src/data_platform_lab/storage/**"
       - "python/src/data_platform_lab/cli/main.py"
       - "javascript/package.json"
+      - "javascript/yarn.lock"
       - "javascript/src/storage/**"
       - "javascript/src/cli/main.js"
       - ".github/workflows/s3-integration.yml"
@@ -63,7 +65,7 @@ jobs:
 
       - name: Install JavaScript dependencies
         working-directory: javascript
-        run: yarn install --immutable || yarn install
+        run: yarn install --immutable
 
       - name: JavaScript S3 smoke
         working-directory: javascript

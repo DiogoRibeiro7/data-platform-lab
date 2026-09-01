@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from data_platform_lab.storage import BlobStore, LocalBlobStore, S3BlobStore
-from data_platform_lab.storage.cli import run_storage_smoke
+from data_platform_lab.storage.cli import _build_parser, run_storage_smoke
 
 
 class FakeS3Error(Exception):
@@ -108,3 +108,21 @@ def test_storage_smoke_uses_the_common_contract(tmp_path: Path) -> None:
     assert report["round_trip"] is True
     assert report["listed"] is True
     assert report["key"] == "_platform/smoke.txt"
+
+
+def test_storage_smoke_derives_prefix_from_custom_key(tmp_path: Path) -> None:
+    """A configurable smoke key is listed from its own parent prefix."""
+    report = run_storage_smoke(LocalBlobStore(tmp_path / "objects"), "gold/check.txt")
+
+    assert report["round_trip"] is True
+    assert report["listed"] is True
+    assert report["key"] == "gold/check.txt"
+
+
+def test_storage_cli_does_not_force_local_region(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AWS profile/config region resolution remains available outside the local stack."""
+    monkeypatch.delenv("AWS_DEFAULT_REGION", raising=False)
+
+    args = _build_parser().parse_args(["--backend", "s3"])
+
+    assert args.region is None

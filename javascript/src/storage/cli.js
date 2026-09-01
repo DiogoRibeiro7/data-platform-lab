@@ -8,10 +8,17 @@ import { createAwsS3BlobStore } from "./s3-store.js";
 
 const SMOKE_PAYLOAD = Buffer.from("data-platform-lab-storage-smoke\n");
 
+export function resolveS3Region(cliRegion, env = process.env) {
+  return cliRegion ?? env.AWS_DEFAULT_REGION;
+}
+
 export async function runStorageSmoke(store, key = "_platform/smoke.txt") {
   const stored = await store.putBytes(key, SMOKE_PAYLOAD);
   const roundTrip = await store.getBytes(key);
-  const listed = await store.listObjects("_platform");
+  const prefix = stored.key.includes("/")
+    ? stored.key.slice(0, stored.key.lastIndexOf("/"))
+    : "";
+  const listed = await store.listObjects(prefix);
   const exists = await store.exists(stored.key);
 
   if (!Buffer.from(roundTrip).equals(SMOKE_PAYLOAD)) {
@@ -33,7 +40,7 @@ export async function main(argv = process.argv.slice(2)) {
       root: { type: "string", default: "../data/object-store" },
       bucket: { type: "string", default: process.env.DPL_S3_BUCKET || "data-platform-lab" },
       "endpoint-url": { type: "string", default: process.env.DPL_S3_ENDPOINT_URL },
-      region: { type: "string", default: process.env.AWS_DEFAULT_REGION || "garage" },
+      region: { type: "string" },
       "key-prefix": { type: "string", default: process.env.DPL_S3_KEY_PREFIX || "" },
       "smoke-key": { type: "string", default: "_platform/smoke.txt" },
       help: { type: "boolean", short: "h" },
@@ -54,20 +61,24 @@ export async function main(argv = process.argv.slice(2)) {
     : await createAwsS3BlobStore({
         bucket: values.bucket,
         endpointUrl: values["endpoint-url"],
-        region: values.region,
+        region: resolveS3Region(values.region),
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
         keyPrefix: values["key-prefix"],
       });
 
-  const report = await runStorageSmoke(store, values["smoke-key"]);
-  console.log("=== Storage Smoke Check ===");
-  console.log(`Backend    : ${values.backend}`);
-  console.log(`Key        : ${report.key}`);
-  console.log(`Bytes      : ${report.size_bytes}`);
-  console.log("Round trip : ok");
-  console.log("Listing    : ok");
-  return 0;
+  try {
+    const report = await runStorageSmoke(store, values["smoke-key"]);
+    console.log("=== Storage Smoke Check ===");
+    console.log(`Backend    : ${values.backend}`);
+    console.log(`Key        : ${report.key}`);
+    console.log(`Bytes      : ${report.size_bytes}`);
+    console.log("Round trip : ok");
+    console.log("Listing    : ok");
+    return 0;
+  } finally {
+    if (typeof store.destroy === "function") await store.destroy();
+  }
 }
 
 const isDirect = process.argv[1]

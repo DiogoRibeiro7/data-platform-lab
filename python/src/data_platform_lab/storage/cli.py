@@ -17,7 +17,8 @@ def run_storage_smoke(store: BlobStore, key: str = "_platform/smoke.txt") -> dic
     """Exercise the minimal blob-store contract and return a compact report."""
     stored = store.put_bytes(key, _SMOKE_PAYLOAD)
     round_trip = store.get_bytes(key)
-    listed = [item.key for item in store.list_objects("_platform")]
+    listing_prefix = stored.key.rpartition("/")[0]
+    listed = [item.key for item in store.list_objects(listing_prefix)]
 
     if round_trip != _SMOKE_PAYLOAD:
         raise RuntimeError("storage smoke check failed: round-trip payload changed")
@@ -41,7 +42,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", type=Path, default=Path("../data/object-store"))
     parser.add_argument("--bucket", default=os.getenv("DPL_S3_BUCKET", "data-platform-lab"))
     parser.add_argument("--endpoint-url", default=os.getenv("DPL_S3_ENDPOINT_URL"))
-    parser.add_argument("--region", default=os.getenv("AWS_DEFAULT_REGION", "garage"))
+    parser.add_argument("--region", default=os.getenv("AWS_DEFAULT_REGION"))
     parser.add_argument("--key-prefix", default=os.getenv("DPL_S3_KEY_PREFIX", ""))
     parser.add_argument("--smoke-key", default="_platform/smoke.txt")
     return parser

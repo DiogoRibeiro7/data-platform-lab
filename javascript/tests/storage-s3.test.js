@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runStorageSmoke } from "../src/storage/cli.js";
+import { resolveS3Region, runStorageSmoke } from "../src/storage/cli.js";
 import { S3BlobStore } from "../src/storage/index.js";
 
 class FakeS3Error extends Error {
@@ -16,6 +16,7 @@ class FakeS3Client {
   constructor() {
     this.objects = new Map();
     this.listCalls = [];
+    this.destroyed = false;
   }
 
   async putObject(input) {
@@ -57,6 +58,10 @@ class FakeS3Client {
       NextContinuationToken: truncated ? "page-2" : undefined,
     };
   }
+
+  destroy() {
+    this.destroyed = true;
+  }
 }
 
 test("S3BlobStore preserves logical keys and paginates", async () => {
@@ -97,4 +102,28 @@ test("runStorageSmoke consumes the async-compatible blob contract", async () => 
   assert.equal(report.round_trip, true);
   assert.equal(report.listed, true);
   assert.equal(report.key, "_platform/smoke.txt");
+});
+
+test("runStorageSmoke derives listing prefix from a custom key", async () => {
+  const store = new S3BlobStore({ client: new FakeS3Client(), bucket: "platform" });
+  const report = await runStorageSmoke(store, "gold/check.txt");
+
+  assert.equal(report.round_trip, true);
+  assert.equal(report.listed, true);
+  assert.equal(report.key, "gold/check.txt");
+});
+
+test("resolveS3Region preserves the SDK region chain when unset", () => {
+  assert.equal(resolveS3Region(undefined, {}), undefined);
+  assert.equal(resolveS3Region(undefined, { AWS_DEFAULT_REGION: "eu-west-1" }), "eu-west-1");
+  assert.equal(resolveS3Region("us-east-2", { AWS_DEFAULT_REGION: "eu-west-1" }), "us-east-2");
+});
+
+test("S3BlobStore destroy delegates to the underlying SDK client", () => {
+  const client = new FakeS3Client();
+  const store = new S3BlobStore({ client, bucket: "platform" });
+
+  store.destroy();
+
+  assert.equal(client.destroyed, true);
 });
