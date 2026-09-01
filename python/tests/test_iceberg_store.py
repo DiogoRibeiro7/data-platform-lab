@@ -9,14 +9,32 @@ import pytest
 from data_platform_lab.iceberg import IcebergTableStore
 
 
+class FakeColumn:
+    def __init__(self, values: list[object]) -> None:
+        self._values = values
+
+    def to_pylist(self) -> list[object]:
+        return list(self._values)
+
+
 class FakeArrowTable:
-    def __init__(self, num_rows: int) -> None:
-        self.num_rows = num_rows
+    def __init__(self, appended: list[Any]) -> None:
+        self._appended = appended
+        self.num_rows = sum(int(getattr(payload, "num_rows", 0)) for payload in appended)
+
+    def column(self, field_name: str) -> FakeColumn:
+        values: list[object] = []
+        for payload in self._appended:
+            values.extend(getattr(payload, "values", {}).get(field_name, []))
+        if not values:
+            raise KeyError(field_name)
+        return FakeColumn(values)
 
 
 class FakePayload:
-    def __init__(self, num_rows: int) -> None:
+    def __init__(self, num_rows: int, values: dict[str, list[object]] | None = None) -> None:
         self.num_rows = num_rows
+        self.values = values or {}
 
 
 class FakeScan:
@@ -24,9 +42,7 @@ class FakeScan:
         self._appended = appended
 
     def to_arrow(self) -> FakeArrowTable:
-        return FakeArrowTable(
-            sum(int(getattr(payload, "num_rows", 0)) for payload in self._appended)
-        )
+        return FakeArrowTable(self._appended)
 
 
 class FakeTable:
@@ -36,7 +52,8 @@ class FakeTable:
     def append(self, table_data: Any) -> None:
         self.appended.append(table_data)
 
-    def scan(self) -> FakeScan:
+    def scan(self, selected_fields: tuple[str, ...] | None = None) -> FakeScan:
+        del selected_fields
         return FakeScan(self.appended)
 
 
@@ -89,6 +106,19 @@ def test_iceberg_store_append_and_scan_reflects_appended_rows() -> None:
 
     assert catalog.tables["analytics.events"].appended == [first, second]
     assert store.row_count("analytics.events") == 3
+
+
+def test_iceberg_store_reconciles_by_ingestion_id() -> None:
+    catalog = FakeCatalog()
+    store = IcebergTableStore(catalog)
+    store.ensure_table("analytics.events", object())
+    store.append(
+        "analytics.events",
+        FakePayload(1, {"ingestion_id": ["events:0:7"]}),
+    )
+
+    assert store.contains_value("analytics.events", "ingestion_id", "events:0:7")
+    assert not store.contains_value("analytics.events", "ingestion_id", "events:0:8")
 
 
 @pytest.mark.parametrize(
