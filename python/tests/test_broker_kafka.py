@@ -49,6 +49,7 @@ class FakeConsumer:
     def __init__(self, message: FakeMessage | None = None) -> None:
         self.message = message or FakeMessage()
         self.subscriptions: list[list[str]] = []
+        self.commits: list[tuple[list[Any], bool]] = []
         self.closed = False
 
     def subscribe(self, topics: list[str]) -> None:
@@ -56,6 +57,9 @@ class FakeConsumer:
 
     def poll(self, _timeout: float) -> FakeMessage:
         return self.message
+
+    def commit(self, *, offsets: list[Any], asynchronous: bool) -> None:
+        self.commits.append((offsets, asynchronous))
 
     def close(self) -> None:
         self.closed = True
@@ -72,6 +76,9 @@ def test_event_broker_contract_is_runtime_checkable() -> None:
             del topic, group_id, timeout_seconds
             return None
 
+        def acknowledge(self, message: BrokerMessage) -> None:
+            del message
+
         def close(self) -> None:
             return None
 
@@ -86,6 +93,27 @@ def test_kafka_adapter_validates_inputs_without_connecting() -> None:
 
     with pytest.raises(TypeError, match="bytes"):
         KafkaEventBroker.publish(broker, "events", "payload")  # type: ignore[arg-type]
+
+
+def test_kafka_acknowledgement_commits_next_offset() -> None:
+    class TopicPartition:
+        def __init__(self, topic: str, partition: int, offset: int) -> None:
+            self.topic = topic
+            self.partition = partition
+            self.offset = offset
+
+    broker = object.__new__(KafkaEventBroker)
+    consumer = FakeConsumer()
+    broker._consumer = consumer
+    broker._topic_partition_factory = TopicPartition
+
+    broker.acknowledge(BrokerMessage("events", 2, 7, b"key", b"payload"))
+
+    offsets, asynchronous = consumer.commits[0]
+    assert asynchronous is False
+    assert offsets[0].topic == "events"
+    assert offsets[0].partition == 2
+    assert offsets[0].offset == 8
 
 
 def test_broker_message_is_immutable_value_object() -> None:
