@@ -3,22 +3,43 @@
 Milestone 3 adds an S3-compatible infrastructure adapter while keeping workflow
 logic independent of any particular object-store product.
 
-## Architecture
+## Storage architecture
 
-```text
-                         +------------------+
-workflow -> BlobStore -> | LocalBlobStore   |
-                         +------------------+
-                                  or
-                         +------------------+      +------------------+
-workflow -> BlobStore -> | S3BlobStore      | ---> | S3 API endpoint  |
-                         +------------------+      +------------------+
-                                                        |
-                                                Garage / AWS S3 / ...
+```mermaid
+flowchart LR
+    W[Workflow logic] --> C[BlobStore contract]
+    C --> L[LocalBlobStore]
+    C --> S[S3BlobStore]
+    L --> F[(Local filesystem)]
+    S --> A[S3-compatible API]
+    A --> G[(Garage local)]
+    A -. same contract .-> R[(AWS S3 / other endpoint)]
 ```
 
 Garage is used only for the disposable local endpoint. The adapter speaks S3,
 not a Garage-specific API.
+
+## Local development stack
+
+```mermaid
+flowchart TB
+    subgraph Host[Developer machine]
+        P[Python CLI]
+        J[JavaScript CLI]
+        C[Docker Compose]
+    end
+
+    P -->|storage --backend s3| S3[S3 API :3900]
+    J -->|storage --backend s3| S3
+    C --> G[Garage v2.3.0]
+    S3 --> G
+    G --> M[(garage-meta volume)]
+    G --> D[(garage-data volume)]
+    G --> A[Admin API :3903]
+```
+
+Both CLIs exercise the same logical storage contract. Docker Compose owns the
+local service lifecycle; application code only sees an S3 endpoint.
 
 ## Why Garage for the local stack
 
@@ -91,6 +112,28 @@ node src/cli/main.js storage --backend s3
 JavaScript consumers should `await` storage operations. The local adapter is
 synchronous today but is await-compatible; remote S3 operations are naturally
 asynchronous.
+
+## Integration validation flow
+
+```mermaid
+flowchart LR
+    CI[GitHub Actions] --> Start[Bootstrap Garage]
+    Start --> Py[Python smoke]
+    Py --> Put1[put_bytes]
+    Put1 --> Get1[get_bytes]
+    Get1 --> Exists1[exists]
+    Exists1 --> List1[list_objects]
+    List1 --> Js[JavaScript smoke]
+    Js --> Put2[putBytes]
+    Put2 --> Get2[getBytes]
+    Get2 --> Exists2[exists]
+    Exists2 --> List2[listObjects]
+    List2 --> Pass[Contract validated]
+```
+
+The unit suites use injected fake clients to cover pagination, prefixes, and
+error classification. This separate flow proves that both runtime adapters also
+work against the real S3 wire protocol provided by the local service.
 
 ## Target another S3-compatible service
 
