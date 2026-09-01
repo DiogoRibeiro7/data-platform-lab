@@ -1,0 +1,59 @@
+name: Kafka Integration
+
+on:
+  push:
+    paths:
+      - "compose.yaml"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/broker/**"
+      - "python/src/data_platform_lab/cli/main.py"
+      - ".github/workflows/kafka-integration.yml"
+  pull_request:
+    paths:
+      - "compose.yaml"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/broker/**"
+      - "python/src/data_platform_lab/cli/main.py"
+      - ".github/workflows/kafka-integration.yml"
+
+jobs:
+  kafka:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start Kafka
+        run: docker compose up -d --wait kafka
+      - name: Create smoke topic
+        run: >-
+          docker compose exec -T kafka
+          /opt/kafka/bin/kafka-topics.sh
+          --bootstrap-server localhost:9092
+          --create
+          --if-not-exists
+          --topic data-platform-lab-smoke
+          --partitions 1
+          --replication-factor 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Install Python dependencies
+        working-directory: python
+        run: poetry install --no-interaction
+      - name: Kafka publish/consume round trip
+        working-directory: python
+        run: poetry run data-platform-lab broker
+      - name: Describe smoke topic
+        run: >-
+          docker compose exec -T kafka
+          /opt/kafka/bin/kafka-topics.sh
+          --bootstrap-server localhost:9092
+          --describe
+          --topic data-platform-lab-smoke
+      - name: Diagnostics
+        if: failure()
+        run: docker compose logs kafka
+      - name: Stop services
+        if: always()
+        run: docker compose down -v

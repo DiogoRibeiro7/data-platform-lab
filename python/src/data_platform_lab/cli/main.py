@@ -6,6 +6,7 @@ import argparse
 from collections.abc import Callable
 
 from data_platform_lab.benchmark.cli import main as benchmark_main
+from data_platform_lab.broker.cli import main as broker_main
 from data_platform_lab.iceberg.cli import main as iceberg_main
 from data_platform_lab.metadata.cli import main as metadata_main
 from data_platform_lab.storage.cli import main as storage_main
@@ -16,6 +17,7 @@ CommandHandler = Callable[[list[str] | None], None]
 
 _COMMANDS: dict[str, CommandHandler] = {
     "benchmark": benchmark_main,
+    "broker": broker_main,
     "iceberg": iceberg_main,
     "metadata": metadata_main,
     "storage": storage_main,
