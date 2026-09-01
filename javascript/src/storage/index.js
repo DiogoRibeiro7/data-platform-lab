@@ -1,4 +1,4 @@
-/** Storage contracts and local/S3-compatible adapters for platform workflows. */
+/** Public storage boundary: local and S3-compatible adapters for platform workflows. */
 
 export {
   LocalBlobStore,
