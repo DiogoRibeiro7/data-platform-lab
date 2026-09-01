@@ -1,5 +1,17 @@
-"""Storage — write data to layered storage with partitioning and format control.
+"""Storage contracts and local adapters for platform workflows."""
 
-Covers medallion-layer writes (raw, bronze, silver, gold), file format
-selection (CSV, JSON, Parquet), partitioning strategies, and manifest tracking.
-"""
+from data_platform_lab.storage.local import (
+    BlobStore,
+    LocalBlobStore,
+    StorageKeyError,
+    StoredObject,
+    normalize_key,
+)
+
+__all__ = [
+    "BlobStore",
+    "LocalBlobStore",
+    "StorageKeyError",
+    "StoredObject",
+    "normalize_key",
+]
