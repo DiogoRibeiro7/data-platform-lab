@@ -32,5 +32,8 @@ class EventBroker(Protocol):
     ) -> BrokerMessage | None:
         """Return one message or ``None`` when the timeout expires."""
 
+    def acknowledge(self, message: BrokerMessage) -> None:
+        """Commit the consumed message position after durable processing succeeds."""
+
     def close(self) -> None:
         """Flush producer state and release consumer resources."""
