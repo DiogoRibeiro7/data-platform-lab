@@ -15,6 +15,9 @@ pytest = ">=8.0"
 ruff = ">=0.4"
 mypy = ">=1.10"
 
+[tool.poetry.scripts]
+data-platform-lab = "data_platform_lab.cli.main:main"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
