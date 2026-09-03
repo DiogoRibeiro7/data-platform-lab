@@ -151,10 +151,11 @@ def test_recovery_pipeline_classifies_malformed_json(tmp_path: Path) -> None:
     assert iceberg_store.append_count == 0
     failed = run_store.get("broker_to_iceberg", "sensor-events:0:7")
     assert failed is not None and failed.status == "failed"
+    assert failed.errors == [str(error.value)]
 
 
 def test_recovery_pipeline_rejects_non_object_json(tmp_path: Path) -> None:
-    pipeline, broker, _, iceberg_store = _pipeline(tmp_path)
+    pipeline, broker, run_store, iceberg_store = _pipeline(tmp_path)
     message = _message(b"[1,2,3]")
 
     with pytest.raises(DataValidationError, match="JSON object") as error:
@@ -164,10 +165,13 @@ def test_recovery_pipeline_rejects_non_object_json(tmp_path: Path) -> None:
     assert error.value.value == [1, 2, 3]
     assert broker.acknowledged == []
     assert iceberg_store.append_count == 0
+    failed = run_store.get("broker_to_iceberg", "sensor-events:0:7")
+    assert failed is not None and failed.status == "failed"
+    assert failed.errors == [str(error.value)]
 
 
 def test_recovery_pipeline_classifies_invalid_sensor_event(tmp_path: Path) -> None:
-    pipeline, broker, _, iceberg_store = _pipeline(tmp_path)
+    pipeline, broker, run_store, iceberg_store = _pipeline(tmp_path)
     invalid = json.dumps({"sensor_id": "sensor-1"}).encode()
 
     with pytest.raises(DataValidationError) as error:
@@ -177,6 +181,9 @@ def test_recovery_pipeline_classifies_invalid_sensor_event(tmp_path: Path) -> No
     assert error.value.value == {"sensor_id": "sensor-1"}
     assert broker.acknowledged == []
     assert iceberg_store.append_count == 0
+    failed = run_store.get("broker_to_iceberg", "sensor-events:0:7")
+    assert failed is not None and failed.status == "failed"
+    assert failed.errors == [str(error.value)]
 
 
 def test_concurrent_processing_is_rejected_before_durable_writes(tmp_path: Path) -> None:
