@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Iterable, Iterator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -144,11 +145,11 @@ def compute_aggregates(events: list[dict[str, Any]]) -> dict[str, Any]:
     return {"by_sensor": by_sensor, "by_type": by_type, "by_location": by_location}
 
 
-def _read_lines(path: Path) -> list[str]:
-    """Read source lines while preserving file-level failure context."""
+def _read_lines(path: Path) -> Iterator[str]:
+    """Yield source lines while preserving file-level failure context."""
     try:
         with path.open(encoding="utf-8") as fh:
-            return list(fh)
+            yield from fh
     except OSError as exc:
         raise FileReadError(str(path), exc) from exc
 
@@ -160,11 +161,18 @@ def _ensure_output_dir(path: Path) -> None:
         raise FileWriteError(str(path), exc) from exc
 
 
-def _write_text(path: Path, text: str) -> None:
+def _write_lines(path: Path, lines: Iterable[str]) -> None:
+    """Write text chunks incrementally while preserving file failure context."""
     try:
-        path.write_text(text, encoding="utf-8")
+        with path.open("w", encoding="utf-8") as fh:
+            for line in lines:
+                fh.write(line)
     except OSError as exc:
         raise FileWriteError(str(path), exc) from exc
+
+
+def _write_text(path: Path, text: str) -> None:
+    _write_lines(path, (text,))
 
 
 def process_stream(
@@ -241,17 +249,17 @@ def process_stream(
     dead_letter_path = output_dir / "dead_letter.jsonl"
     late_events_path = output_dir / "late_events.jsonl"
 
-    _write_text(accepted_path, "".join(json.dumps(evt) + "\n" for evt in accepted_events))
-    _write_text(
+    _write_lines(accepted_path, (json.dumps(evt) + "\n" for evt in accepted_events))
+    _write_lines(
         dead_letter_path,
-        "".join(
+        (
             json.dumps({"event": result.event, "status": result.status, "reason": result.reason})
             + "\n"
             for result in results
             if result.status in ("rejected", "duplicate")
         ),
     )
-    _write_text(late_events_path, "".join(json.dumps(evt) + "\n" for evt in late_events))
+    _write_lines(late_events_path, (json.dumps(evt) + "\n" for evt in late_events))
 
     duration = time.monotonic() - start
     events_accepted = sum(1 for result in results if result.status == "accepted")
