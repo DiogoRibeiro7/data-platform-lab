@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from dataexcept import StorageError
 
 from data_platform_lab.storage import BlobStore, LocalBlobStore, S3BlobStore
 from data_platform_lab.storage.cli import _build_parser, run_storage_smoke
@@ -59,7 +60,6 @@ class FakeS3Client:
             for (stored_bucket, key) in self.objects
             if stored_bucket == bucket and key.startswith(prefix)
         )
-
         start = 1 if kwargs.get("ContinuationToken") == "page-2" else 0
         page = keys[start : start + 1]
         truncated = start + 1 < len(keys)
@@ -71,13 +71,10 @@ class FakeS3Client:
 
 
 def test_s3_store_implements_blob_contract_and_namespace() -> None:
-    """Logical keys remain portable while the adapter owns the remote namespace."""
     client = FakeS3Client()
     store = S3BlobStore(client, bucket="platform", key_prefix="lab")
-
     first = store.put_bytes("bronze/events/b.jsonl", b"bb")
     store.put_bytes("bronze/events/a.jsonl", b"a")
-
     assert isinstance(store, BlobStore)
     assert client.objects[("platform", "lab/bronze/events/b.jsonl")] == b"bb"
     assert store.get_bytes("bronze/events/a.jsonl") == b"a"
@@ -90,39 +87,42 @@ def test_s3_store_implements_blob_contract_and_namespace() -> None:
     assert len(client.list_calls) == 2
 
 
-def test_s3_exists_reraises_non_missing_errors() -> None:
-    """Authorization or service failures must not be misreported as missing data."""
-
+def test_s3_exists_classifies_non_missing_backend_errors() -> None:
     class DeniedClient(FakeS3Client):
         def head_object(self, **kwargs: object) -> dict[str, object]:
             raise FakeS3Error("AccessDenied", 403)
 
-    with pytest.raises(FakeS3Error, match="AccessDenied"):
+    with pytest.raises(StorageError, match="AccessDenied") as error:
         S3BlobStore(DeniedClient(), bucket="platform").exists("private/object")
+
+    assert isinstance(error.value.__cause__, FakeS3Error)
+    assert error.value.operation == "stat"
+    assert error.value.location == "s3://platform/private/object"
+
+
+def test_s3_get_classifies_backend_read_errors() -> None:
+    with pytest.raises(StorageError, match="NoSuchKey") as error:
+        S3BlobStore(FakeS3Client(), bucket="platform").get_bytes("missing")
+
+    assert isinstance(error.value.__cause__, FakeS3Error)
+    assert error.value.operation == "read"
 
 
 def test_storage_smoke_uses_the_common_contract(tmp_path: Path) -> None:
-    """The smoke routine works against any BlobStore implementation."""
     report = run_storage_smoke(LocalBlobStore(tmp_path / "objects"))
-
     assert report["round_trip"] is True
     assert report["listed"] is True
     assert report["key"] == "_platform/smoke.txt"
 
 
 def test_storage_smoke_derives_prefix_from_custom_key(tmp_path: Path) -> None:
-    """A configurable smoke key is listed from its own parent prefix."""
     report = run_storage_smoke(LocalBlobStore(tmp_path / "objects"), "gold/check.txt")
-
     assert report["round_trip"] is True
     assert report["listed"] is True
     assert report["key"] == "gold/check.txt"
 
 
 def test_storage_cli_does_not_force_local_region(monkeypatch: pytest.MonkeyPatch) -> None:
-    """AWS profile/config region resolution remains available outside the local stack."""
     monkeypatch.delenv("AWS_DEFAULT_REGION", raising=False)
-
     args = _build_parser().parse_args(["--backend", "s3"])
-
     assert args.region is None
