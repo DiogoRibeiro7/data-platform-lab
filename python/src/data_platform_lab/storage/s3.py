@@ -195,7 +195,10 @@ class S3BlobStore:
             boto3_module = import_module("boto3")
             botocore_config_module = import_module("botocore.config")
         except ModuleNotFoundError as exc:
-            raise DependencyError("boto3", "boto3 is required for the S3 infrastructure adapter") from exc
+            raise DependencyError(
+                "boto3",
+                "boto3 is required for the S3 infrastructure adapter",
+            ) from exc
         client_factory = getattr(boto3_module, "client", None)
         config_factory = getattr(botocore_config_module, "Config", None)
         if not callable(client_factory) or not callable(config_factory):
@@ -203,7 +206,9 @@ class S3BlobStore:
                 "boto3",
                 "boto3/botocore installation does not expose the expected S3 API",
             )
-        resolved_path_style = endpoint_url is not None if force_path_style is None else force_path_style
+        resolved_path_style = (
+            endpoint_url is not None if force_path_style is None else force_path_style
+        )
         config_kwargs: dict[str, Any] = {"signature_version": "s3v4"}
         if resolved_path_style:
             config_kwargs["s3"] = {"addressing_style": "path"}
