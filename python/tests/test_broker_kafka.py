@@ -5,17 +5,24 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from dataexcept import OperationTimeoutError, ServiceConnectionError
 
 from data_platform_lab.broker import BrokerMessage, EventBroker, KafkaEventBroker
 
 
 class FakeMessage:
-    def __init__(self, value: bytes = b"payload", key: bytes | None = b"key") -> None:
+    def __init__(
+        self,
+        value: bytes = b"payload",
+        key: bytes | None = b"key",
+        error: object | None = None,
+    ) -> None:
         self._value = value
         self._key = key
+        self._error = error
 
-    def error(self) -> None:
-        return None
+    def error(self) -> object | None:
+        return self._error
 
     def topic(self) -> str:
         return "events"
@@ -34,15 +41,19 @@ class FakeMessage:
 
 
 class FakeProducer:
-    def __init__(self) -> None:
+    def __init__(self, *, pending: int = 0, failure: Exception | None = None) -> None:
         self.calls: list[tuple[str, bytes, bytes | None]] = []
+        self.pending = pending
+        self.failure = failure
 
     def produce(self, *, topic: str, value: bytes, key: bytes | None, callback: Any) -> None:
+        if self.failure is not None:
+            raise self.failure
         self.calls.append((topic, value, key))
         callback(None, FakeMessage(value=value, key=key))
 
     def flush(self, _timeout: float) -> int:
-        return 0
+        return self.pending
 
 
 class FakeConsumer:
@@ -63,6 +74,16 @@ class FakeConsumer:
 
     def close(self) -> None:
         self.closed = True
+
+
+def _bare_broker(producer: FakeProducer | None = None) -> KafkaEventBroker:
+    broker = object.__new__(KafkaEventBroker)
+    broker._producer = producer or FakeProducer()
+    broker._consumer = None
+    broker._bootstrap_servers = "localhost:9092"
+    broker._consumer_factory = lambda _config: FakeConsumer()
+    broker._topic_partition_factory = lambda topic, partition, offset: (topic, partition, offset)
+    return broker
 
 
 def test_event_broker_contract_is_runtime_checkable() -> None:
@@ -87,12 +108,40 @@ def test_event_broker_contract_is_runtime_checkable() -> None:
 
 def test_kafka_adapter_validates_inputs_without_connecting() -> None:
     broker = object.__new__(KafkaEventBroker)
-
     with pytest.raises(ValueError, match="topic"):
         KafkaEventBroker.publish(broker, "", b"payload")
-
     with pytest.raises(TypeError, match="bytes"):
         KafkaEventBroker.publish(broker, "events", "payload")  # type: ignore[arg-type]
+
+
+def test_kafka_publish_classifies_client_failure() -> None:
+    cause = OSError("broker unavailable")
+    broker = _bare_broker(FakeProducer(failure=cause))
+
+    with pytest.raises(ServiceConnectionError, match="Kafka") as error:
+        broker.publish("events", b"payload")
+
+    assert error.value.__cause__ is cause
+    assert error.value.original_exception is cause
+
+
+def test_kafka_publish_classifies_delivery_timeout() -> None:
+    broker = _bare_broker(FakeProducer(pending=1))
+
+    with pytest.raises(OperationTimeoutError, match="Kafka publish") as error:
+        broker.publish("events", b"payload")
+
+    assert error.value.timeout == 10.0
+
+
+def test_kafka_consume_classifies_broker_error() -> None:
+    broker = _bare_broker()
+    broker._consumer_factory = lambda _config: FakeConsumer(FakeMessage(error="transport failure"))
+
+    with pytest.raises(ServiceConnectionError, match="transport failure") as error:
+        broker.consume_one("events", "group")
+
+    assert isinstance(error.value.__cause__, RuntimeError)
 
 
 def test_kafka_acknowledgement_commits_next_offset() -> None:
@@ -102,13 +151,11 @@ def test_kafka_acknowledgement_commits_next_offset() -> None:
             self.partition = partition
             self.offset = offset
 
-    broker = object.__new__(KafkaEventBroker)
+    broker = _bare_broker()
     consumer = FakeConsumer()
     broker._consumer = consumer
     broker._topic_partition_factory = TopicPartition
-
     broker.acknowledge(BrokerMessage("events", 2, 7, b"key", b"payload"))
-
     offsets, asynchronous = consumer.commits[0]
     assert asynchronous is False
     assert offsets[0].topic == "events"
@@ -118,7 +165,6 @@ def test_kafka_acknowledgement_commits_next_offset() -> None:
 
 def test_broker_message_is_immutable_value_object() -> None:
     message = BrokerMessage("events", 0, 7, b"key", b"payload")
-
     assert message.topic == "events"
     assert message.partition == 0
     assert message.offset == 7
