@@ -58,8 +58,8 @@ class FakeTable:
         self.available_fields = available_fields or set()
 
     def append(self, table_data: Any) -> None:
+        # Appending payloads does not evolve an existing Iceberg table schema.
         self.appended.append(table_data)
-        self.available_fields.update(getattr(table_data, "values", {}).keys())
 
     def scan(self, selected_fields: tuple[str, ...] | None = None) -> FakeScan:
         fields = set(selected_fields) if selected_fields is not None else set(self.available_fields)
@@ -136,6 +136,19 @@ def test_iceberg_empty_reconciliation_field_returns_false() -> None:
     store.ensure_table("analytics.events", FakeSchema(["ingestion_id"]))
 
     assert not store.contains_value("analytics.events", "ingestion_id", "events:0:7")
+
+
+def test_append_does_not_create_missing_reconciliation_field() -> None:
+    catalog = FakeCatalog()
+    store = IcebergTableStore(catalog)
+    store.ensure_table("analytics.events", FakeSchema(["event_id"]))
+    store.append(
+        "analytics.events",
+        FakePayload(1, {"ingestion_id": ["events:0:7"]}),
+    )
+
+    with pytest.raises(ValueError, match="does not contain field"):
+        store.contains_value("analytics.events", "ingestion_id", "events:0:7")
 
 
 @pytest.mark.parametrize(
