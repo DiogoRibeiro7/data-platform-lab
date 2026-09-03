@@ -113,22 +113,38 @@ class S3BlobStore:
         return StoredObject(key=normalized, size_bytes=len(payload))
 
     def get_bytes(self, key: str) -> bytes:
+        normalized = normalize_key(key)
         try:
-            response = self._client.get_object(Bucket=self._bucket, Key=self._remote_key(key))
+            response = self._client.get_object(
+                Bucket=self._bucket,
+                Key=self._remote_key(normalized),
+            )
         except Exception as exc:
-            raise StorageError(self._location(key), "read", f"S3 read failed: {exc}") from exc
+            raise StorageError(
+                self._location(normalized),
+                "read",
+                f"S3 read failed: {exc}",
+            ) from exc
         if "Body" not in response:
-            raise StorageError(self._location(key), "read", "S3 response did not contain Body")
+            raise StorageError(
+                self._location(normalized),
+                "read",
+                "S3 response did not contain Body",
+            )
         return _read_body(response["Body"])
 
     def exists(self, key: str) -> bool:
+        normalized = normalize_key(key)
         try:
-            self._client.head_object(Bucket=self._bucket, Key=self._remote_key(key))
+            self._client.head_object(
+                Bucket=self._bucket,
+                Key=self._remote_key(normalized),
+            )
         except Exception as exc:
             if _is_not_found(exc):
                 return False
             raise StorageError(
-                self._location(key),
+                self._location(normalized),
                 "stat",
                 f"S3 metadata lookup failed: {exc}",
             ) from exc
@@ -212,7 +228,14 @@ class S3BlobStore:
         config_kwargs: dict[str, Any] = {"signature_version": "s3v4"}
         if resolved_path_style:
             config_kwargs["s3"] = {"addressing_style": "path"}
-        client_kwargs: dict[str, Any] = {"config": config_factory(**config_kwargs)}
+        try:
+            config = config_factory(**config_kwargs)
+        except Exception as exc:
+            raise DependencyError(
+                "botocore",
+                f"botocore Config construction failed: {exc}",
+            ) from exc
+        client_kwargs: dict[str, Any] = {"config": config}
         if endpoint_url is not None:
             client_kwargs["endpoint_url"] = endpoint_url
         if region_name is not None:
