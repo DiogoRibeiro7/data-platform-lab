@@ -154,7 +154,7 @@ def test_recovery_pipeline_classifies_malformed_json(tmp_path: Path) -> None:
 
 
 def test_recovery_pipeline_rejects_non_object_json(tmp_path: Path) -> None:
-    pipeline, broker, run_store, iceberg_store = _pipeline(tmp_path)
+    pipeline, broker, _, iceberg_store = _pipeline(tmp_path)
     message = _message(b"[1,2,3]")
 
     with pytest.raises(DataValidationError, match="JSON object") as error:
@@ -167,7 +167,7 @@ def test_recovery_pipeline_rejects_non_object_json(tmp_path: Path) -> None:
 
 
 def test_recovery_pipeline_classifies_invalid_sensor_event(tmp_path: Path) -> None:
-    pipeline, broker, run_store, iceberg_store = _pipeline(tmp_path)
+    pipeline, broker, _, iceberg_store = _pipeline(tmp_path)
     invalid = json.dumps({"sensor_id": "sensor-1"}).encode()
 
     with pytest.raises(DataValidationError) as error:
