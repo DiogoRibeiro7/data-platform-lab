@@ -62,6 +62,26 @@ class PostgresRunStore:
         except Exception as exc:
             raise QueryExecutionError(query, exc) from exc
 
+    def _fetchone(
+        self,
+        query: str,
+        params: tuple[object, ...] = (),
+    ) -> tuple[Any, ...] | None:
+        try:
+            return self._connection.execute(query, params).fetchone()
+        except Exception as exc:
+            raise QueryExecutionError(query, exc) from exc
+
+    def _fetchall(
+        self,
+        query: str,
+        params: tuple[object, ...] = (),
+    ) -> list[tuple[Any, ...]]:
+        try:
+            return self._connection.execute(query, params).fetchall()
+        except Exception as exc:
+            raise QueryExecutionError(query, exc) from exc
+
     def _commit(self, transaction_id: str) -> None:
         try:
             self._connection.commit()
@@ -76,7 +96,7 @@ class PostgresRunStore:
 
     def acquire_claim(self, pipeline_name: str, run_id: str) -> bool:
         query = "SELECT pg_try_advisory_lock(hashtextextended(%s, 0))"
-        row = self._execute(query, (self._claim_key(pipeline_name, run_id),)).fetchone()
+        row = self._fetchone(query, (self._claim_key(pipeline_name, run_id),))
         acquired = bool(row and row[0])
         self._commit(run_id)
         return acquired
@@ -134,7 +154,7 @@ class PostgresRunStore:
         query = (
             f"SELECT {', '.join(_COLUMNS)} FROM pipeline_runs WHERE pipeline_name=%s AND run_id=%s"
         )
-        row = self._execute(query, (pipeline_name, run_id)).fetchone()
+        row = self._fetchone(query, (pipeline_name, run_id))
         return self._to_metadata(row) if row is not None else None
 
     def list_recent(self, limit: int = 20) -> list[RunMetadata]:
@@ -146,7 +166,7 @@ class PostgresRunStore:
             f"SELECT {', '.join(_COLUMNS)} FROM pipeline_runs "
             "ORDER BY started_at DESC NULLS LAST, recorded_at DESC LIMIT %s"
         )
-        rows = self._execute(query, (limit,)).fetchall()
+        rows = self._fetchall(query, (limit,))
         return [self._to_metadata(row) for row in rows]
 
     def close(self) -> None:
@@ -166,6 +186,8 @@ class PostgresRunStore:
             raise DependencyError("psycopg", "psycopg installation does not expose connect()")
         try:
             connection = factory(dsn)
+        except (TypeError, ValueError):
+            raise
         except Exception as exc:
             raise DatabaseConnectionError(dsn, f"PostgreSQL connection failed: {exc}") from exc
         return cls(cast(Connection, connection))
