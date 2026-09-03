@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from uuid import uuid4
 
-from data_platform_lab.broker import KafkaEventBroker
+from data_platform_lab.broker import BrokerMessage, KafkaEventBroker
 from data_platform_lab.iceberg import IcebergCatalogConfig, IcebergTableStore, build_catalog
 from data_platform_lab.metadata import PostgresRunStore
 from data_platform_lab.recovery import RecoverableIngestionPipeline
@@ -20,8 +21,11 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Prove broker-to-Iceberg recovery after an injected post-commit failure."
     )
     parser.add_argument("--topic", default="data-platform-lab-recovery")
-    parser.add_argument("--group-id", default="data-platform-lab-recovery-smoke")
-    parser.add_argument("--bootstrap-servers", default="localhost:9092")
+    parser.add_argument("--group-id", default=None)
+    parser.add_argument(
+        "--bootstrap-servers",
+        default=os.getenv("DPL_KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+    )
     parser.add_argument("--postgres-dsn", default=os.getenv("DPL_POSTGRES_DSN", _DEFAULT_DSN))
     parser.add_argument(
         "--warehouse",
@@ -31,8 +35,29 @@ def _build_parser() -> argparse.ArgumentParser:
         "--s3-endpoint",
         default=os.getenv("DPL_S3_ENDPOINT_URL", "http://localhost:3900"),
     )
+    parser.add_argument("--s3-bucket", default=os.getenv("DPL_S3_BUCKET", "data-platform-lab"))
     parser.add_argument("--table", default="analytics.sensor_events")
     return parser
+
+
+def _consume_published(
+    broker: KafkaEventBroker,
+    *,
+    topic: str,
+    group_id: str,
+    expected_key: bytes,
+    expected_value: bytes,
+    max_messages: int = 100,
+) -> BrokerMessage:
+    """Consume until this invocation's uniquely keyed message is reached."""
+    for _ in range(max_messages):
+        message = broker.consume_one(topic, group_id)
+        if message is None:
+            break
+        if message.key == expected_key and message.value == expected_value:
+            return message
+        broker.acknowledge(message)
+    raise RuntimeError("recovery smoke could not consume the message published by this invocation")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -43,10 +68,14 @@ def main(argv: list[str] | None = None) -> None:
     if not access_key or not secret_key:
         raise RuntimeError("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required")
 
+    invocation_id = uuid4().hex
+    group_id = args.group_id or f"data-platform-lab-recovery-{invocation_id}"
+    message_key = invocation_id.encode()
+
     broker = KafkaEventBroker(args.bootstrap_servers)
     run_store = PostgresRunStore.connect(args.postgres_dsn)
     blob_store = S3BlobStore.from_boto3(
-        bucket="data-platform-lab",
+        bucket=args.s3_bucket,
         endpoint_url=args.s3_endpoint,
         region_name=os.getenv("AWS_DEFAULT_REGION", "garage"),
         access_key_id=access_key,
@@ -82,15 +111,20 @@ def main(argv: list[str] | None = None) -> None:
             "unit": "C",
             "location": "platform-lab",
             "timestamp": "2026-09-01T12:00:00+00:00",
+            "recovery_token": invocation_id,
         },
         separators=(",", ":"),
     ).encode()
 
     try:
-        broker.publish(args.topic, payload, key=b"recovery-sensor")
-        first = broker.consume_one(args.topic, args.group_id)
-        if first is None:
-            raise RuntimeError("recovery smoke could not consume the published message")
+        broker.publish(args.topic, payload, key=message_key)
+        first = _consume_published(
+            broker,
+            topic=args.topic,
+            group_id=group_id,
+            expected_key=message_key,
+            expected_value=payload,
+        )
 
         try:
             pipeline.process(first, fail_after_iceberg=True)
@@ -100,7 +134,8 @@ def main(argv: list[str] | None = None) -> None:
         else:
             raise RuntimeError("recovery smoke expected the injected failure")
 
-        replay = broker.consume_one(args.topic, args.group_id)
+        count_after_failure = iceberg_store.row_count(args.table)
+        replay = broker.consume_one(args.topic, group_id)
         if replay is None:
             raise RuntimeError("unacknowledged Kafka message was not replayed")
         if (replay.topic, replay.partition, replay.offset) != (
@@ -113,8 +148,11 @@ def main(argv: list[str] | None = None) -> None:
         result = pipeline.process(replay)
         if result.appended:
             raise RuntimeError("recovery replay appended a duplicate Iceberg row")
-        if iceberg_store.row_count(args.table) != 1:
-            raise RuntimeError("recovery smoke expected exactly one Iceberg row")
+        final_count = iceberg_store.row_count(args.table)
+        if final_count != count_after_failure:
+            raise RuntimeError("recovery replay changed the Iceberg row count")
+        if not iceberg_store.contains_value(args.table, "ingestion_id", result.ingestion_id):
+            raise RuntimeError("recovery smoke could not find the current ingestion ID in Iceberg")
 
         metadata = run_store.get("broker_to_iceberg", result.ingestion_id)
         if metadata is None or metadata.status != "success":
@@ -126,7 +164,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Broker position : {result.ingestion_id}")
         print(f"Raw object      : recovery/{result.raw_object_key}")
         print(f"Iceberg table   : {args.table}")
-        print("Iceberg rows    : 1")
+        print(f"Iceberg rows    : {final_count}")
         print("Replay duplicate: no")
         print("Final status    : success")
         print("Kafka ack       : committed after durable recovery")
