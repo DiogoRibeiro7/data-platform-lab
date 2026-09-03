@@ -28,6 +28,9 @@ class Connection(Protocol):
     def commit(self) -> None:
         """Commit the current transaction."""
 
+    def rollback(self) -> None:
+        """Roll back the current transaction."""
+
     def close(self) -> None:
         """Close the connection."""
 
@@ -59,8 +62,8 @@ class PostgresRunStore:
 
     @staticmethod
     def _claim_key(pipeline_name: str, run_id: str) -> str:
-        """Return the stable advisory-lock key for one run identity."""
-        return f"{pipeline_name}:{run_id}"
+        """Return an unambiguous advisory-lock key for one run identity."""
+        return f"{len(pipeline_name)}:{pipeline_name}{len(run_id)}:{run_id}"
 
     def acquire_claim(self, pipeline_name: str, run_id: str) -> bool:
         """Atomically acquire a session-level PostgreSQL advisory lock."""
@@ -68,14 +71,23 @@ class PostgresRunStore:
             "SELECT pg_try_advisory_lock(hashtextextended(%s, 0))",
             (self._claim_key(pipeline_name, run_id),),
         ).fetchone()
-        return bool(row and row[0])
+        acquired = bool(row and row[0])
+        # Session-level advisory locks survive transaction boundaries, so close
+        # the SELECT transaction immediately and leave only the claim itself held.
+        self._connection.commit()
+        return acquired
 
     def release_claim(self, pipeline_name: str, run_id: str) -> None:
         """Release the session-level advisory lock for one run identity."""
+        # A failed statement can leave psycopg's transaction aborted. Clear it
+        # before issuing pg_advisory_unlock so claim cleanup cannot be masked by
+        # the earlier database error.
+        self._connection.rollback()
         self._connection.execute(
             "SELECT pg_advisory_unlock(hashtextextended(%s, 0))",
             (self._claim_key(pipeline_name, run_id),),
         )
+        self._connection.commit()
 
     def save(self, metadata: RunMetadata) -> None:
         """Insert or replace one run snapshot by pipeline name and run ID."""
