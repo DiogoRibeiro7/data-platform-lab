@@ -42,6 +42,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _consume_published(
     broker: KafkaEventBroker,
+    pipeline: RecoverableIngestionPipeline,
     *,
     topic: str,
     group_id: str,
@@ -49,14 +50,19 @@ def _consume_published(
     expected_value: bytes,
     max_messages: int = 100,
 ) -> BrokerMessage:
-    """Consume until this invocation's uniquely keyed message is reached."""
+    """Consume until this invocation's uniquely keyed message is reached.
+
+    Any earlier record belonging to the selected consumer group is processed
+    through the normal durable pipeline before its offset is acknowledged. The
+    smoke command therefore never skips and commits unrelated pending records.
+    """
     for _ in range(max_messages):
         message = broker.consume_one(topic, group_id)
         if message is None:
             break
         if message.key == expected_key and message.value == expected_value:
             return message
-        broker.acknowledge(message)
+        pipeline.process(message)
     raise RuntimeError("recovery smoke could not consume the message published by this invocation")
 
 
@@ -120,6 +126,7 @@ def main(argv: list[str] | None = None) -> None:
         broker.publish(args.topic, payload, key=message_key)
         first = _consume_published(
             broker,
+            pipeline,
             topic=args.topic,
             group_id=group_id,
             expected_key=message_key,
