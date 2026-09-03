@@ -11,6 +11,7 @@ packages = [{ include = "data_platform_lab", from = "src" }]
 python = ">=3.11,<4.0"
 boto3 = ">=1.40,<2.0"
 confluent-kafka = "2.15.0"
+DataExcept = "1.2.0"
 psycopg = {version = ">=3.2,<4.0", extras = ["binary"]}
 pyiceberg = {version = "0.11.1", extras = ["pyarrow", "s3fs", "sql-postgres"]}
 
