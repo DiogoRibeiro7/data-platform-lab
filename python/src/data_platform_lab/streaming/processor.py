@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dataexcept import FileReadError, FileWriteError
+
 from data_platform_lab.manifest import write_manifest
 
 logger = logging.getLogger(__name__)
@@ -29,17 +31,12 @@ REQUIRED_FIELDS: list[str] = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Data classes
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class EventResult:
     """Result for a single processed event."""
 
     event: dict[str, Any]
-    status: str  # "accepted", "rejected", "duplicate"
+    status: str
     reason: str | None = None
 
 
@@ -58,16 +55,11 @@ class StreamSummary:
     dead_letter_count: int = 0
     events_late: int = 0
     max_lateness_seconds: float = 0.0
-    watermark: str = ""  # ISO timestamp of final watermark
+    watermark: str = ""
     lateness_threshold_seconds: float = 0.0
     aggregates: dict[str, Any] = field(default_factory=dict)
     rejection_reasons: dict[str, int] = field(default_factory=dict)
     manifest_path: str = ""
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def parse_event_time(timestamp_str: str) -> datetime:
@@ -80,35 +72,23 @@ def classify_lateness(
     watermark: datetime | None,
     threshold_seconds: float,
 ) -> tuple[bool, float]:
-    """Determine if an event is late relative to the current watermark.
-
-    Returns (is_late, lateness_seconds). If there is no watermark yet
-    (first event), the event is never late.
-    """
+    """Determine if an event is late relative to the current watermark."""
     if watermark is None:
         return False, 0.0
     lateness = (watermark - event_time).total_seconds()
-    # lateness > 0 means the event is behind the watermark
     is_late = lateness > threshold_seconds
     return is_late, max(lateness, 0.0)
 
 
 def validate_event(event: dict[str, Any]) -> EventResult:
-    """Validate a single event against required-field and type rules.
-
-    Returns an :class:`EventResult` with status ``"accepted"`` when the event
-    passes all checks, or ``"rejected"`` with a human-readable *reason*
-    otherwise.
-    """
+    """Validate a single event against required-field and type rules."""
     for fld in REQUIRED_FIELDS:
         if fld not in event:
             return EventResult(event=event, status="rejected", reason=f"missing field: {fld}")
 
-    # value must not be None (JSON null)
     if event["value"] is None:
         return EventResult(event=event, status="rejected", reason="null value")
 
-    # Non-empty string checks for string fields.
     for fld in REQUIRED_FIELDS:
         if fld == "value":
             continue
@@ -117,11 +97,9 @@ def validate_event(event: dict[str, Any]) -> EventResult:
                 event=event, status="rejected", reason=f"empty or invalid field: {fld}"
             )
 
-    # value must be numeric.
     if not isinstance(event["value"], (int, float)):
         return EventResult(event=event, status="rejected", reason="value is not a number")
 
-    # Timestamp must be parseable as ISO 8601.
     try:
         datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00"))
     except (ValueError, AttributeError):
@@ -136,10 +114,7 @@ def deduplicate_key(event: dict[str, Any]) -> str:
 
 
 def compute_aggregates(events: list[dict[str, Any]]) -> dict[str, Any]:
-    """Compute grouped aggregates over *accepted* events.
-
-    Returns a dict with keys ``by_sensor``, ``by_type``, and ``by_location``.
-    """
+    """Compute grouped aggregates over accepted events."""
     by_sensor: dict[str, dict[str, Any]] = {}
     by_type: dict[str, int] = {}
     by_location: dict[str, int] = {}
@@ -147,8 +122,6 @@ def compute_aggregates(events: list[dict[str, Any]]) -> dict[str, Any]:
     for evt in events:
         sid = evt["sensor_id"]
         val = evt["value"]
-
-        # by_sensor
         if sid not in by_sensor:
             by_sensor[sid] = {"count": 0, "min_value": val, "max_value": val, "_sum": 0.0}
         entry = by_sensor[sid]
@@ -159,29 +132,39 @@ def compute_aggregates(events: list[dict[str, Any]]) -> dict[str, Any]:
         if val > entry["max_value"]:
             entry["max_value"] = val
 
-        # by_type
-        t = evt["type"]
-        by_type[t] = by_type.get(t, 0) + 1
+        event_type = evt["type"]
+        by_type[event_type] = by_type.get(event_type, 0) + 1
+        location = evt["location"]
+        by_location[location] = by_location.get(location, 0) + 1
 
-        # by_location
-        loc = evt["location"]
-        by_location[loc] = by_location.get(loc, 0) + 1
-
-    # Compute avg and drop internal _sum
     for entry in by_sensor.values():
         entry["avg_value"] = round(entry["_sum"] / entry["count"], 2)
         del entry["_sum"]
 
-    return {
-        "by_sensor": by_sensor,
-        "by_type": by_type,
-        "by_location": by_location,
-    }
+    return {"by_sensor": by_sensor, "by_type": by_type, "by_location": by_location}
 
 
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
+def _read_lines(path: Path) -> list[str]:
+    """Read source lines while preserving file-level failure context."""
+    try:
+        with path.open(encoding="utf-8") as fh:
+            return list(fh)
+    except OSError as exc:
+        raise FileReadError(str(path), exc) from exc
+
+
+def _ensure_output_dir(path: Path) -> None:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise FileWriteError(str(path), exc) from exc
+
+
+def _write_text(path: Path, text: str) -> None:
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise FileWriteError(str(path), exc) from exc
 
 
 def process_stream(
@@ -190,21 +173,10 @@ def process_stream(
     pipeline_name: str = "sensor_stream",
     lateness_threshold_seconds: float = 0.0,
 ) -> StreamSummary:
-    """Process a JSONL file of sensor events end-to-end.
-
-    1. Read events one by one from *input_path* (JSONL).
-    2. Handle malformed JSON lines (reject with reason ``"malformed JSON"``).
-    3. Validate each event.
-    4. Deduplicate by key (first occurrence wins).
-    5. Write accepted events to ``{output_dir}/accepted.jsonl``.
-    6. Write rejected / duplicate events to ``{output_dir}/dead_letter.jsonl``.
-    7. Compute aggregates over accepted events only.
-    8. Write summary to ``{output_dir}/summary.json``.
-    9. Return :class:`StreamSummary`.
-    """
+    """Process a JSONL file of sensor events end-to-end."""
     input_path = Path(input_path)
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_output_dir(output_dir)
 
     logger.info("Starting pipeline '%s' — reading from %s", pipeline_name, input_path)
     start = time.monotonic()
@@ -215,99 +187,76 @@ def process_stream(
     rejection_reasons: dict[str, int] = {}
     watermark: datetime | None = None
     late_events: list[dict[str, Any]] = []
-    max_lateness: float = 0.0
+    max_lateness = 0.0
 
-    with input_path.open(encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
+    for raw_line in _read_lines(input_path):
+        line = raw_line.strip()
+        if not line:
+            continue
 
-            # --- Parse JSON ---------------------------------------------------
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                result = EventResult(
-                    event={"_raw": line},
-                    status="rejected",
-                    reason="malformed JSON",
-                )
-                rejection_reasons["malformed JSON"] = rejection_reasons.get("malformed JSON", 0) + 1
-                logger.warning("Rejected event (malformed JSON): %s", line[:120])
-                results.append(result)
-                continue
-
-            # --- Validate -----------------------------------------------------
-            try:
-                result = validate_event(event)
-            except Exception:
-                result = EventResult(event=event, status="rejected", reason="validation error")
-                logger.warning("Rejected event (validation error): %s", event)
-
-            if result.status == "rejected":
-                reason = result.reason or "unknown"
-                rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
-                logger.warning("Rejected event (%s): %s", reason, event)
-                results.append(result)
-                continue
-
-            # --- Deduplicate --------------------------------------------------
-            key = deduplicate_key(event)
-            if key in seen_keys:
-                result = EventResult(event=event, status="duplicate", reason="duplicate event")
-                dup_key = "duplicate event"
-                rejection_reasons[dup_key] = rejection_reasons.get(dup_key, 0) + 1
-                logger.warning("Duplicate event: %s", key)
-                results.append(result)
-                continue
-
-            seen_keys.add(key)
-            accepted_events.append(event)
-
-            # --- Lateness check -----------------------------------------------
-            event_time = parse_event_time(event["timestamp"])
-            is_late, lateness = classify_lateness(
-                event_time,
-                watermark,
-                lateness_threshold_seconds,
-            )
-            if is_late:
-                late_events.append(event)
-                if lateness > max_lateness:
-                    max_lateness = lateness
-            # Advance watermark
-            if watermark is None or event_time > watermark:
-                watermark = event_time
-
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            result = EventResult(event={"_raw": line}, status="rejected", reason="malformed JSON")
+            rejection_reasons["malformed JSON"] = rejection_reasons.get("malformed JSON", 0) + 1
+            logger.warning("Rejected event (malformed JSON): %s", line[:120])
             results.append(result)
+            continue
 
-    # --- Compute aggregates -----------------------------------------------
+        try:
+            result = validate_event(event)
+        except Exception:
+            result = EventResult(event=event, status="rejected", reason="validation error")
+            logger.warning("Rejected event (validation error): %s", event)
+
+        if result.status == "rejected":
+            reason = result.reason or "unknown"
+            rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+            logger.warning("Rejected event (%s): %s", reason, event)
+            results.append(result)
+            continue
+
+        key = deduplicate_key(event)
+        if key in seen_keys:
+            result = EventResult(event=event, status="duplicate", reason="duplicate event")
+            rejection_reasons["duplicate event"] = rejection_reasons.get("duplicate event", 0) + 1
+            logger.warning("Duplicate event: %s", key)
+            results.append(result)
+            continue
+
+        seen_keys.add(key)
+        accepted_events.append(event)
+        event_time = parse_event_time(event["timestamp"])
+        is_late, lateness = classify_lateness(event_time, watermark, lateness_threshold_seconds)
+        if is_late:
+            late_events.append(event)
+            if lateness > max_lateness:
+                max_lateness = lateness
+        if watermark is None or event_time > watermark:
+            watermark = event_time
+        results.append(result)
+
     aggregates = compute_aggregates(accepted_events)
-
-    # --- Write outputs ----------------------------------------------------
     accepted_path = output_dir / "accepted.jsonl"
     dead_letter_path = output_dir / "dead_letter.jsonl"
-
-    with accepted_path.open("w", encoding="utf-8") as fh:
-        for evt in accepted_events:
-            fh.write(json.dumps(evt) + "\n")
-
-    with dead_letter_path.open("w", encoding="utf-8") as fh:
-        for r in results:
-            if r.status in ("rejected", "duplicate"):
-                record = {"event": r.event, "status": r.status, "reason": r.reason}
-                fh.write(json.dumps(record) + "\n")
-
     late_events_path = output_dir / "late_events.jsonl"
-    with late_events_path.open("w", encoding="utf-8") as fh:
-        for evt in late_events:
-            fh.write(json.dumps(evt) + "\n")
+
+    _write_text(accepted_path, "".join(json.dumps(evt) + "\n" for evt in accepted_events))
+    _write_text(
+        dead_letter_path,
+        "".join(
+            json.dumps({"event": result.event, "status": result.status, "reason": result.reason})
+            + "\n"
+            for result in results
+            if result.status in ("rejected", "duplicate")
+        ),
+    )
+    _write_text(late_events_path, "".join(json.dumps(evt) + "\n" for evt in late_events))
 
     duration = time.monotonic() - start
-
-    events_accepted = sum(1 for r in results if r.status == "accepted")
-    events_rejected = sum(1 for r in results if r.status == "rejected")
-    events_duplicate = sum(1 for r in results if r.status == "duplicate")
+    events_accepted = sum(1 for result in results if result.status == "accepted")
+    events_rejected = sum(1 for result in results if result.status == "rejected")
+    events_duplicate = sum(1 for result in results if result.status == "duplicate")
 
     summary = StreamSummary(
         pipeline_name=pipeline_name,
@@ -328,8 +277,7 @@ def process_stream(
     )
 
     summary_path = output_dir / "summary.json"
-    with summary_path.open("w", encoding="utf-8") as fh:
-        json.dump(asdict(summary), fh, indent=2)
+    _write_text(summary_path, json.dumps(asdict(summary), indent=2))
 
     logger.info(
         "Pipeline '%s' complete — %d accepted (%d late), %d rejected, %d duplicate (%.3fs)",
@@ -357,5 +305,4 @@ def process_stream(
         },
     )
     summary.manifest_path = str(manifest_path)
-
     return summary
