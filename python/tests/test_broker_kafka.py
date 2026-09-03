@@ -13,7 +13,7 @@ from data_platform_lab.broker import BrokerMessage, EventBroker, KafkaEventBroke
 class FakeMessage:
     def __init__(
         self,
-        value: bytes = b"payload",
+        value: bytes | None = b"payload",
         key: bytes | None = b"key",
         error: object | None = None,
     ) -> None:
@@ -36,15 +36,22 @@ class FakeMessage:
     def key(self) -> bytes | None:
         return self._key
 
-    def value(self) -> bytes:
+    def value(self) -> bytes | None:
         return self._value
 
 
 class FakeProducer:
-    def __init__(self, *, pending: int = 0, failure: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        pending: int = 0,
+        failure: Exception | None = None,
+        flush_failure: Exception | None = None,
+    ) -> None:
         self.calls: list[tuple[str, bytes, bytes | None]] = []
         self.pending = pending
         self.failure = failure
+        self.flush_failure = flush_failure
 
     def produce(self, *, topic: str, value: bytes, key: bytes | None, callback: Any) -> None:
         if self.failure is not None:
@@ -53,15 +60,23 @@ class FakeProducer:
         callback(None, FakeMessage(value=value, key=key))
 
     def flush(self, _timeout: float) -> int:
+        if self.flush_failure is not None:
+            raise self.flush_failure
         return self.pending
 
 
 class FakeConsumer:
-    def __init__(self, message: FakeMessage | None = None) -> None:
+    def __init__(
+        self,
+        message: FakeMessage | None = None,
+        *,
+        close_failure: Exception | None = None,
+    ) -> None:
         self.message = message or FakeMessage()
         self.subscriptions: list[list[str]] = []
         self.commits: list[tuple[list[Any], bool]] = []
         self.closed = False
+        self.close_failure = close_failure
 
     def subscribe(self, topics: list[str]) -> None:
         self.subscriptions.append(topics)
@@ -74,6 +89,8 @@ class FakeConsumer:
 
     def close(self) -> None:
         self.closed = True
+        if self.close_failure is not None:
+            raise self.close_failure
 
 
 def _bare_broker(producer: FakeProducer | None = None) -> KafkaEventBroker:
@@ -112,6 +129,8 @@ def test_kafka_adapter_validates_inputs_without_connecting() -> None:
         KafkaEventBroker.publish(broker, "", b"payload")
     with pytest.raises(TypeError, match="bytes"):
         KafkaEventBroker.publish(broker, "events", "payload")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="key"):
+        KafkaEventBroker.publish(broker, "events", b"payload", "key")  # type: ignore[arg-type]
 
 
 def test_kafka_publish_classifies_client_failure() -> None:
@@ -142,6 +161,30 @@ def test_kafka_consume_classifies_broker_error() -> None:
         broker.consume_one("events", "group")
 
     assert isinstance(error.value.__cause__, RuntimeError)
+
+
+def test_kafka_consume_null_payload_preserves_cause() -> None:
+    broker = _bare_broker()
+    broker._consumer_factory = lambda _config: FakeConsumer(FakeMessage(value=None))
+
+    with pytest.raises(ServiceConnectionError, match="unexpectedly null") as error:
+        broker.consume_one("events", "group")
+
+    assert isinstance(error.value.__cause__, RuntimeError)
+    assert error.value.original_exception is error.value.__cause__
+
+
+def test_kafka_close_preserves_primary_flush_failure() -> None:
+    flush_error = OSError("flush failed")
+    close_error = OSError("close failed")
+    broker = _bare_broker(FakeProducer(flush_failure=flush_error))
+    broker._consumer = FakeConsumer(close_failure=close_error)
+
+    with pytest.raises(ServiceConnectionError, match="flush failed") as error:
+        broker.close()
+
+    assert error.value.__cause__ is flush_error
+    assert broker._consumer is None
 
 
 def test_kafka_acknowledgement_commits_next_offset() -> None:
