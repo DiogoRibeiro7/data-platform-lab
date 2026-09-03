@@ -1,0 +1,79 @@
+name: Platform Recovery
+
+on:
+  push:
+    paths:
+      - "compose.yaml"
+      - "infra/garage/**"
+      - "sql/platform/**"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/**"
+      - ".github/workflows/platform-recovery.yml"
+  pull_request:
+    paths:
+      - "compose.yaml"
+      - "infra/garage/**"
+      - "sql/platform/**"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/**"
+      - ".github/workflows/platform-recovery.yml"
+
+jobs:
+  recovery:
+    name: Kafka + PostgreSQL + Garage + Iceberg recovery
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start PostgreSQL and Kafka
+        run: docker compose up -d --wait postgres kafka
+
+      - name: Start Garage
+        run: sh infra/garage/bootstrap.sh
+
+      - name: Create recovery topic
+        run: >-
+          docker compose exec -T kafka
+          /opt/kafka/bin/kafka-topics.sh
+          --bootstrap-server localhost:9092
+          --create
+          --if-not-exists
+          --topic data-platform-lab-recovery-smoke
+          --partitions 1
+          --replication-factor 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Install Python dependencies
+        working-directory: python
+        run: poetry install --no-interaction
+
+      - name: Run injected failure and recovery
+        working-directory: python
+        shell: bash
+        run: |
+          set -a
+          source ../infra/garage/dev.env
+          set +a
+          poetry run data-platform-lab recovery --topic data-platform-lab-recovery-smoke
+
+      - name: Inspect final run metadata
+        run: |
+          docker compose exec -T postgres psql -U data_platform_lab -d data_platform_lab \
+            -c "SELECT pipeline_name, run_id, status, rows_written, files_processed FROM pipeline_runs WHERE pipeline_name='broker_to_iceberg';"
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker compose logs postgres
+          docker compose logs garage
+          docker compose logs kafka
+
+      - name: Stop services
+        if: always()
+        run: docker compose down -v

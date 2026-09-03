@@ -9,6 +9,7 @@ from data_platform_lab.benchmark.cli import main as benchmark_main
 from data_platform_lab.broker.cli import main as broker_main
 from data_platform_lab.iceberg.cli import main as iceberg_main
 from data_platform_lab.metadata.cli import main as metadata_main
+from data_platform_lab.recovery.cli import main as recovery_main
 from data_platform_lab.storage.cli import main as storage_main
 from data_platform_lab.streaming.cli import main as streaming_main
 from data_platform_lab.warehouse.cli import main as warehouse_main
@@ -20,6 +21,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "broker": broker_main,
     "iceberg": iceberg_main,
     "metadata": metadata_main,
+    "recovery": recovery_main,
     "storage": storage_main,
     "stream": streaming_main,
     "warehouse": warehouse_main,

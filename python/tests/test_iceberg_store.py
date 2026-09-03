@@ -9,35 +9,61 @@ import pytest
 from data_platform_lab.iceberg import IcebergTableStore
 
 
+class FakeColumn:
+    def __init__(self, values: list[object]) -> None:
+        self._values = values
+
+    def to_pylist(self) -> list[object]:
+        return list(self._values)
+
+
+class FakeSchema:
+    def __init__(self, names: list[str]) -> None:
+        self.names = names
+
+
 class FakeArrowTable:
-    def __init__(self, num_rows: int) -> None:
-        self.num_rows = num_rows
+    def __init__(self, appended: list[Any], available_fields: set[str]) -> None:
+        self._appended = appended
+        self._available_fields = available_fields
+        self.num_rows = sum(int(getattr(payload, "num_rows", 0)) for payload in appended)
+
+    def column(self, field_name: str) -> FakeColumn:
+        if field_name not in self._available_fields:
+            raise KeyError(field_name)
+        values: list[object] = []
+        for payload in self._appended:
+            values.extend(getattr(payload, "values", {}).get(field_name, []))
+        return FakeColumn(values)
 
 
 class FakePayload:
-    def __init__(self, num_rows: int) -> None:
+    def __init__(self, num_rows: int, values: dict[str, list[object]] | None = None) -> None:
         self.num_rows = num_rows
+        self.values = values or {}
 
 
 class FakeScan:
-    def __init__(self, appended: list[Any]) -> None:
+    def __init__(self, appended: list[Any], available_fields: set[str]) -> None:
         self._appended = appended
+        self._available_fields = available_fields
 
     def to_arrow(self) -> FakeArrowTable:
-        return FakeArrowTable(
-            sum(int(getattr(payload, "num_rows", 0)) for payload in self._appended)
-        )
+        return FakeArrowTable(self._appended, self._available_fields)
 
 
 class FakeTable:
-    def __init__(self) -> None:
+    def __init__(self, available_fields: set[str] | None = None) -> None:
         self.appended: list[Any] = []
+        self.available_fields = available_fields or set()
 
     def append(self, table_data: Any) -> None:
+        # Appending payloads does not evolve an existing Iceberg table schema.
         self.appended.append(table_data)
 
-    def scan(self) -> FakeScan:
-        return FakeScan(self.appended)
+    def scan(self, selected_fields: tuple[str, ...] | None = None) -> FakeScan:
+        fields = set(selected_fields) if selected_fields is not None else set(self.available_fields)
+        return FakeScan(self.appended, fields & self.available_fields)
 
 
 class FakeCatalog:
@@ -50,8 +76,8 @@ class FakeCatalog:
             self.namespaces.append(namespace)
 
     def create_table_if_not_exists(self, identifier: str, schema: Any) -> FakeTable:
-        del schema
-        return self.tables.setdefault(identifier, FakeTable())
+        names = getattr(schema, "names", [])
+        return self.tables.setdefault(identifier, FakeTable(set(names)))
 
     def load_table(self, identifier: str) -> FakeTable:
         return self.tables[identifier]
@@ -89,6 +115,40 @@ def test_iceberg_store_append_and_scan_reflects_appended_rows() -> None:
 
     assert catalog.tables["analytics.events"].appended == [first, second]
     assert store.row_count("analytics.events") == 3
+
+
+def test_iceberg_store_reconciles_by_ingestion_id() -> None:
+    catalog = FakeCatalog()
+    store = IcebergTableStore(catalog)
+    store.ensure_table("analytics.events", FakeSchema(["ingestion_id"]))
+    store.append(
+        "analytics.events",
+        FakePayload(1, {"ingestion_id": ["events:0:7"]}),
+    )
+
+    assert store.contains_value("analytics.events", "ingestion_id", "events:0:7")
+    assert not store.contains_value("analytics.events", "ingestion_id", "events:0:8")
+
+
+def test_iceberg_empty_reconciliation_field_returns_false() -> None:
+    catalog = FakeCatalog()
+    store = IcebergTableStore(catalog)
+    store.ensure_table("analytics.events", FakeSchema(["ingestion_id"]))
+
+    assert not store.contains_value("analytics.events", "ingestion_id", "events:0:7")
+
+
+def test_append_does_not_create_missing_reconciliation_field() -> None:
+    catalog = FakeCatalog()
+    store = IcebergTableStore(catalog)
+    store.ensure_table("analytics.events", FakeSchema(["event_id"]))
+    store.append(
+        "analytics.events",
+        FakePayload(1, {"ingestion_id": ["events:0:7"]}),
+    )
+
+    with pytest.raises(ValueError, match="does not contain field"):
+        store.contains_value("analytics.events", "ingestion_id", "events:0:7")
 
 
 @pytest.mark.parametrize(
