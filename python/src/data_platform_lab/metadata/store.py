@@ -19,3 +19,9 @@ class RunStore(Protocol):
 
     def list_recent(self, limit: int = 20) -> list[RunMetadata]:
         """Return recent runs ordered newest first."""
+
+    def acquire_claim(self, pipeline_name: str, run_id: str) -> bool:
+        """Atomically claim one run identity for exclusive processing."""
+
+    def release_claim(self, pipeline_name: str, run_id: str) -> None:
+        """Release a previously acquired processing claim."""
