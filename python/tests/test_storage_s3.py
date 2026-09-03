@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from dataexcept import StorageError
+from dataexcept import DependencyError, StorageError
 
 from data_platform_lab.storage import BlobStore, LocalBlobStore, S3BlobStore
 from data_platform_lab.storage.cli import _build_parser, run_storage_smoke
@@ -106,6 +107,34 @@ def test_s3_get_classifies_backend_read_errors() -> None:
 
     assert isinstance(error.value.__cause__, FakeS3Error)
     assert error.value.operation == "read"
+
+
+def test_s3_key_validation_is_not_wrapped() -> None:
+    store = S3BlobStore(FakeS3Client(), bucket="platform")
+
+    with pytest.raises(ValueError):
+        store.get_bytes("")
+    with pytest.raises(TypeError):
+        store.exists(123)  # type: ignore[arg-type]
+
+
+def test_s3_broken_config_factory_is_dependency_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken_config(**_kwargs: object) -> object:
+        raise TypeError("incompatible Config")
+
+    def fake_import(name: str) -> object:
+        if name == "boto3":
+            return SimpleNamespace(client=lambda *_args, **_kwargs: object())
+        if name == "botocore.config":
+            return SimpleNamespace(Config=broken_config)
+        raise AssertionError(name)
+
+    monkeypatch.setattr("data_platform_lab.storage.s3.import_module", fake_import)
+
+    with pytest.raises(DependencyError, match="Config construction failed") as error:
+        S3BlobStore.from_boto3(bucket="platform")
+
+    assert isinstance(error.value.__cause__, TypeError)
 
 
 def test_storage_smoke_uses_the_common_contract(tmp_path: Path) -> None:
