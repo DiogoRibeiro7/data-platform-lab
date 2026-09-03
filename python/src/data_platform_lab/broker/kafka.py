@@ -55,6 +55,8 @@ class KafkaEventBroker:
             raise ValueError("topic must not be empty")
         if not isinstance(value, bytes):
             raise TypeError("value must be bytes")
+        if key is not None and not isinstance(key, bytes):
+            raise TypeError("key must be bytes or None")
 
         delivery_error: list[Exception] = []
 
@@ -111,10 +113,8 @@ class KafkaEventBroker:
 
         value = message.value()
         if value is None:
-            raise ServiceConnectionError(
-                "Kafka",
-                RuntimeError("Kafka message payload is unexpectedly null"),
-            )
+            payload_error = RuntimeError("Kafka message payload is unexpectedly null")
+            raise ServiceConnectionError("Kafka", payload_error) from payload_error
         return BrokerMessage(
             topic=str(message.topic()),
             partition=int(message.partition()),
@@ -139,12 +139,20 @@ class KafkaEventBroker:
 
     def close(self) -> None:
         """Flush producer state and close any active consumer."""
+        primary_error: Exception | None = None
         try:
             self._producer.flush(10.0)
         except Exception as exc:
-            raise ServiceConnectionError("Kafka", exc) from exc
-        finally:
+            primary_error = exc
+
+        try:
             self._close_consumer()
+        except ServiceConnectionError:
+            if primary_error is None:
+                raise
+
+        if primary_error is not None:
+            raise ServiceConnectionError("Kafka", primary_error) from primary_error
 
     def _close_consumer(self) -> None:
         if self._consumer is not None:
