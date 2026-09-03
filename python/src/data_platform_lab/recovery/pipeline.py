@@ -70,87 +70,92 @@ class RecoverableIngestionPipeline:
         """
         ingestion_id = self.ingestion_id(message)
         raw_key = self.raw_object_key(message)
-        previous = self._run_store.get(_PIPELINE_NAME, ingestion_id)
+        if not self._run_store.acquire_claim(_PIPELINE_NAME, ingestion_id):
+            raise RuntimeError(f"broker position is already being processed: {ingestion_id}")
 
-        if previous is not None and previous.status == "success":
-            self._broker.acknowledge(message)
-            return RecoveryResult(ingestion_id, raw_key, replayed=True, appended=False)
-
-        started_at = datetime.now(UTC)
-        self._run_store.save(
-            RunMetadata(
-                pipeline_name=_PIPELINE_NAME,
-                run_id=ingestion_id,
-                status="running",
-                started_at=started_at.isoformat(),
-                rows_read=1,
-                extra={"raw_object_key": raw_key},
-            )
-        )
-
-        appended = False
-        raw_stored = False
         try:
-            self._blob_store.put_bytes(raw_key, message.value)
-            raw_stored = True
-            event = self._decode_event(message.value)
-            schema, batch = self._arrow_batch(ingestion_id, message, event)
-            self._iceberg_store.ensure_table(self._table_identifier, schema)
+            previous = self._run_store.get(_PIPELINE_NAME, ingestion_id)
+            if previous is not None and previous.status == "success":
+                self._broker.acknowledge(message)
+                return RecoveryResult(ingestion_id, raw_key, replayed=True, appended=False)
 
-            if not self._iceberg_store.contains_value(
-                self._table_identifier, "ingestion_id", ingestion_id
-            ):
-                self._iceberg_store.append(self._table_identifier, batch)
-                appended = True
-
-            if fail_after_iceberg:
-                raise RuntimeError("injected failure after Iceberg commit")
-
-            ended_at = datetime.now(UTC)
+            started_at = datetime.now(UTC)
             self._run_store.save(
                 RunMetadata(
                     pipeline_name=_PIPELINE_NAME,
                     run_id=ingestion_id,
-                    status="success",
+                    status="running",
                     started_at=started_at.isoformat(),
-                    ended_at=ended_at.isoformat(),
-                    duration_seconds=(ended_at - started_at).total_seconds(),
                     rows_read=1,
-                    rows_written=1,
-                    files_processed=1,
-                    extra={
-                        "raw_object_key": raw_key,
-                        "table": self._table_identifier,
-                        "reconciled": not appended,
-                    },
+                    extra={"raw_object_key": raw_key},
                 )
             )
-        except Exception as exc:
-            ended_at = datetime.now(UTC)
-            self._run_store.save(
-                RunMetadata(
-                    pipeline_name=_PIPELINE_NAME,
-                    run_id=ingestion_id,
-                    status="failed",
-                    started_at=started_at.isoformat(),
-                    ended_at=ended_at.isoformat(),
-                    duration_seconds=(ended_at - started_at).total_seconds(),
-                    rows_read=1,
-                    rows_written=1 if appended else 0,
-                    files_processed=1 if raw_stored else 0,
-                    errors=[str(exc)],
-                    extra={"raw_object_key": raw_key, "table": self._table_identifier},
-                )
-            )
-            raise
 
-        self._broker.acknowledge(message)
-        return RecoveryResult(
-            ingestion_id,
-            raw_key,
-            replayed=previous is not None,
-            appended=appended,
-        )
+            appended = False
+            raw_stored = False
+            try:
+                self._blob_store.put_bytes(raw_key, message.value)
+                raw_stored = True
+                event = self._decode_event(message.value)
+                schema, batch = self._arrow_batch(ingestion_id, message, event)
+                self._iceberg_store.ensure_table(self._table_identifier, schema)
+
+                if not self._iceberg_store.contains_value(
+                    self._table_identifier, "ingestion_id", ingestion_id
+                ):
+                    self._iceberg_store.append(self._table_identifier, batch)
+                    appended = True
+
+                if fail_after_iceberg:
+                    raise RuntimeError("injected failure after Iceberg commit")
+
+                ended_at = datetime.now(UTC)
+                self._run_store.save(
+                    RunMetadata(
+                        pipeline_name=_PIPELINE_NAME,
+                        run_id=ingestion_id,
+                        status="success",
+                        started_at=started_at.isoformat(),
+                        ended_at=ended_at.isoformat(),
+                        duration_seconds=(ended_at - started_at).total_seconds(),
+                        rows_read=1,
+                        rows_written=1,
+                        files_processed=1,
+                        extra={
+                            "raw_object_key": raw_key,
+                            "table": self._table_identifier,
+                            "reconciled": not appended,
+                        },
+                    )
+                )
+            except Exception as exc:
+                ended_at = datetime.now(UTC)
+                self._run_store.save(
+                    RunMetadata(
+                        pipeline_name=_PIPELINE_NAME,
+                        run_id=ingestion_id,
+                        status="failed",
+                        started_at=started_at.isoformat(),
+                        ended_at=ended_at.isoformat(),
+                        duration_seconds=(ended_at - started_at).total_seconds(),
+                        rows_read=1,
+                        rows_written=1 if appended else 0,
+                        files_processed=1 if raw_stored else 0,
+                        errors=[str(exc)],
+                        extra={"raw_object_key": raw_key, "table": self._table_identifier},
+                    )
+                )
+                raise
+
+            self._broker.acknowledge(message)
+            return RecoveryResult(
+                ingestion_id,
+                raw_key,
+                replayed=previous is not None,
+                appended=appended,
+            )
+        finally:
+            self._run_store.release_claim(_PIPELINE_NAME, ingestion_id)
 
     @staticmethod
     def _decode_event(payload: bytes) -> dict[str, Any]:
