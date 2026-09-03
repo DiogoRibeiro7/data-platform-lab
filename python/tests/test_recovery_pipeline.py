@@ -25,6 +25,8 @@ class FakeBroker:
 class FakeRunStore:
     def __init__(self) -> None:
         self.runs: dict[tuple[str, str], RunMetadata] = {}
+        self.claims: set[tuple[str, str]] = set()
+        self.deny_claims = False
 
     def save(self, metadata: RunMetadata) -> None:
         self.runs[(metadata.pipeline_name, metadata.run_id)] = metadata
@@ -34,6 +36,16 @@ class FakeRunStore:
 
     def list_recent(self, limit: int = 20) -> list[RunMetadata]:
         return list(self.runs.values())[-limit:]
+
+    def acquire_claim(self, pipeline_name: str, run_id: str) -> bool:
+        claim = (pipeline_name, run_id)
+        if self.deny_claims or claim in self.claims:
+            return False
+        self.claims.add(claim)
+        return True
+
+    def release_claim(self, pipeline_name: str, run_id: str) -> None:
+        self.claims.discard((pipeline_name, run_id))
 
 
 class FakeIcebergStore:
@@ -95,8 +107,10 @@ def test_recovery_pipeline_acknowledges_after_durable_success(tmp_path: Path) ->
     assert result.appended is True
     assert iceberg_store.append_count == 1
     assert broker.acknowledged == [message]
-    assert run_store.get("broker_to_iceberg", result.ingestion_id).status == "success"  # type: ignore[union-attr]
+    metadata = run_store.get("broker_to_iceberg", result.ingestion_id)
+    assert metadata is not None and metadata.status == "success"
     assert (tmp_path / result.raw_object_key).read_bytes() == message.value
+    assert run_store.claims == set()
 
 
 def test_replay_after_iceberg_commit_does_not_duplicate(tmp_path: Path) -> None:
@@ -110,6 +124,7 @@ def test_replay_after_iceberg_commit_does_not_duplicate(tmp_path: Path) -> None:
     assert broker.acknowledged == []
     failed = run_store.get("broker_to_iceberg", "sensor-events:0:7")
     assert failed is not None and failed.status == "failed"
+    assert run_store.claims == set()
 
     result = pipeline.process(message)
 
@@ -119,3 +134,17 @@ def test_replay_after_iceberg_commit_does_not_duplicate(tmp_path: Path) -> None:
     assert broker.acknowledged == [message]
     recovered = run_store.get("broker_to_iceberg", "sensor-events:0:7")
     assert recovered is not None and recovered.status == "success"
+    assert run_store.claims == set()
+
+
+def test_concurrent_processing_is_rejected_before_durable_writes(tmp_path: Path) -> None:
+    pipeline, broker, run_store, iceberg_store = _pipeline(tmp_path)
+    run_store.deny_claims = True
+
+    with pytest.raises(RuntimeError, match="already being processed"):
+        pipeline.process(_message())
+
+    assert run_store.runs == {}
+    assert iceberg_store.append_count == 0
+    assert broker.acknowledged == []
+    assert list(tmp_path.rglob("*")) == []
