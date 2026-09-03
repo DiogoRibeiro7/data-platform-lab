@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from importlib import import_module
-from typing import Any
+from typing import Any, cast
 
 from data_platform_lab.broker.store import BrokerMessage
+
+Factory = Callable[..., Any]
 
 
 class KafkaEventBroker:
@@ -20,20 +23,21 @@ class KafkaEventBroker:
         except ModuleNotFoundError as exc:
             raise RuntimeError("confluent-kafka is required for Kafka broker support") from exc
 
-        producer_factory = getattr(kafka, "Producer", None)
-        consumer_factory = getattr(kafka, "Consumer", None)
-        topic_partition_factory = getattr(kafka, "TopicPartition", None)
+        producer_candidate = getattr(kafka, "Producer", None)
+        consumer_candidate = getattr(kafka, "Consumer", None)
+        topic_partition_candidate = getattr(kafka, "TopicPartition", None)
         if not all(
             callable(factory)
-            for factory in (producer_factory, consumer_factory, topic_partition_factory)
+            for factory in (producer_candidate, consumer_candidate, topic_partition_candidate)
         ):
             raise RuntimeError(
                 "confluent-kafka does not expose Producer, Consumer, and TopicPartition"
             )
 
+        producer_factory = cast(Factory, producer_candidate)
+        self._consumer_factory = cast(Factory, consumer_candidate)
+        self._topic_partition_factory = cast(Factory, topic_partition_candidate)
         self._producer = producer_factory({"bootstrap.servers": bootstrap_servers})
-        self._consumer_factory = consumer_factory
-        self._topic_partition_factory = topic_partition_factory
         self._bootstrap_servers = bootstrap_servers
         self._consumer: Any | None = None
 
