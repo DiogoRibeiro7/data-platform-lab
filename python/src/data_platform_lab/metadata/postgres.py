@@ -6,33 +6,26 @@ import json
 from importlib import import_module
 from typing import Any, Protocol, cast
 
+from dataexcept import (
+    DatabaseConnectionError,
+    DependencyError,
+    QueryExecutionError,
+    TransactionError,
+)
+
 from data_platform_lab.observability import RunMetadata
 
 
 class Cursor(Protocol):
-    """Minimal cursor operations required by the metadata store."""
-
-    def fetchone(self) -> tuple[Any, ...] | None:
-        """Return one result row, if present."""
-
-    def fetchall(self) -> list[tuple[Any, ...]]:
-        """Return all result rows."""
+    def fetchone(self) -> tuple[Any, ...] | None: ...
+    def fetchall(self) -> list[tuple[Any, ...]]: ...
 
 
 class Connection(Protocol):
-    """Minimal database connection contract used by the adapter."""
-
-    def execute(self, query: str, params: tuple[object, ...] = ()) -> Cursor:
-        """Execute SQL and return a cursor-like result."""
-
-    def commit(self) -> None:
-        """Commit the current transaction."""
-
-    def rollback(self) -> None:
-        """Roll back the current transaction."""
-
-    def close(self) -> None:
-        """Close the connection."""
+    def execute(self, query: str, params: tuple[object, ...] = ()) -> Cursor: ...
+    def commit(self) -> None: ...
+    def rollback(self) -> None: ...
+    def close(self) -> None: ...
 
 
 _COLUMNS = (
@@ -57,40 +50,64 @@ class PostgresRunStore:
     """Persist :class:`RunMetadata` snapshots in PostgreSQL."""
 
     def __init__(self, connection: Connection) -> None:
-        """Create a metadata store using an injected database connection."""
         self._connection = connection
 
     @staticmethod
     def _claim_key(pipeline_name: str, run_id: str) -> str:
-        """Return an unambiguous advisory-lock key for one run identity."""
         return f"{len(pipeline_name)}:{pipeline_name}{len(run_id)}:{run_id}"
 
+    def _execute(self, query: str, params: tuple[object, ...] = ()) -> Cursor:
+        try:
+            return self._connection.execute(query, params)
+        except Exception as exc:
+            raise QueryExecutionError(query, exc) from exc
+
+    def _fetchone(
+        self,
+        query: str,
+        params: tuple[object, ...] = (),
+    ) -> tuple[Any, ...] | None:
+        try:
+            return self._connection.execute(query, params).fetchone()
+        except Exception as exc:
+            raise QueryExecutionError(query, exc) from exc
+
+    def _fetchall(
+        self,
+        query: str,
+        params: tuple[object, ...] = (),
+    ) -> list[tuple[Any, ...]]:
+        try:
+            return self._connection.execute(query, params).fetchall()
+        except Exception as exc:
+            raise QueryExecutionError(query, exc) from exc
+
+    def _commit(self, transaction_id: str) -> None:
+        try:
+            self._connection.commit()
+        except Exception as exc:
+            raise TransactionError(transaction_id, f"Database commit failed: {exc}") from exc
+
+    def _rollback(self, transaction_id: str) -> None:
+        try:
+            self._connection.rollback()
+        except Exception as exc:
+            raise TransactionError(transaction_id, f"Database rollback failed: {exc}") from exc
+
     def acquire_claim(self, pipeline_name: str, run_id: str) -> bool:
-        """Atomically acquire a session-level PostgreSQL advisory lock."""
-        row = self._connection.execute(
-            "SELECT pg_try_advisory_lock(hashtextextended(%s, 0))",
-            (self._claim_key(pipeline_name, run_id),),
-        ).fetchone()
+        query = "SELECT pg_try_advisory_lock(hashtextextended(%s, 0))"
+        row = self._fetchone(query, (self._claim_key(pipeline_name, run_id),))
         acquired = bool(row and row[0])
-        # Session-level advisory locks survive transaction boundaries, so close
-        # the SELECT transaction immediately and leave only the claim itself held.
-        self._connection.commit()
+        self._commit(run_id)
         return acquired
 
     def release_claim(self, pipeline_name: str, run_id: str) -> None:
-        """Release the session-level advisory lock for one run identity."""
-        # A failed statement can leave psycopg's transaction aborted. Clear it
-        # before issuing pg_advisory_unlock so claim cleanup cannot be masked by
-        # the earlier database error.
-        self._connection.rollback()
-        self._connection.execute(
-            "SELECT pg_advisory_unlock(hashtextextended(%s, 0))",
-            (self._claim_key(pipeline_name, run_id),),
-        )
-        self._connection.commit()
+        self._rollback(run_id)
+        query = "SELECT pg_advisory_unlock(hashtextextended(%s, 0))"
+        self._execute(query, (self._claim_key(pipeline_name, run_id),))
+        self._commit(run_id)
 
     def save(self, metadata: RunMetadata) -> None:
-        """Insert or replace one run snapshot by pipeline name and run ID."""
         query = """
         INSERT INTO pipeline_runs (
             pipeline_name, run_id, status, started_at, ended_at, duration_seconds,
@@ -112,7 +129,7 @@ class PostgresRunStore:
             extra=EXCLUDED.extra,
             updated_at=now()
         """
-        self._connection.execute(
+        self._execute(
             query,
             (
                 metadata.pipeline_name,
@@ -131,61 +148,61 @@ class PostgresRunStore:
                 json.dumps(metadata.extra),
             ),
         )
-        self._connection.commit()
+        self._commit(metadata.run_id)
 
     def get(self, pipeline_name: str, run_id: str) -> RunMetadata | None:
-        """Return one persisted run snapshot, if it exists."""
         query = (
             f"SELECT {', '.join(_COLUMNS)} FROM pipeline_runs WHERE pipeline_name=%s AND run_id=%s"
         )
-        row = self._connection.execute(query, (pipeline_name, run_id)).fetchone()
+        row = self._fetchone(query, (pipeline_name, run_id))
         return self._to_metadata(row) if row is not None else None
 
     def list_recent(self, limit: int = 20) -> list[RunMetadata]:
-        """Return the most recent persisted run snapshots."""
         if not isinstance(limit, int) or isinstance(limit, bool):
             raise TypeError("limit must be an integer")
         if limit < 1:
             raise ValueError("limit must be positive")
-
         query = (
             f"SELECT {', '.join(_COLUMNS)} FROM pipeline_runs "
             "ORDER BY started_at DESC NULLS LAST, recorded_at DESC LIMIT %s"
         )
-        rows = self._connection.execute(query, (limit,)).fetchall()
+        rows = self._fetchall(query, (limit,))
         return [self._to_metadata(row) for row in rows]
 
     def close(self) -> None:
-        """Close the underlying database connection."""
         self._connection.close()
 
     @classmethod
     def connect(cls, dsn: str) -> PostgresRunStore:
-        """Create the adapter from a psycopg DSN."""
         try:
             psycopg = import_module("psycopg")
         except ModuleNotFoundError as exc:
-            raise RuntimeError("psycopg is required for PostgreSQL metadata storage") from exc
-
+            raise DependencyError(
+                "psycopg",
+                "psycopg is required for PostgreSQL metadata storage",
+            ) from exc
         factory = getattr(psycopg, "connect", None)
         if not callable(factory):
-            raise RuntimeError("psycopg installation does not expose connect()")
-        return cls(cast(Connection, factory(dsn)))
+            raise DependencyError("psycopg", "psycopg installation does not expose connect()")
+        try:
+            connection = factory(dsn)
+        except (TypeError, ValueError):
+            raise
+        except Exception as exc:
+            raise DatabaseConnectionError(dsn, f"PostgreSQL connection failed: {exc}") from exc
+        return cls(cast(Connection, connection))
 
     @staticmethod
     def _to_metadata(row: tuple[Any, ...]) -> RunMetadata:
-        """Convert one database row back into the shared RunMetadata model."""
         warnings = row[11] if isinstance(row[11], list) else json.loads(row[11])
         errors = row[12] if isinstance(row[12], list) else json.loads(row[12])
         extra = row[13] if isinstance(row[13], dict) else json.loads(row[13])
-
         started_at = row[3].isoformat() if hasattr(row[3], "isoformat") else str(row[3] or "")
         ended_at = (
             row[4].isoformat()
             if hasattr(row[4], "isoformat")
             else (str(row[4]) if row[4] else None)
         )
-
         return RunMetadata(
             pipeline_name=str(row[0]),
             run_id=str(row[1]),
