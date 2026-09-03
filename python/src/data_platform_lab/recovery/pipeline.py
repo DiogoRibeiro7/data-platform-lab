@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from importlib import import_module
 from typing import Any
 
+from dataexcept import DataValidationError, DependencyError, ParsingError
+
 from data_platform_lab.broker import BrokerMessage, EventBroker
 from data_platform_lab.iceberg import IcebergTableStore
 from data_platform_lab.metadata import RunStore
@@ -163,13 +165,24 @@ class RecoverableIngestionPipeline:
         try:
             decoded = json.loads(payload.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError("broker payload must contain valid UTF-8 JSON") from exc
+            raise ParsingError(
+                "broker payload",
+                "Broker payload must contain valid UTF-8 JSON",
+            ) from exc
         if not isinstance(decoded, dict):
-            raise ValueError("broker payload must decode to a JSON object")
+            raise DataValidationError(
+                "payload",
+                decoded,
+                "Broker payload must decode to a JSON object",
+            )
 
         result = validate_event(decoded)
         if result.status != "accepted":
-            raise ValueError(result.reason or "invalid sensor event")
+            raise DataValidationError(
+                "event",
+                decoded,
+                result.reason or "Invalid sensor event",
+            )
         return decoded
 
     @staticmethod
@@ -182,7 +195,10 @@ class RecoverableIngestionPipeline:
         try:
             pa = import_module("pyarrow")
         except ModuleNotFoundError as exc:
-            raise RuntimeError("PyArrow is required for recovery ingestion") from exc
+            raise DependencyError(
+                "pyarrow",
+                "PyArrow is required for recovery ingestion",
+            ) from exc
 
         schema = pa.schema(
             [
