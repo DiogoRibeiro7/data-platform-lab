@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from dataexcept import DataValidationError, ParsingError
 
 from data_platform_lab.broker import BrokerMessage
 from data_platform_lab.observability import RunMetadata
@@ -68,17 +69,18 @@ class FakeIcebergStore:
         self.append_count += 1
 
 
-def _message() -> BrokerMessage:
-    payload = json.dumps(
-        {
-            "sensor_id": "sensor-1",
-            "type": "temperature",
-            "value": 21.5,
-            "unit": "C",
-            "location": "lab",
-            "timestamp": "2026-09-01T12:00:00+00:00",
-        }
-    ).encode()
+def _message(payload: bytes | None = None) -> BrokerMessage:
+    if payload is None:
+        payload = json.dumps(
+            {
+                "sensor_id": "sensor-1",
+                "type": "temperature",
+                "value": 21.5,
+                "unit": "C",
+                "location": "lab",
+                "timestamp": "2026-09-01T12:00:00+00:00",
+            }
+        ).encode()
     return BrokerMessage("sensor-events", 0, 7, b"sensor-1", payload)
 
 
@@ -135,6 +137,46 @@ def test_replay_after_iceberg_commit_does_not_duplicate(tmp_path: Path) -> None:
     recovered = run_store.get("broker_to_iceberg", "sensor-events:0:7")
     assert recovered is not None and recovered.status == "success"
     assert run_store.claims == set()
+
+
+def test_recovery_pipeline_classifies_malformed_json(tmp_path: Path) -> None:
+    pipeline, broker, run_store, iceberg_store = _pipeline(tmp_path)
+    message = _message(b"{not-json")
+
+    with pytest.raises(ParsingError, match="valid UTF-8 JSON") as error:
+        pipeline.process(message)
+
+    assert error.value.__cause__ is not None
+    assert broker.acknowledged == []
+    assert iceberg_store.append_count == 0
+    failed = run_store.get("broker_to_iceberg", "sensor-events:0:7")
+    assert failed is not None and failed.status == "failed"
+
+
+def test_recovery_pipeline_rejects_non_object_json(tmp_path: Path) -> None:
+    pipeline, broker, run_store, iceberg_store = _pipeline(tmp_path)
+    message = _message(b"[1,2,3]")
+
+    with pytest.raises(DataValidationError, match="JSON object") as error:
+        pipeline.process(message)
+
+    assert error.value.field == "payload"
+    assert error.value.value == [1, 2, 3]
+    assert broker.acknowledged == []
+    assert iceberg_store.append_count == 0
+
+
+def test_recovery_pipeline_classifies_invalid_sensor_event(tmp_path: Path) -> None:
+    pipeline, broker, run_store, iceberg_store = _pipeline(tmp_path)
+    invalid = json.dumps({"sensor_id": "sensor-1"}).encode()
+
+    with pytest.raises(DataValidationError) as error:
+        pipeline.process(_message(invalid))
+
+    assert error.value.field == "event"
+    assert error.value.value == {"sensor_id": "sensor-1"}
+    assert broker.acknowledged == []
+    assert iceberg_store.append_count == 0
 
 
 def test_concurrent_processing_is_rejected_before_durable_writes(tmp_path: Path) -> None:
