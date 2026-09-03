@@ -16,6 +16,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dataexcept import (
+    ApiError,
+    DataValidationError,
+    FileWriteError,
+    ParsingError,
+    ServiceTimeoutError,
+)
+
 from data_platform_lab.manifest import write_manifest
 
 logger = logging.getLogger(__name__)
@@ -37,17 +45,21 @@ class ApiRunResult:
     manifest_path: str = ""
 
 
+def _is_timeout(exc: BaseException) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
+    if isinstance(exc, urllib.error.URLError):
+        return isinstance(exc.reason, TimeoutError) or "timed out" in str(exc.reason).lower()
+    return "timed out" in str(exc).lower()
+
+
 def fetch_page(
     base_url: str,
     offset: int = 0,
     limit: int = 10,
     timeout: int = 10,
 ) -> list[dict[str, Any]]:
-    """Fetch a single page from the API. Returns parsed JSON list.
-
-    Raises urllib.error.URLError on network failure, TimeoutError on timeout,
-    ValueError on non-JSON response.
-    """
+    """Fetch one page and classify external failures with DataExcept."""
     separator = "&" if "?" in base_url else "?"
     url = f"{base_url}{separator}_start={offset}&_limit={limit}"
     logger.debug("Fetching %s", url)
@@ -60,8 +72,8 @@ def fetch_page(
             with urllib.request.urlopen(url, timeout=timeout) as resp:
                 raw = resp.read()
             break
-        except urllib.error.HTTPError:
-            raise
+        except urllib.error.HTTPError as exc:
+            raise ApiError(url, exc.code, f"HTTP request failed with status {exc.code}") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last_exception = exc
             if attempt < max_retries:
@@ -72,24 +84,30 @@ def fetch_page(
                     exc,
                 )
                 time.sleep(1)
-            else:
-                if isinstance(exc, (TimeoutError, OSError)) and "timed out" in str(exc):
-                    raise TimeoutError(str(exc)) from exc
-                raise
+                continue
+            if _is_timeout(exc):
+                raise ServiceTimeoutError("HTTP API", float(timeout)) from exc
+            raise ApiError(url, message=f"API request failed: {exc}") from exc
     else:
-        # Should not reach here, but satisfy the type checker.
-        msg = "Max retries exceeded"
-        raise urllib.error.URLError(msg) if last_exception is None else last_exception
+        fallback = RuntimeError("API retry loop ended without a result")
+        if last_exception is not None:
+            raise ApiError(url, message=f"API request failed: {last_exception}") from last_exception
+        raise ApiError(url, message=str(fallback)) from fallback
 
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        msg = f"Response is not valid JSON: {raw[:200]!r}"
-        raise ValueError(msg) from exc
+        raise ParsingError(
+            "API response",
+            "Response is not valid JSON",
+        ) from exc
 
     if not isinstance(data, list):
-        msg = f"Expected a JSON array, got {type(data).__name__}"
-        raise ValueError(msg)
+        raise DataValidationError(
+            "response",
+            type(data).__name__,
+            f"Expected API response to be a JSON array, got {type(data).__name__}",
+        )
 
     return data
 
@@ -100,11 +118,7 @@ def fetch_all_pages(
     max_pages: int = 5,
     timeout: int = 10,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Fetch multiple pages with basic pagination.
-
-    Returns (all_records, pages_fetched).
-    Stops when a page returns fewer records than page_size or max_pages reached.
-    """
+    """Fetch multiple pages with basic pagination."""
     all_records: list[dict[str, Any]] = []
     pages_fetched = 0
 
@@ -134,8 +148,8 @@ def transform_posts(
 ) -> list[dict[str, str | int]]:
     """Transform raw post records into a canonical schema.
 
-    Output schema: id, user_id, title, title_length, body_preview (first 100
-    chars), word_count.  Skips records missing required fields.
+    Record-level bad data remains a skip-and-log condition rather than
+    exceptional control flow.
     """
     transformed: list[dict[str, str | int]] = []
 
@@ -172,15 +186,22 @@ def transform_posts(
     return transformed
 
 
+def _write_json(dest: Path, records: object) -> Path:
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(json.dumps(records, indent=2), encoding="utf-8")
+    except OSError as exc:
+        raise FileWriteError(str(dest), exc) from exc
+    return dest
+
+
 def save_raw(
     records: list[dict[str, Any]],
     output_dir: Path,
     run_id: str,
 ) -> Path:
     """Save raw API response as JSON under output_dir/run_id/raw.json."""
-    dest = output_dir / run_id / "raw.json"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(json.dumps(records, indent=2), encoding="utf-8")
+    dest = _write_json(output_dir / run_id / "raw.json", records)
     logger.info("Raw data saved to %s", dest)
     return dest
 
@@ -191,9 +212,7 @@ def save_processed(
     run_id: str,
 ) -> Path:
     """Save processed records as JSON under output_dir/run_id/processed.json."""
-    dest = output_dir / run_id / "processed.json"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(json.dumps(records, indent=2), encoding="utf-8")
+    dest = _write_json(output_dir / run_id / "processed.json", records)
     logger.info("Processed data saved to %s", dest)
     return dest
 
@@ -206,22 +225,13 @@ def run_api_pipeline(
     max_pages: int = 5,
     timeout: int = 10,
 ) -> ApiRunResult:
-    """Run the full API ingestion pipeline.
-
-    1. Generate a timestamped run_id
-    2. Fetch all pages
-    3. Save raw response
-    4. Transform records
-    5. Save processed output
-    6. Return summary
-    """
+    """Run the full API ingestion pipeline."""
     start = time.monotonic()
     run_id = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
     errors: list[str] = []
 
     logger.info("Starting API pipeline run %s against %s", run_id, base_url)
 
-    # --- Fetch ---
     try:
         raw_records, pages_fetched = fetch_all_pages(
             base_url,
@@ -246,13 +256,8 @@ def run_api_pipeline(
             duration_seconds=round(duration, 3),
         )
 
-    # --- Save raw ---
     raw_path = save_raw(raw_records, raw_dir, run_id)
-
-    # --- Transform ---
     processed = transform_posts(raw_records)
-
-    # --- Save processed ---
     processed_path = save_processed(processed, processed_dir, run_id)
 
     duration = time.monotonic() - start

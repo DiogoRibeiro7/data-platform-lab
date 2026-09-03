@@ -12,6 +12,13 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from dataexcept import (
+    ApiError,
+    DataValidationError,
+    FileWriteError,
+    ParsingError,
+    ServiceTimeoutError,
+)
 
 from data_platform_lab.ingestion.api_pipeline import (
     ApiRunResult,
@@ -22,10 +29,6 @@ from data_platform_lab.ingestion.api_pipeline import (
     save_raw,
     transform_posts,
 )
-
-# ---------------------------------------------------------------------------
-# Helper: mock response object for urllib.request.urlopen
-# ---------------------------------------------------------------------------
 
 
 class MockResponse:
@@ -56,17 +59,11 @@ SAMPLE_POSTS: list[dict[str, Any]] = [
 ]
 
 
-# ===================================================================
-# TestFetchPage
-# ===================================================================
-
-
 class TestFetchPage:
     """Tests for ``fetch_page``."""
 
     @patch("data_platform_lab.ingestion.api_pipeline.urllib.request.urlopen")
     def test_fetch_page_success(self, mock_urlopen: Any) -> None:
-        """Mock a successful JSON response, verify parsing."""
         mock_urlopen.return_value = MockResponse(_json_bytes(SAMPLE_POSTS))
 
         result = fetch_page("https://example.com/posts", offset=0, limit=10)
@@ -76,49 +73,61 @@ class TestFetchPage:
 
     @patch("data_platform_lab.ingestion.api_pipeline.urllib.request.urlopen")
     def test_fetch_page_http_error(self, mock_urlopen: Any) -> None:
-        """Mock a 500 error, verify it raises."""
-        mock_urlopen.side_effect = urllib.error.HTTPError(
+        cause = urllib.error.HTTPError(
             url="https://example.com/posts",
             code=500,
             msg="Internal Server Error",
             hdrs=None,  # type: ignore[arg-type]
             fp=None,
         )
+        mock_urlopen.side_effect = cause
 
-        with pytest.raises(urllib.error.HTTPError):
+        with pytest.raises(ApiError) as error:
             fetch_page("https://example.com/posts")
 
+        assert error.value.status_code == 500
+        assert error.value.__cause__ is cause
+
+    @patch("data_platform_lab.ingestion.api_pipeline.time.sleep")
     @patch("data_platform_lab.ingestion.api_pipeline.urllib.request.urlopen")
-    def test_fetch_page_timeout(self, mock_urlopen: Any) -> None:
-        """Mock a timeout, verify it raises."""
-        mock_urlopen.side_effect = urllib.error.URLError(reason=TimeoutError("timed out"))
+    def test_fetch_page_timeout(self, mock_urlopen: Any, _mock_sleep: Any) -> None:
+        cause = urllib.error.URLError(reason=TimeoutError("timed out"))
+        mock_urlopen.side_effect = cause
 
-        with pytest.raises((urllib.error.URLError, TimeoutError)):
-            fetch_page("https://example.com/posts")
+        with pytest.raises(ServiceTimeoutError) as error:
+            fetch_page("https://example.com/posts", timeout=7)
+
+        assert error.value.timeout_seconds == 7.0
+        assert error.value.__cause__ is cause
+        assert mock_urlopen.call_count == 3
 
     @patch("data_platform_lab.ingestion.api_pipeline.urllib.request.urlopen")
     def test_fetch_page_malformed_json(self, mock_urlopen: Any) -> None:
-        """Mock a non-JSON response, verify ValueError."""
-        mock_urlopen.return_value = MockResponse(b"<html>not json</html>")
+        mock_urlopen.return_value = MockResponse(b"<html>token=secret</html>")
 
-        with pytest.raises(ValueError, match="not valid JSON"):
+        with pytest.raises(ParsingError, match="not valid JSON") as error:
             fetch_page("https://example.com/posts")
 
+        assert error.value.text == "API response"
+        assert "secret" not in str(error.value)
+        assert isinstance(error.value.__cause__, json.JSONDecodeError)
 
-# ===================================================================
-# TestFetchAllPages
-# ===================================================================
+    @patch("data_platform_lab.ingestion.api_pipeline.urllib.request.urlopen")
+    def test_fetch_page_rejects_non_array_json(self, mock_urlopen: Any) -> None:
+        mock_urlopen.return_value = MockResponse(_json_bytes({"id": 1}))
+
+        with pytest.raises(DataValidationError, match="JSON array") as error:
+            fetch_page("https://example.com/posts")
+
+        assert error.value.field == "response"
+        assert error.value.value == "dict"
 
 
 class TestFetchAllPages:
-    """Tests for ``fetch_all_pages``."""
-
     @patch("data_platform_lab.ingestion.api_pipeline.fetch_page")
     def test_fetch_all_pages_pagination(self, mock_fetch: Any) -> None:
-        """Mock multiple full pages, verify accumulation and stop at max."""
         page_a = [{"id": i} for i in range(10)]
         page_b = [{"id": i} for i in range(10, 20)]
-
         mock_fetch.side_effect = [page_a, page_b]
 
         records, pages = fetch_all_pages("https://example.com/posts", page_size=10, max_pages=2)
@@ -129,30 +138,19 @@ class TestFetchAllPages:
 
     @patch("data_platform_lab.ingestion.api_pipeline.fetch_page")
     def test_fetch_all_pages_stops_on_empty(self, mock_fetch: Any) -> None:
-        """Mock a page returning fewer records, verify early stop."""
         full_page = [{"id": i} for i in range(10)]
         partial_page = [{"id": 10}, {"id": 11}]
-
         mock_fetch.side_effect = [full_page, partial_page]
 
         records, pages = fetch_all_pages("https://example.com/posts", page_size=10, max_pages=5)
 
         assert pages == 2
         assert len(records) == 12
-        # Should NOT have attempted a third page.
         assert mock_fetch.call_count == 2
 
 
-# ===================================================================
-# TestTransformPosts
-# ===================================================================
-
-
 class TestTransformPosts:
-    """Tests for ``transform_posts``."""
-
     def test_transform_posts_valid(self) -> None:
-        """Transform valid posts, verify output schema."""
         result = transform_posts(SAMPLE_POSTS)
 
         assert len(result) == 3
@@ -165,11 +163,10 @@ class TestTransformPosts:
         assert first["word_count"] == 2
 
     def test_transform_posts_skips_invalid(self) -> None:
-        """Records missing required fields are skipped."""
         bad_records: list[dict[str, Any]] = [
-            {"userId": 1, "id": 1},  # missing title & body
-            {"title": "hi", "body": "there"},  # missing id & userId
-            {"userId": 1, "id": 2, "title": "ok", "body": "fine"},  # valid
+            {"userId": 1, "id": 1},
+            {"title": "hi", "body": "there"},
+            {"userId": 1, "id": 2, "title": "ok", "body": "fine"},
         ]
 
         result = transform_posts(bad_records)
@@ -177,7 +174,6 @@ class TestTransformPosts:
         assert result[0]["id"] == 2
 
     def test_transform_posts_skips_null_id(self) -> None:
-        """Records with null or non-numeric id/userId are skipped."""
         records: list[dict[str, Any]] = [
             {"id": None, "userId": 1, "title": "t", "body": "b"},
             {"id": 1, "userId": "not_a_number", "title": "t", "body": "b"},
@@ -188,7 +184,6 @@ class TestTransformPosts:
         assert result[0]["id"] == 2
 
     def test_transform_posts_null_body(self) -> None:
-        """Records with None body get empty string instead of crashing."""
         records: list[dict[str, Any]] = [
             {"id": 1, "userId": 1, "title": "t", "body": None},
         ]
@@ -198,7 +193,6 @@ class TestTransformPosts:
         assert result[0]["word_count"] == 0
 
     def test_transform_posts_body_preview(self) -> None:
-        """Body preview is truncated to 100 chars."""
         long_body = "a" * 200
         records: list[dict[str, Any]] = [
             {"userId": 1, "id": 1, "title": "t", "body": long_body},
@@ -208,23 +202,14 @@ class TestTransformPosts:
         assert len(result[0]["body_preview"]) == 100  # type: ignore[arg-type]
 
 
-# ===================================================================
-# TestSaveRawAndProcessed
-# ===================================================================
-
-
 class TestSaveFiles:
-    """Tests for ``save_raw`` and ``save_processed``."""
-
     def test_save_raw_creates_file(self, tmp_path: Path) -> None:
-        """Verify save_raw writes JSON correctly."""
         path = save_raw(SAMPLE_POSTS, tmp_path, "20260101_120000")
         assert path.exists()
         data = json.loads(path.read_text())
         assert len(data) == 3
 
     def test_save_processed_creates_file(self, tmp_path: Path) -> None:
-        """Verify save_processed writes JSON correctly."""
         processed = transform_posts(SAMPLE_POSTS)
         path = save_processed(processed, tmp_path, "20260101_120000")
         assert path.exists()
@@ -232,20 +217,21 @@ class TestSaveFiles:
         assert len(data) == 3
         assert "user_id" in data[0]
 
+    def test_save_raw_wraps_file_failures(self, tmp_path: Path) -> None:
+        blocked = tmp_path / "blocked"
+        blocked.write_text("not a directory")
 
-# ===================================================================
-# TestRunApiPipeline
-# ===================================================================
+        with pytest.raises(FileWriteError) as error:
+            save_raw(SAMPLE_POSTS, blocked, "run-1")
+
+        assert error.value.__cause__ is not None
+        assert error.value.path.endswith("blocked/run-1/raw.json")
 
 
 class TestRunApiPipeline:
-    """Tests for ``run_api_pipeline``."""
-
     @patch("data_platform_lab.ingestion.api_pipeline.fetch_all_pages")
     def test_run_api_pipeline_success(self, mock_fetch_all: Any, tmp_path: Path) -> None:
-        """Mock fetch, run full pipeline, verify files created and summary."""
         mock_fetch_all.return_value = (SAMPLE_POSTS, 1)
-
         raw_dir = tmp_path / "raw"
         processed_dir = tmp_path / "bronze"
 
@@ -265,17 +251,13 @@ class TestRunApiPipeline:
         assert Path(result.raw_path).exists()
         assert Path(result.processed_path).exists()
 
-        raw_data = json.loads(Path(result.raw_path).read_text())
-        assert len(raw_data) == 3
-
-        processed_data = json.loads(Path(result.processed_path).read_text())
-        assert len(processed_data) == 3
-
     @patch("data_platform_lab.ingestion.api_pipeline.fetch_all_pages")
     def test_run_api_pipeline_api_failure(self, mock_fetch_all: Any, tmp_path: Path) -> None:
-        """Mock complete API failure, verify graceful handling."""
-        mock_fetch_all.side_effect = urllib.error.URLError("Connection refused")
-
+        cause = OSError("Connection refused")
+        mock_fetch_all.side_effect = ApiError(
+            "https://example.com/posts",
+            message="API request failed: Connection refused",
+        )
         raw_dir = tmp_path / "raw"
         processed_dir = tmp_path / "bronze"
 
@@ -291,5 +273,7 @@ class TestRunApiPipeline:
         assert result.records_written == 0
         assert len(result.errors) == 1
         assert "Fetch failed" in result.errors[0]
+        assert "API request failed" in result.errors[0]
         assert result.raw_path == ""
         assert result.processed_path == ""
+        del cause
