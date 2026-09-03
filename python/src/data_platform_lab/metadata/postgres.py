@@ -57,6 +57,26 @@ class PostgresRunStore:
         """Create a metadata store using an injected database connection."""
         self._connection = connection
 
+    @staticmethod
+    def _claim_key(pipeline_name: str, run_id: str) -> str:
+        """Return the stable advisory-lock key for one run identity."""
+        return f"{pipeline_name}:{run_id}"
+
+    def acquire_claim(self, pipeline_name: str, run_id: str) -> bool:
+        """Atomically acquire a session-level PostgreSQL advisory lock."""
+        row = self._connection.execute(
+            "SELECT pg_try_advisory_lock(hashtextextended(%s, 0))",
+            (self._claim_key(pipeline_name, run_id),),
+        ).fetchone()
+        return bool(row and row[0])
+
+    def release_claim(self, pipeline_name: str, run_id: str) -> None:
+        """Release the session-level advisory lock for one run identity."""
+        self._connection.execute(
+            "SELECT pg_advisory_unlock(hashtextextended(%s, 0))",
+            (self._claim_key(pipeline_name, run_id),),
+        )
+
     def save(self, metadata: RunMetadata) -> None:
         """Insert or replace one run snapshot by pipeline name and run ID."""
         query = """
