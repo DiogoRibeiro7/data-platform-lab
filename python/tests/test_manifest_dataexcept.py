@@ -27,12 +27,25 @@ def test_read_manifest_classifies_malformed_json_without_retaining_payload(
     secret = "token=SUPERSECRET"
     path.write_text("{" + secret, encoding="utf-8")
 
-    with pytest.raises(ParsingError, match="valid JSON") as error:
+    with pytest.raises(ParsingError, match="valid UTF-8 JSON") as error:
         read_manifest(path)
 
     assert error.value.text == "manifest JSON"
     assert secret not in str(error.value)
     assert isinstance(error.value.__cause__, Exception)
+
+
+def test_read_manifest_classifies_invalid_utf8_without_retaining_payload(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "bad-utf8.json"
+    path.write_bytes(b"{\xff\xfe}")
+
+    with pytest.raises(ParsingError, match="valid UTF-8 JSON") as error:
+        read_manifest(path)
+
+    assert error.value.text == "manifest JSON"
+    assert isinstance(error.value.__cause__, UnicodeDecodeError)
 
 
 def test_read_manifest_rejects_non_object_json(tmp_path: Path) -> None:
