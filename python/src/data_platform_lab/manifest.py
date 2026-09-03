@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dataexcept import DataValidationError, FileReadError, FileWriteError, ParsingError
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,38 +37,8 @@ def write_manifest(
     extras: dict[str, Any] | None = None,
     manifest_dir: str | Path = "data/manifests",
 ) -> Path:
-    """Write a manifest JSON file following platform conventions.
-
-    Parameters
-    ----------
-    pipeline_name : str
-        Which pipeline created this output.
-    run_id : str
-        Unique run identifier.
-    source : str or list[str]
-        Input path(s) or URL(s).
-    output : str or list[str]
-        Output path(s).
-    row_count : int
-        Number of rows/events in the primary output.
-    status : str
-        ``"success"`` or ``"failed"``.
-    schema_hint : list[str] or None
-        Column names or top-level keys in the output.
-    warnings : list[str] or None
-        Any warnings produced during the run.
-    extras : dict or None
-        Additional pipeline-specific metadata.
-    manifest_dir : str or Path
-        Directory to write the manifest file to.
-
-    Returns
-    -------
-    Path
-        Path to the written manifest file.
-    """
+    """Write a manifest JSON file following platform conventions."""
     manifest_dir = Path(manifest_dir)
-    manifest_dir.mkdir(parents=True, exist_ok=True)
 
     manifest: dict[str, Any] = {
         "pipeline_name": pipeline_name,
@@ -86,18 +58,38 @@ def write_manifest(
         manifest.update(extras)
 
     file_path = manifest_dir / f"{pipeline_name}_{run_id}.json"
-    with file_path.open("w", encoding="utf-8") as fh:
-        json.dump(manifest, fh, indent=2)
+    try:
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        with file_path.open("w", encoding="utf-8") as fh:
+            json.dump(manifest, fh, indent=2)
+    except OSError as exc:
+        raise FileWriteError(str(file_path), exc) from exc
 
     logger.info("Manifest written to %s", file_path)
     return file_path
 
 
 def read_manifest(path: str | Path) -> dict[str, Any]:
-    """Read and parse a manifest JSON file."""
+    """Read and parse a manifest JSON object."""
     path = Path(path)
-    with path.open(encoding="utf-8") as fh:
-        data: dict[str, Any] = json.load(fh)
+    try:
+        with path.open(encoding="utf-8") as fh:
+            try:
+                data = json.load(fh)
+            except json.JSONDecodeError as exc:
+                raise ParsingError(
+                    "manifest JSON",
+                    "Manifest file does not contain valid JSON",
+                ) from exc
+    except OSError as exc:
+        raise FileReadError(str(path), exc) from exc
+
+    if not isinstance(data, dict):
+        raise DataValidationError(
+            "manifest",
+            type(data).__name__,
+            "Manifest JSON must decode to an object",
+        )
     return data
 
 
