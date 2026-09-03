@@ -76,10 +76,10 @@ def read_manifest(path: str | Path) -> dict[str, Any]:
         with path.open(encoding="utf-8") as fh:
             try:
                 data = json.load(fh)
-            except json.JSONDecodeError as exc:
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise ParsingError(
                     "manifest JSON",
-                    "Manifest file does not contain valid JSON",
+                    "Manifest file does not contain valid UTF-8 JSON",
                 ) from exc
     except OSError as exc:
         raise FileReadError(str(path), exc) from exc
