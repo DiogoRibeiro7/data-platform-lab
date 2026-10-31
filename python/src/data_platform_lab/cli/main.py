@@ -8,6 +8,7 @@ from collections.abc import Callable
 from data_platform_lab.benchmark.cli import main as benchmark_main
 from data_platform_lab.broker.cli import main as broker_main
 from data_platform_lab.iceberg.cli import main as iceberg_main
+from data_platform_lab.ingestion.registry_cli import main as registry_ingest_main
 from data_platform_lab.metadata.cli import main as metadata_main
 from data_platform_lab.recovery.cli import main as recovery_main
 from data_platform_lab.storage.cli import main as storage_main
@@ -22,6 +23,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "iceberg": iceberg_main,
     "metadata": metadata_main,
     "recovery": recovery_main,
+    "registry-ingest": registry_ingest_main,
     "storage": storage_main,
     "stream": streaming_main,
     "warehouse": warehouse_main,
