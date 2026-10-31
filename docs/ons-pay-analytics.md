@@ -127,3 +127,8 @@ read into memory. Curation is single-writer and locally materialized; it is not
 yet a distributed or transactional lakehouse. A later slice can introduce
 streamed reads, destination abstraction, orchestration, model contracts, and
 an API or database serving layer without changing the canonical registry.
+
+The next, provider-neutral slice now provides a
+[read-only HTTP serving contract](ons-pay-serving.md) for the two Gold Parquet
+tables, with explicit registry/source pins and verification against curation
+receipts. It does not select a hosted database.
