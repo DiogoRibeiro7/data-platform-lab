@@ -77,8 +77,8 @@ jobs:
           key: py-venv-${{ runner.os }}-${{ hashFiles('python/pyproject.toml') }}
           restore-keys: py-venv-${{ runner.os }}-
 
-      - name: Install dependencies
-        run: poetry install --no-interaction
+      - name: Install dependencies with optional analytics models
+        run: poetry install --no-interaction --extras analytics
 
       - name: Run tests
         run: poetry run pytest

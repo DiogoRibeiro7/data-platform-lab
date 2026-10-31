@@ -17,6 +17,16 @@ Quick reference for every exercise in the repository. See the
 | 06 | [Orchestration Runner](06-orchestration-runner.md) | Orchestration | Advanced | Done | Done | — | 04 |
 | 07 | [Observability](07-observability.md) | Observability | Advanced | Done | Done | — | 06 |
 
+### Canonical data platform integration
+
+- [Registry ingestion](registry-handoff-ingestion.md) verifies pinned source
+  bytes into a local or S3-compatible object store, with run receipts.
+- [ONS pay analytics](ons-pay-analytics.md) consumes those receipts, gates
+  source quality, and writes typed DuckDB/Parquet Silver/Gold datasets.
+
+These Python-only integrations are kept distinct from the cross-language
+educational exercises and their legacy counts below.
+
 ### SQL-only exercises
 
 The `sql/` directory contains standalone exercises that do not have Python or
