@@ -86,10 +86,35 @@ See [S3-compatible object storage](docs/s3-object-storage.md) for architecture a
 
 Supporting platform capabilities include SQLite warehouse ELT, config precedence, shared manifests, a unified CLI, local and S3-compatible object-store adapters, and live S3 integration checks.
 
+## Canonical registry ingestion
+
+The Python platform can now consume the v1 SHA-pinned handoff emitted by
+[`DiogoRibeiro7/data`](https://github.com/DiogoRibeiro7/data) without committing
+source payloads or selecting a database provider. With an exact Git checkout
+of the registry and its JSON handoff manifest:
+
+```bash
+cd python
+data-platform-lab registry-ingest \
+  --manifest ../data/manifests/canonical-handoff.json \
+  --registry-root /path/to/pinned/data-checkout \
+  --backend local \
+  --root ../data/object-store \
+  --receipt-dir ../data/manifests
+```
+
+The command verifies the checkout commit, source SHA-256, and destination
+contents, then writes a lineage receipt. Repeating it reuses identical objects;
+corrupt objects stop the run. The same workflow can target the existing S3
+adapter via `--backend s3` when a supplier is chosen. See
+[canonical ingestion guide](docs/registry-handoff-ingestion.md) for a complete
+handoff generation example, limitations, and tests.
+
 ## Unified CLI
 
 ```text
 data-platform-lab benchmark ...
+data-platform-lab registry-ingest ...
 data-platform-lab storage ...
 data-platform-lab stream ...
 data-platform-lab warehouse ...

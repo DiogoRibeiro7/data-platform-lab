@@ -73,7 +73,9 @@ data/gold/*
 data/staging/*
 data/checkpoints/*
 data/manifests/*
+data/object-store/
 python/data/manifests/*
+python/data/object-store/
 javascript/data/manifests/*
 !data/raw/.gitkeep
 !data/bronze/.gitkeep
