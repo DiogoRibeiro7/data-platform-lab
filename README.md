@@ -110,10 +110,34 @@ adapter via `--backend s3` when a supplier is chosen. See
 [canonical ingestion guide](docs/registry-handoff-ingestion.md) for a complete
 handoff generation example, limitations, and tests.
 
+## DuckDB/Parquet analytical layer
+
+The first curated consumer uses the approved ONS gross median weekly pay
+dataset. It conserves suppressed/unavailable values, validates source grain and
+confidence intervals, and materializes a typed Silver table plus two Gold
+tables (unweighted geography-year distributions and nominal local-authority
+year-on-year changes). Every Parquet output is tied to the input's source hash,
+Git commit, and a versioned SQL model.
+
+```bash
+cd python
+poetry install --extras analytics
+poetry run data-platform-lab ons-pay-curate \
+  --receipt ../data/manifests/registry_handoff_ingestion_<run-id>.json \
+  --object-root ../data/object-store \
+  --output-root ../data
+```
+
+See [the ONS pay analytical walkthrough](docs/ons-pay-analytics.md) for the
+lineage, SQL models, quality gates, actual ONS data coverage, and limitations.
+The core platform does not require DuckDB unless the optional analytics extra
+or this command is used.
+
 ## Unified CLI
 
 ```text
 data-platform-lab benchmark ...
+data-platform-lab ons-pay-curate ...
 data-platform-lab registry-ingest ...
 data-platform-lab storage ...
 data-platform-lab stream ...
