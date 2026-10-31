@@ -151,11 +151,34 @@ See [the serving API contract](docs/ons-pay-serving.md) for endpoints,
 filters, pagination, integrity and safety boundaries, and offline tests.
 It requires no hosted database and binds to loopback by default (no auth).
 
+## Pinned refresh and historical backfill
+
+The ONS pay pipeline now has a single machine-invokable refresh command. It
+checks upstream retrieval age against an optional SLA, verifies a canonical
+handoff against its exact Git checkout, ingests the immutable raw object,
+curates the Silver/Gold Parquet tables, and writes a success/failure audit.
+Repeat `--source` pairs to backfill historical snapshots; reruns check and
+reuse previously published outputs without changing the serving API's pins.
+
+```bash
+cd python
+poetry install --extras serving
+poetry run data-platform-lab ons-pay-refresh \
+  --source ../data/manifests/ons-handoff.json /path/to/pinned/data-checkout \
+  --object-root ../data/object-store --output-root ../data
+```
+
+See [the refresh and backfill guide](docs/ons-pay-refresh.md) for the read-only
+dry run, freshness SLA, batch recovery, audit schema, and limits. Source
+discovery and scheduling remain explicit rather than silently switching to
+a floating dataset version.
+
 ## Unified CLI
 
 ```text
 data-platform-lab benchmark ...
 data-platform-lab ons-pay-curate ...
+data-platform-lab ons-pay-refresh ...
 data-platform-lab ons-pay-serve ...
 data-platform-lab registry-ingest ...
 data-platform-lab storage ...

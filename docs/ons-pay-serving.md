@@ -11,6 +11,8 @@ Complete [registry ingestion](registry-handoff-ingestion.md) and
 [ONS pay curation](ons-pay-analytics.md) first. The curation output must have
 an `ons_pay_curation_<run-id>.json` receipt under `data/manifests/` and three
 Silver/Gold Parquet files in their versioned directories.
+You can run both upstream steps together through the
+[pinned refresh/backfill command](ons-pay-refresh.md) without changing the API.
 
 ```bash
 cd python

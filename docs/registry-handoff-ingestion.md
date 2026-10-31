@@ -112,9 +112,11 @@ demo. The receipt preserves the `s3://` destination address and source lineage.
 - **Single writer:** A series of objects is not a transaction across stores.
   Parallel workers, concurrent publish coordination, and cleanup of failed
   remote writes need a durable claim/store policy before production use.
-- **No transform yet:** This preserves approved Bronze inputs. DuckDB/dbt
-  models, quality gates, and analytical serving can consume the verified
-  receipt in the next platform slice, still independently of cloud selection.
+- **Verified downstream models:** The existing
+  [ONS pay Silver/Gold curation](ons-pay-analytics.md),
+  [read-only API](ons-pay-serving.md) and
+  [refresh/backfill orchestration](ons-pay-refresh.md) now consume this receipt
+  without changing the upstream registry or choosing a cloud supplier.
 - **Rights still matter:** Redistribution permission is checked; downstream
   users must keep the source citation and observe the recorded license.
 
