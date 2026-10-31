@@ -133,11 +133,30 @@ lineage, SQL models, quality gates, actual ONS data coverage, and limitations.
 The core platform does not require DuckDB unless the optional analytics extra
 or this command is used.
 
+## Read-only analytical serving API
+
+An optional local FastAPI service exposes those curated Gold Parquet tables
+through a stable, supplier-neutral contract. Clients select a **full registry
+commit and source SHA-256**; the service verifies the published curation receipt
+and output hashes before reading. A safe replay does not create a new vintage.
+
+```bash
+cd python
+poetry install --extras serving
+poetry run data-platform-lab ons-pay-serve --data-root ../data
+# GET http://127.0.0.1:8000/v1/ons-pay/vintages
+```
+
+See [the serving API contract](docs/ons-pay-serving.md) for endpoints,
+filters, pagination, integrity and safety boundaries, and offline tests.
+It requires no hosted database and binds to loopback by default (no auth).
+
 ## Unified CLI
 
 ```text
 data-platform-lab benchmark ...
 data-platform-lab ons-pay-curate ...
+data-platform-lab ons-pay-serve ...
 data-platform-lab registry-ingest ...
 data-platform-lab storage ...
 data-platform-lab stream ...
@@ -160,7 +179,7 @@ The root CLI delegates to the existing workflow CLIs rather than duplicating the
 ```bash
 # Python
 cd python
-poetry install
+poetry install --extras serving
 poetry run pytest
 poetry run ruff check .
 poetry run mypy src/
