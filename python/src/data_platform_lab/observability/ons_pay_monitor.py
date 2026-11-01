@@ -535,6 +535,34 @@ def format_prometheus(report: MonitorReport) -> str:
         "# TYPE dpl_ons_pay_monitor_healthy gauge",
         f"dpl_ons_pay_monitor_healthy{{{label}}} {int(report.status == 'healthy')}",
     ]
+    # A stale last-check timestamp lets scrapers detect stopped schedulers even
+    # when the last completed run reported healthy metrics.
+    checked_at_seconds = int(datetime.fromisoformat(report.checked_at_utc).timestamp())
+    for name, help_text, observed in (
+        (
+            "monitor_checked_at_seconds",
+            "UTC Unix time of the last completed monitoring evaluation.",
+            checked_at_seconds,
+        ),
+        (
+            "monitor_checks_failed",
+            "Number of failed monitoring checks.",
+            sum(check.state == "fail" for check in report.checks),
+        ),
+        (
+            "monitor_checks_skipped",
+            "Number of skipped monitoring checks, including unconfigured SLAs.",
+            sum(check.state == "skipped" for check in report.checks),
+        ),
+    ):
+        metric_name = f"dpl_ons_pay_{name}"
+        lines.extend(
+            [
+                f"# HELP {metric_name} {help_text}",
+                f"# TYPE {metric_name} gauge",
+                f"{metric_name}{{{label}}} {observed}",
+            ]
+        )
     for name, help_text in _METRIC_HELP.items():
         value = report.metrics[name]
         if value is None:

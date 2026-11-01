@@ -20,7 +20,17 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--max-refresh-age-hours", type=float, default=None)
     parser.add_argument("--max-missing-pay-percent", type=float, default=None)
     parser.add_argument("--format", choices=("json", "prometheus"), default="json")
+    parser.add_argument(
+        "--textfile",
+        type=Path,
+        help=(
+            "Opt-in atomic .prom output for a local textfile collector "
+            "(requires --format prometheus)"
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.textfile is not None and args.format != "prometheus":
+        parser.error("--textfile requires --format prometheus")
     # Keep the base platform CLI importable without the optional DuckDB extra.
     try:
         from data_platform_lab.observability.ons_pay_monitor import (
@@ -42,7 +52,18 @@ def main(argv: list[str] | None = None) -> None:
     except MonitorError as exc:
         parser.error(str(exc))
     if args.format == "prometheus":
-        print(format_prometheus(report), end="")
+        metrics = format_prometheus(report)
+        if args.textfile is not None:
+            from data_platform_lab.observability.textfile import (
+                TextfileExportError,
+                write_prometheus_textfile,
+            )
+
+            try:
+                write_prometheus_textfile(path=args.textfile, metrics=metrics)
+            except TextfileExportError as exc:
+                parser.error(str(exc))
+        print(metrics, end="")
     else:
         print(json.dumps(report.to_dict(), indent=2))
     if report.status != "healthy":

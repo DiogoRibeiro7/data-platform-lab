@@ -91,6 +91,13 @@ metric is **omitted**, not silently encoded as zero. The overall health gauge
 and CLI exit code still indicate failure. No scrape endpoint or telemetry
 service is created.
 
+For external observability, the output additionally provides
+`dpl_ons_pay_monitor_checked_at_seconds` (stale-run detection),
+`dpl_ons_pay_monitor_checks_failed`, and `dpl_ons_pay_monitor_checks_skipped`.
+The [opt-in textfile exporter and alert/dashboard examples](ons-pay-alerting.md)
+show how to connect these metrics to a collector without changing the default
+read-only monitor or enabling an external service.
+
 ## Schedule explicitly, when appropriate
 
 The repository includes a [cron template](examples/ons-pay-ops.crontab.example)

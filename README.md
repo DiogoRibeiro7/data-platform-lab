@@ -194,6 +194,13 @@ poetry run data-platform-lab ons-pay-monitor \
 See [the operational monitoring guide](docs/ons-pay-monitoring.md) for check
 semantics, machine-readable metrics, exit codes and scheduling boundaries.
 
+For a deployed metrics stack, an **explicit `--format prometheus --textfile
+/path/ons-pay.prom`** option publishes an atomic scrape file, including a
+last-evaluation timestamp for stale-run detection. The repository also provides
+sample [Prometheus alert rules and a Grafana dashboard](docs/ons-pay-alerting.md)
+for manual import. These templates do not start services, send notifications,
+schedule runs, or select a database provider.
+
 ## Unified CLI
 
 ```text
