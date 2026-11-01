@@ -255,6 +255,27 @@ See the [manual release lifecycle guide](docs/ons-pay-release-lifecycle.md)
 for promotion policy, rollback, audit durability, and limitations. The database
 supplier choice remains open.
 
+### Active-release health and rollback advice
+
+The read-only `ons-pay-release assess` action evaluates the manually activated
+pin with the existing integrity, freshness, missing-pay and refresh-audit
+checks. It emits a generation-bound report and may recommend **reviewing** an
+earlier activated vintage only when the active missing-pay SLA fails and that
+earlier vintage passes the same health checks plus rollback preflight.
+Corruption, freshness problems and shared refresh failures lead to an
+investigation recommendation, not an automatic version switch.
+
+```bash
+poetry run data-platform-lab ons-pay-release --data-root ../data assess \
+  --max-source-age-days 365 --max-refresh-age-hours 30 \
+  --max-missing-pay-percent 5
+```
+
+The command can print Prometheus gauges or explicitly export an atomic
+`.prom` textfile. Nothing schedules a run or executes a rollback. See the
+[active-release health guide](docs/ons-pay-release-health.md) for decision
+rules, failure handling, metrics, and tests.
+
 ## Unified CLI
 
 ```text
