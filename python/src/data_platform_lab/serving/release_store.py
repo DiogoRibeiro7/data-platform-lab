@@ -329,9 +329,18 @@ class ReleaseStore:
         except (CatalogError, VintageNotFound) as exc:
             raise ReleaseError("active release does not have trusted curated data") from exc
 
+    def history(self) -> ReleaseState | None:
+        """Validate release-event provenance without asserting curated-data health.
+
+        Monitoring may need to inspect the active pin after its Parquet fails.
+        This read-only method authenticates the local event hash chain, not the
+        bytes or schema of the curated data selected by that chain.
+        """
+        return self._load()
+
     def status(self) -> ReleaseState | None:
         """Read and validate history plus currently active curated data; no writes."""
-        state = self._load()
+        state = self.history()
         if state is not None:
             self._verify_curated(state.active)
         return state

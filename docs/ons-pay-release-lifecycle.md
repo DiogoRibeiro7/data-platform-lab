@@ -117,6 +117,12 @@ The full event chain remains auditable: bootstrap (1), promote (2), rollback
 event SHA, and—for promotions—the six quality checks and comparison summary.
 Rollbacks cannot silently bypass a missing or corrupted target.
 
+The [active-release health assessor](ons-pay-release-health.md) can run the
+existing pinned integrity/freshness checks against the current active event
+and identify a previously activated, healthy version for **manual review**.
+Its advice does not modify the pointer or replace the explicit rollback
+preview and `--apply` steps above.
+
 ## Durable local state and safety boundaries
 
 The command writes only under the curated data root:

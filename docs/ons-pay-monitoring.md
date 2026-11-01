@@ -9,6 +9,13 @@ without Supabase, a metrics server, or a cloud account.
 The monitor is read-only. It does not promote the latest data, restart failed
 jobs, fetch from ONS, write health files, or send external notifications.
 
+After a vintage has been explicitly activated through the
+[manual release lifecycle](ons-pay-release-lifecycle.md), the separate
+[active-release assessor](ons-pay-release-health.md) can monitor that saved
+pin and offer **non-executing** rollback advice. The original `ons-pay-monitor`
+continues to require a caller-supplied exact pin and never selects a release
+on behalf of a data-query client.
+
 ## Run a pinned health check
 
 After [one audited refresh](ons-pay-refresh.md), copy the exact

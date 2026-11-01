@@ -1,4 +1,4 @@
-"""Manual, opt-in ONS pay activation/rollback with default read-only previews."""
+"""Manual ONS pay activation/rollback and read-only release health assessment."""
 
 from __future__ import annotations
 
@@ -16,6 +16,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--data-root", type=Path, default=Path("../data"))
     actions = parser.add_subparsers(dest="action", required=True)
     actions.add_parser("status", help="Validate and show active release history (read-only)")
+
+    assess = actions.add_parser("assess", help="Check active health and advise on rollback")
+    assess.add_argument("--max-source-age-days", type=int)
+    assess.add_argument("--max-refresh-age-hours", type=float)
+    assess.add_argument("--max-missing-pay-percent", type=float)
+    assess.add_argument("--format", choices=("json", "prometheus"), default="json")
+    assess.add_argument("--textfile", type=Path, help="Explicit atomic Prometheus textfile export")
 
     activate = actions.add_parser("activate", help="Preview or apply an exact candidate")
     activate.add_argument("--candidate-registry-commit", required=True)
@@ -38,9 +45,17 @@ def main(argv: list[str] | None = None) -> None:
     rollback.add_argument("--reason", required=True)
     rollback.add_argument("--apply", action="store_true", help="Write a reviewed rollback")
     args = parser.parse_args(argv)
+    if args.action == "assess" and args.textfile is not None and args.format != "prometheus":
+        parser.error("--textfile requires --format prometheus")
 
     # The optional serving dependency is loaded only when this command runs.
     try:
+        from data_platform_lab.observability.ons_pay_monitor import MonitorError
+        from data_platform_lab.observability.ons_pay_release_health import (
+            ReleaseHealthError,
+            assess_ons_pay_release,
+            format_release_prometheus,
+        )
         from data_platform_lab.serving.catalog import VintageKey
         from data_platform_lab.serving.release_store import ReleaseError, ReleaseStore
     except ModuleNotFoundError:
@@ -48,6 +63,31 @@ def main(argv: list[str] | None = None) -> None:
 
     store = ReleaseStore(args.data_root)
     try:
+        if args.action == "assess":
+            report = assess_ons_pay_release(
+                data_root=args.data_root,
+                max_source_age_days=args.max_source_age_days,
+                max_refresh_age_hours=args.max_refresh_age_hours,
+                max_missing_pay_percent=args.max_missing_pay_percent,
+            )
+            if args.format == "prometheus":
+                metrics = format_release_prometheus(report)
+                if args.textfile is not None:
+                    from data_platform_lab.observability.textfile import (
+                        TextfileExportError,
+                        write_prometheus_textfile,
+                    )
+
+                    try:
+                        write_prometheus_textfile(path=args.textfile, metrics=metrics)
+                    except TextfileExportError as exc:
+                        parser.error(str(exc))
+                print(metrics, end="")
+            else:
+                print(json.dumps(report.to_dict(), indent=2))
+            if report.active_monitor.status != "healthy":
+                raise SystemExit(1)
+            return
         if args.action == "status":
             state = store.status()
             print(json.dumps({"active": state.to_dict() if state is not None else None}, indent=2))
@@ -89,7 +129,7 @@ def main(argv: list[str] | None = None) -> None:
             plan = store.plan_rollback(
                 to_generation=args.to_generation, expected_generation=args.expected_generation
             )
-    except ReleaseError as exc:
+    except (ReleaseError, ReleaseHealthError, MonitorError) as exc:
         parser.error(str(exc))
 
     print(json.dumps(plan.to_dict(), indent=2))
