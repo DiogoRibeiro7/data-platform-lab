@@ -176,7 +176,7 @@ def _read_audits(data_root: Path, checked_at: datetime) -> tuple[RefreshAudit, .
             RefreshAudit(
                 run_id=run_id,
                 created_at=created_at,
-                status=cast(BatchStatus, status),
+                status=status,
                 completed_vintages=frozenset(completed),
             )
         )
