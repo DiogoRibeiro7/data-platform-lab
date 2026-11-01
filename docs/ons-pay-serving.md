@@ -30,6 +30,9 @@ Browse [local interactive API documentation](http://127.0.0.1:8000/docs), or:
 # Discover full, explicit version/registry/source pins; no 'latest' alias.
 curl -s http://127.0.0.1:8000/v1/ons-pay/vintages
 
+# Optional: discover the currently manually activated and verified pin.
+curl -s http://127.0.0.1:8000/v1/ons-pay/releases/active
+
 # Copy registry_commit and source_sha256 from the response above.
 curl -G http://127.0.0.1:8000/v1/ons-pay/geography-year \
   --data-urlencode 'registry_commit=<40-hex-char-commit>' \
@@ -55,6 +58,7 @@ the brackets. `E09000001` is just an example area code; the path filter is exact
 | --- | --- | --- |
 | `GET /health` | Process liveness, not data readiness | None |
 | `GET /v1/ons-pay/vintages` | Discover verified, pinned source/model combinations | None |
+| `GET /v1/ons-pay/releases/active` | Discover a manually activated, integrity-verified pin, generation and event hash | None |
 | `GET /v1/ons-pay/geography-year` | Unweighted geography-type × year summary | Required `registry_commit`, `source_sha256`; optional `model_version=1`, `geography`, `pay_year`, `limit`, `offset` |
 | `GET /v1/ons-pay/areas/{area_code}/trend` | An area's annual reported pay and nominal YoY | Required pins and area code; optional `model_version=1`, `start_year`, `end_year`, `limit`, `offset` |
 
@@ -67,10 +71,19 @@ required for both data endpoints. Vintage metadata includes the verified input
 manifest SHA-256, upstream publisher/snapshot/retrieval date, citation and
 license for attribution.
 
+The optional active-release discovery endpoint returns `generation`,
+`event_sha256`, and `vintage` with the same verified metadata as the vintage
+list. It returns `404` before a first explicit activation; a tampered audit
+chain or missing active Parquet returns a sanitized `503`. This is only
+**discovery** and never supplies implicit pins to the two data endpoints.
+Use the [manual activation/rollback lifecycle](ons-pay-release-lifecycle.md)
+to preview and explicitly commit or reverse a selection.
+
 Client-visible behavior:
 
 - `200`: the requested exact vintage was served, or an empty filtered result.
 - `404`: the exact requested vintage was never curated.
+- `404`: no active release has yet been manually activated (discovery only).
 - `422`: invalid or missing pins, filters, pagination, or year range.
 - `503`: a malformed/conflicting receipt, missing/altered Parquet output, or
   a broken serving table contract; the response does not disclose local paths.
@@ -100,6 +113,10 @@ authenticated gateway and operational controls. A SHA-256 receipt detects
 accidental or unauthorized *file drift relative to that receipt*, but is not
 a signed provenance attestation if a local attacker can rewrite both receipt
 and files. Like the curation pipeline, it assumes one trusted writer.
+
+The separate local release CLI uses POSIX advisory locking for its own
+metadata pointer updates; that does not make the read-only serving API a
+multi-writer database or remove its local trust boundary.
 
 The application contract can later be implemented with PostgreSQL, hosted
 Supabase, or another destination without changing the canonical source
