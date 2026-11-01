@@ -138,3 +138,8 @@ DuckDB curation, exercise the existing serving catalog, and verify freshness,
 multi-source backfills, no-write planning, retry/reuse, provenance, failure
 audits, source tampering, SQL quality gates, and conflicting Parquet bytes.
 They require neither network access nor a hosted database account.
+
+After backfilling at least two vintages, use the
+[read-only release comparison gate](ons-pay-release-comparison.md) to examine
+additions, deletions, historic revisions and missing-pay transitions between
+an explicit baseline and candidate. This does not promote either pin.
