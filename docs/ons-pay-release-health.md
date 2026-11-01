@@ -32,6 +32,15 @@ must not be mistaken for passed checks. `assess` reads the exact active pin
 and SHA-linked event chain; it does not require a caller-supplied pin. The
 two analytical data-query endpoints **still require both exact pins**.
 
+The normal assessment remains read-only. For longitudinal monitoring, an
+operator can add **`--record`** to preserve the complete, generation-bound
+report as a content-addressed local JSON snapshot. The separate, read-only
+`ons-pay-release trends` action then summarizes status transitions and
+missing-pay changes across those snapshots, with an optional CSV timeline.
+See the [historical health guide](ons-pay-release-health-history.md) for
+recording, replay, integrity checks, and trend interpretation. No recording
+or scheduling happens implicitly.
+
 The JSON response contains:
 
 | Field | Meaning |

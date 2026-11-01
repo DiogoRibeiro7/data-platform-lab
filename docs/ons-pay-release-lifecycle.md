@@ -122,6 +122,9 @@ existing pinned integrity/freshness checks against the current active event
 and identify a previously activated, healthy version for **manual review**.
 Its advice does not modify the pointer or replace the explicit rollback
 preview and `--apply` steps above.
+When desired, the [health-history archive](ons-pay-release-health-history.md)
+can record individual assessments and summarize health trends across this
+release chain without modifying the selected vintage.
 
 ## Durable local state and safety boundaries
 

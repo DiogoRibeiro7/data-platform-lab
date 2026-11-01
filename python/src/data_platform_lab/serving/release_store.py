@@ -486,6 +486,17 @@ class ReleaseStore:
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
+    @contextmanager
+    def locked_history(self) -> Iterator[ReleaseState | None]:
+        """Hold the release writer lock while inspecting history for an opt-in write.
+
+        A recorded health assessment must not be published against a release
+        pointer that another local writer switches during the publication.
+        This guard creates a lock file and must not be used by read-only paths.
+        """
+        with self._locked():
+            yield self.history()
+
     def _publish_event(self, payload: bytes, sha: str) -> None:
         target = self.events / f"{sha}.json"
         if target.exists() or target.is_symlink():
