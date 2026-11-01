@@ -173,11 +173,33 @@ dry run, freshness SLA, batch recovery, audit schema, and limits. Source
 discovery and scheduling remain explicit rather than silently switching to
 a floating dataset version.
 
+## Operational health and freshness alerts
+
+The read-only `ons-pay-monitor` command validates one explicitly pinned
+vintage's Silver/Gold table contracts and refresh audit history. It reports
+source retrieval age, time since the last successful refresh, missing-pay
+share, and the latest overall batch outcome. JSON and Prometheus-style
+metrics are available, with exit code `1` when a threshold or integrity check
+fails. A [cron template](docs/examples/ons-pay-ops.crontab.example) illustrates
+local scheduling but is not activated automatically.
+
+```bash
+cd python
+poetry run data-platform-lab ons-pay-monitor \
+  --data-root ../data --registry-commit COMMIT_SHA40 \
+  --source-sha256 SOURCE_SHA256 --max-source-age-days 365 \
+  --max-refresh-age-hours 30 --max-missing-pay-percent 5
+```
+
+See [the operational monitoring guide](docs/ons-pay-monitoring.md) for check
+semantics, machine-readable metrics, exit codes and scheduling boundaries.
+
 ## Unified CLI
 
 ```text
 data-platform-lab benchmark ...
 data-platform-lab ons-pay-curate ...
+data-platform-lab ons-pay-monitor ...
 data-platform-lab ons-pay-refresh ...
 data-platform-lab ons-pay-serve ...
 data-platform-lab registry-ingest ...

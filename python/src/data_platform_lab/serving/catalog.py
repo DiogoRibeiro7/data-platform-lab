@@ -26,6 +26,47 @@ _OUTPUTS = {
     "geography_year": ("gold", "geography_year.parquet"),
     "local_authority_yoy": ("gold", "local_authority_yoy.parquet"),
 }
+_COLUMNS = {
+    "observations": (
+        "area_code",
+        "area_name",
+        "geography",
+        "reference_date",
+        "pay_year",
+        "weekly_pay_gbp",
+        "lci_95_gbp",
+        "uci_95_gbp",
+        "status_code",
+        "notes",
+        "source_sha256",
+        "registry_commit",
+    ),
+    "geography_year": (
+        "geography",
+        "pay_year",
+        "areas_total",
+        "areas_with_pay",
+        "areas_without_pay",
+        "min_area_weekly_pay_gbp",
+        "median_area_weekly_pay_gbp",
+        "max_area_weekly_pay_gbp",
+        "source_sha256",
+        "registry_commit",
+    ),
+    "local_authority_yoy": (
+        "area_code",
+        "area_name",
+        "reference_date",
+        "pay_year",
+        "weekly_pay_gbp",
+        "status_code",
+        "previous_year",
+        "previous_weekly_pay_gbp",
+        "yoy_nominal_pct",
+        "source_sha256",
+        "registry_commit",
+    ),
+}
 
 
 class CatalogError(ValueError):
@@ -280,7 +321,55 @@ class CuratedCatalog:
         raise VintageNotFound("the requested pinned ONS pay vintage was not curated")
 
     @staticmethod
+    def _assert_artifact_rows(
+        conn: duckdb.DuckDBPyConnection,
+        artifact: ParquetArtifact,
+        key: VintageKey,
+    ) -> None:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM read_parquet(?)", [str(artifact.path)]
+        ).fetchone()
+        if count is None or count[0] != artifact.rows:
+            raise CatalogError("Parquet row count differs from its curation receipt")
+        mismatched = conn.execute(
+            "SELECT COUNT(*) FROM read_parquet(?) "
+            "WHERE source_sha256 IS DISTINCT FROM ? OR registry_commit IS DISTINCT FROM ?",
+            [str(artifact.path), key.source_sha256, key.registry_commit],
+        ).fetchone()
+        if mismatched is None or mismatched[0] != 0:
+            raise CatalogError("Parquet rows differ from requested lineage pin")
+
+    @classmethod
+    def verify_vintage_tables(cls, vintage: CuratedVintage) -> None:
+        """Check all Silver/Gold schemas, row counts, lineage and pay missingness.
+
+        Call after catalog discovery, which already re-hashes every fixed file.
+        This is an offline readiness/monitoring gate, not a source mutation.
+        """
+        conn = duckdb.connect(":memory:")
+        try:
+            for name, expected_columns in _COLUMNS.items():
+                artifact = vintage.artifacts[name]
+                columns = conn.execute(
+                    "DESCRIBE SELECT * FROM read_parquet(?)", [str(artifact.path)]
+                ).fetchall()
+                if tuple(str(column[0]) for column in columns) != expected_columns:
+                    raise CatalogError(f"curated {name} table schema has drifted")
+                cls._assert_artifact_rows(conn, artifact, vintage.key)
+            silver = vintage.artifacts["observations"]
+            reported = conn.execute(
+                "SELECT COUNT(weekly_pay_gbp) FROM read_parquet(?)", [str(silver.path)]
+            ).fetchone()
+            if reported is None or reported[0] != vintage.rows_with_pay:
+                raise CatalogError("Silver reported/missing pay counts differ from receipt")
+        except duckdb.Error as exc:
+            raise CatalogError("curated Parquet does not satisfy its fixed table contract") from exc
+        finally:
+            conn.close()
+
+    @classmethod
     def _query(
+        cls,
         artifact: ParquetArtifact,
         key: VintageKey,
         clauses: tuple[str, ...],
@@ -295,19 +384,7 @@ class CuratedCatalog:
         args = [str(artifact.path), *values]
         conn = duckdb.connect(":memory:")
         try:
-            full_count = conn.execute("SELECT COUNT(*) FROM read_parquet(?)", [str(artifact.path)])
-            unfiltered = full_count.fetchone()
-            if unfiltered is None or unfiltered[0] != artifact.rows:
-                raise CatalogError("Parquet row count differs from its curation receipt")
-            # Check row-level pins too, even if the file and receipt were
-            # accidentally regenerated together with the wrong lineage.
-            mismatched = conn.execute(
-                "SELECT COUNT(*) FROM read_parquet(?) "
-                "WHERE source_sha256 IS DISTINCT FROM ? OR registry_commit IS DISTINCT FROM ?",
-                [str(artifact.path), key.source_sha256, key.registry_commit],
-            ).fetchone()
-            if mismatched is None or mismatched[0] != 0:
-                raise CatalogError("Parquet rows differ from requested lineage pin")
+            cls._assert_artifact_rows(conn, artifact, key)
             count = conn.execute(f"SELECT COUNT(*) FROM read_parquet(?){where}", args).fetchone()
             if count is None or not isinstance(count[0], int):
                 raise CatalogError("cannot count filtered Parquet rows")
