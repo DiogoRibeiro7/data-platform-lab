@@ -1,4 +1,4 @@
-"""Manual ONS pay activation/rollback and read-only release health assessment."""
+"""Manual release decisions, health assessment, and opt-in health history."""
 
 from __future__ import annotations
 
@@ -23,6 +23,14 @@ def main(argv: list[str] | None = None) -> None:
     assess.add_argument("--max-missing-pay-percent", type=float)
     assess.add_argument("--format", choices=("json", "prometheus"), default="json")
     assess.add_argument("--textfile", type=Path, help="Explicit atomic Prometheus textfile export")
+    assess.add_argument(
+        "--record", action="store_true", help="Explicitly archive this assessment as immutable JSON"
+    )
+
+    trends = actions.add_parser("trends", help="Read validated historical assessments")
+    trends.add_argument("--last", type=int, default=50, help="Recent assessments (1-1000)")
+    trends.add_argument("--generation", type=int, help="Restrict the time series to one release")
+    trends.add_argument("--format", choices=("json", "csv"), default="json")
 
     activate = actions.add_parser("activate", help="Preview or apply an exact candidate")
     activate.add_argument("--candidate-registry-commit", required=True)
@@ -56,6 +64,11 @@ def main(argv: list[str] | None = None) -> None:
             assess_ons_pay_release,
             format_release_prometheus,
         )
+        from data_platform_lab.observability.ons_pay_release_history import (
+            ReleaseHealthArchive,
+            ReleaseHistoryError,
+            format_trends_csv,
+        )
         from data_platform_lab.serving.catalog import VintageKey
         from data_platform_lab.serving.release_store import ReleaseError, ReleaseStore
     except ModuleNotFoundError:
@@ -63,12 +76,24 @@ def main(argv: list[str] | None = None) -> None:
 
     store = ReleaseStore(args.data_root)
     try:
+        if args.action == "trends":
+            trends_report = ReleaseHealthArchive(args.data_root).trends(
+                last=args.last, generation=args.generation
+            )
+            if args.format == "csv":
+                print(format_trends_csv(trends_report), end="")
+            else:
+                print(json.dumps(trends_report.to_dict(), indent=2))
+            return
         if args.action == "assess":
             report = assess_ons_pay_release(
                 data_root=args.data_root,
                 max_source_age_days=args.max_source_age_days,
                 max_refresh_age_hours=args.max_refresh_age_hours,
                 max_missing_pay_percent=args.max_missing_pay_percent,
+            )
+            record_sha256 = (
+                ReleaseHealthArchive(args.data_root).record(report) if args.record else None
             )
             if args.format == "prometheus":
                 metrics = format_release_prometheus(report)
@@ -84,7 +109,10 @@ def main(argv: list[str] | None = None) -> None:
                         parser.error(str(exc))
                 print(metrics, end="")
             else:
-                print(json.dumps(report.to_dict(), indent=2))
+                body = report.to_dict()
+                if record_sha256 is not None:
+                    body["record_sha256"] = record_sha256
+                print(json.dumps(body, indent=2))
             if report.active_monitor.status != "healthy":
                 raise SystemExit(1)
             return
@@ -129,7 +157,7 @@ def main(argv: list[str] | None = None) -> None:
             plan = store.plan_rollback(
                 to_generation=args.to_generation, expected_generation=args.expected_generation
             )
-    except (ReleaseError, ReleaseHealthError, MonitorError) as exc:
+    except (ReleaseError, ReleaseHealthError, ReleaseHistoryError, MonitorError) as exc:
         parser.error(str(exc))
 
     print(json.dumps(plan.to_dict(), indent=2))
