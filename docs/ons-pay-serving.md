@@ -13,6 +13,9 @@ an `ons_pay_curation_<run-id>.json` receipt under `data/manifests/` and three
 Silver/Gold Parquet files in their versioned directories.
 You can run both upstream steps together through the
 [pinned refresh/backfill command](ons-pay-refresh.md) without changing the API.
+For operational data readiness, use the
+[pinned monitoring command](ons-pay-monitoring.md); `GET /health` is only
+process liveness, not proof that the data is fresh or valid.
 
 ```bash
 cd python

@@ -110,6 +110,9 @@ CI job, Dagster asset or later managed orchestrator can run it with the
 produce machine-readable audits for monitoring. No unattended schedule or
 data-provider polling is configured in this PR, because silently promoting
 a floating upstream version would break the explicit pin contract.
+Use the [read-only monitoring command](ons-pay-monitoring.md) to check the
+published table contracts and refresh audit history, obtain numeric health
+metrics, and return alert-ready exit codes for a configured scheduler.
 
 The process is a single-writer local workflow. It does not support
 distributed locking, rollback across multiple sources, concurrent publication,

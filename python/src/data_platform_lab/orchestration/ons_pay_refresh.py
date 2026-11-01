@@ -90,7 +90,7 @@ class RefreshResult:
     sources: tuple[RefreshedSource, ...]
 
 
-def _retrieved_date(value: str) -> date:
+def parse_retrieved_date(value: str) -> date:
     """Interpret upstream retrieval metadata as UTC calendar-day freshness."""
     try:
         return date.fromisoformat(value)
@@ -139,7 +139,7 @@ def plan_ons_pay_refresh(
             pin = (plan.commit, raw[0].sha256)
             if pin in seen:
                 raise RefreshError("the batch repeats an identical registry/source pin")
-            retrieved = _retrieved_date(plan.retrieved_at)
+            retrieved = parse_retrieved_date(plan.retrieved_at)
             age_days = (today - retrieved).days
             if age_days < 0:
                 raise RefreshError("source retrieval date is in the future")

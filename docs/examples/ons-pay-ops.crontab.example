@@ -1,0 +1,15 @@
+# EXAMPLE ONLY: not installed or activated by the repository.
+# Configure an in-project Poetry virtual environment first, and replace ALL
+# absolute paths, handoff/checkouts, COMMIT_SHA40 and SOURCE_SHA256 with exact
+# pinned values. Create the log directory and choose your own cron timezone.
+# This daily cadence is illustrative; a repeated pin checks integrity but
+# cannot discover or promote a newer ONS snapshot automatically.
+# Ensure the refresh finishes before monitoring begins; use a dependency-aware
+# scheduler for long-running jobs. Configure MAILTO or another alert sink:
+# cron does not automatically notify an operator about every nonzero exit.
+
+# 07:00: verify and refresh one exact canonical registry source.
+0 7 * * * cd /ABS/data-platform-lab/python && /ABS/data-platform-lab/python/.venv/bin/data-platform-lab ons-pay-refresh --source /ABS/handoffs/ons.json /ABS/data-checkout --object-root /ABS/data-platform-lab/data/object-store --output-root /ABS/data-platform-lab/data --max-source-age-days 365 >> /ABS/logs/ons-pay-refresh.log 2>&1
+
+# 07:20: evaluate the specific published vintage; exit 1 means alert/stop.
+20 7 * * * cd /ABS/data-platform-lab/python && /ABS/data-platform-lab/python/.venv/bin/data-platform-lab ons-pay-monitor --data-root /ABS/data-platform-lab/data --registry-commit COMMIT_SHA40 --source-sha256 SOURCE_SHA256 --max-source-age-days 365 --max-refresh-age-hours 30 --max-missing-pay-percent 5 --format json >> /ABS/logs/ons-pay-monitor.log 2>&1
