@@ -182,7 +182,7 @@ def _event(value: object) -> ReleaseEvent:
         raise ReleaseError("invalid release comparison evidence")
     return ReleaseEvent(
         generation=_generation(raw["generation"]),
-        action=cast(Action, action),
+        action=action,
         created_at_utc=stamp,
         from_vintage=None if from_value is None else _key(from_value, "previous vintage"),
         to_vintage=_key(raw["to_vintage"], "active vintage"),
