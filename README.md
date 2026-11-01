@@ -201,10 +201,35 @@ sample [Prometheus alert rules and a Grafana dashboard](docs/ons-pay-alerting.md
 for manual import. These templates do not start services, send notifications,
 schedule runs, or select a database provider.
 
+## Reproducible candidate release comparison
+
+The read-only `ons-pay-compare` command evaluates the differences between two
+explicitly pinned ONS pay vintages before an operator considers publication.
+It verifies both Silver/Gold contracts, then uses a null-safe full outer join
+on area code and reference date to distinguish added, removed, revised and
+unchanged observations. Optional thresholds gate unexpected row churn,
+new missing pay, and increases in the missing-pay percentage. It never
+silently chooses `latest` or activates a deployment.
+
+```bash
+cd python
+poetry run data-platform-lab ons-pay-compare \
+  --data-root ../data \
+  --baseline-registry-commit BASELINE_COMMIT_SHA40 \
+  --baseline-source-sha256 BASELINE_SOURCE_SHA256 \
+  --candidate-registry-commit CANDIDATE_COMMIT_SHA40 \
+  --candidate-source-sha256 CANDIDATE_SOURCE_SHA256 \
+  --max-removed-rows 0 --max-newly-missing-pay-rows 0
+```
+
+See the [release comparison contract](docs/ons-pay-release-comparison.md) for
+policy semantics, null handling, examples, reproducibility and CLI exit codes.
+
 ## Unified CLI
 
 ```text
 data-platform-lab benchmark ...
+data-platform-lab ons-pay-compare ...
 data-platform-lab ons-pay-curate ...
 data-platform-lab ons-pay-monitor ...
 data-platform-lab ons-pay-refresh ...
