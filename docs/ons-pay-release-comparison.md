@@ -8,6 +8,11 @@ explicit versions, and does that change violate our acceptance policy?**
 
 No hosted database, source discovery, deployment, or automatic promotion is
 required. The command only reads vetted local Parquet and receipts.
+When an operator is ready to select a validated candidate, the separate
+[manual activation/rollback workflow](ons-pay-release-lifecycle.md) can record
+that decision. Unlike this exploratory comparison command, **promotion
+requires all six explicit policy limits to pass** and writes an audit event
+only when the operator adds `--apply`.
 
 ## Run a reproducible comparison
 
@@ -128,5 +133,6 @@ GBP values, missingness transitions, additions/deletions, unchanged byte
 replays, policy breaches, corrupted Parquet, duplicate keys and CLI exit codes.
 The command creates only temporary in-memory DuckDB tables and does not write
 comparison history, change receipts, source data, metrics, or publication
-state. This is a deterministic *pre-publication evidence gate* that a future
-operator or CI workflow may invoke after explicitly selecting candidate pins.
+state. This is a deterministic *pre-publication evidence gate* for an operator
+or CI workflow after explicitly selecting candidate pins; it does not itself
+activate anything.

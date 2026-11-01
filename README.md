@@ -225,6 +225,36 @@ poetry run data-platform-lab ons-pay-compare \
 See the [release comparison contract](docs/ons-pay-release-comparison.md) for
 policy semantics, null handling, examples, reproducibility and CLI exit codes.
 
+## Manual release activation and rollback
+
+The `ons-pay-release` CLI makes the final release decision explicit. An
+operator previews a curated candidate, then deliberately adds `--apply` to
+advance a single active-vintage pointer. The first activation requires
+`--bootstrap`; later promotions require **all six** release-comparison
+thresholds to pass. Each change creates a SHA-linked immutable decision record
+with a reason and generation number, and rollback can restore a previously
+active, still-verified vintage. A stale generation or failed quality gate
+cannot silently switch the active pin.
+
+```bash
+cd python
+# Safe and read-only without an existing active release:
+poetry run data-platform-lab ons-pay-release --data-root ../data status
+
+# Preview a first activation; add --apply only after reviewing the result:
+poetry run data-platform-lab ons-pay-release --data-root ../data activate \
+  --candidate-registry-commit COMMIT_SHA40 \
+  --candidate-source-sha256 SOURCE_SHA256 \
+  --expected-generation 0 --bootstrap --reason "Initial release"
+```
+
+The optional read-only `GET /v1/ons-pay/releases/active` endpoint lets clients
+discover this manually selected vintage. All existing data queries **still
+require exact pins**; nothing is deployed, scheduled, or automatically selected.
+See the [manual release lifecycle guide](docs/ons-pay-release-lifecycle.md)
+for promotion policy, rollback, audit durability, and limitations. The database
+supplier choice remains open.
+
 ## Unified CLI
 
 ```text
@@ -233,6 +263,7 @@ data-platform-lab ons-pay-compare ...
 data-platform-lab ons-pay-curate ...
 data-platform-lab ons-pay-monitor ...
 data-platform-lab ons-pay-refresh ...
+data-platform-lab ons-pay-release ...
 data-platform-lab ons-pay-serve ...
 data-platform-lab registry-ingest ...
 data-platform-lab storage ...

@@ -18,6 +18,7 @@ from data_platform_lab.serving.catalog import (
     VintageKey,
     VintageNotFound,
 )
+from data_platform_lab.serving.release_store import ReleaseError, ReleaseStore
 
 Commit = Annotated[str, Query(pattern=r"^[0-9a-f]{40}$")]
 SourceHash = Annotated[str, Query(pattern=r"^[0-9a-f]{64}$")]
@@ -46,6 +47,12 @@ class VintageResponse(BaseModel):
 
 class VintagesResponse(BaseModel):
     vintages: list[VintageResponse]
+
+
+class ActiveReleaseResponse(BaseModel):
+    generation: int
+    event_sha256: str
+    vintage: VintageResponse
 
 
 class _StrictRow(BaseModel):
@@ -137,6 +144,10 @@ def create_app(data_root: Path) -> FastAPI:
     def vintage_not_found(_request: Request, _exc: VintageNotFound) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": "Requested vintage not found"})
 
+    @app.exception_handler(ReleaseError)
+    def release_integrity_failure(_request: Request, _exc: ReleaseError) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": "Active release integrity failure"})
+
     @app.get("/health")
     def health() -> dict[str, str]:
         """Process liveness; never claims the curated dataset is healthy."""
@@ -147,6 +158,18 @@ def create_app(data_root: Path) -> FastAPI:
         """List exact version/commit/source pins; no implicit 'latest' choice."""
         return VintagesResponse(
             vintages=[_vintage_response(item) for item in catalog.list_vintages()]
+        )
+
+    @app.get("/v1/ons-pay/releases/active")
+    def active_release() -> ActiveReleaseResponse:
+        """Discover the manually activated pin; data queries still require pins."""
+        state = ReleaseStore(data_root).status()
+        if state is None:
+            raise HTTPException(status_code=404, detail="No manually activated release")
+        return ActiveReleaseResponse(
+            generation=state.generation,
+            event_sha256=state.event_sha256,
+            vintage=_vintage_response(catalog.get_vintage(state.active)),
         )
 
     @app.get("/v1/ons-pay/geography-year")
