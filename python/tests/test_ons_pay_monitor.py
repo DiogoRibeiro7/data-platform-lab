@@ -278,6 +278,14 @@ def test_prometheus_gauges_have_pinned_labels_and_no_missing_zeros(
     assert f'source_sha256="{key.source_sha256}"' in metrics
     assert "dpl_ons_pay_source_rows{" in metrics
     assert "dpl_ons_pay_missing_pay_percent{" in metrics
+    assert (
+        f'dpl_ons_pay_monitor_checked_at_seconds{{model_version="1",'
+        f'registry_commit="{key.registry_commit}",source_sha256="{key.source_sha256}"}} '
+        f"{int(datetime.fromisoformat(report.checked_at_utc).timestamp())}"
+    ) in metrics
+    assert "dpl_ons_pay_monitor_checks_failed{" in metrics
+    assert "dpl_ons_pay_monitor_checks_skipped{" in metrics
+    assert f"}} {sum(check.state == 'skipped' for check in report.checks)}" in metrics
     assert "# TYPE dpl_ons_pay_monitor_healthy gauge" in metrics
     assert not metrics.endswith("\n\n")
 
@@ -316,6 +324,83 @@ def test_cli_json_and_prometheus_and_error_exit_codes(
     with pytest.raises(SystemExit) as invalid:
         platform_main([*args, "--max-source-age-days", "-1"])
     assert invalid.value.code == 2
+
+
+def test_cli_textfile_is_explicit_and_publishes_unhealthy_metrics(
+    ready: tuple[Path, VintageKey, RefreshResult],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root, key, _ = ready
+    output = tmp_path / "ons-pay.prom"
+    args = [
+        "ons-pay-monitor",
+        "--data-root",
+        str(root),
+        "--registry-commit",
+        key.registry_commit,
+        "--source-sha256",
+        key.source_sha256,
+    ]
+    platform_main([*args, "--format", "prometheus", "--textfile", str(output)])
+    healthy_metrics = capsys.readouterr().out
+    assert output.read_text(encoding="utf-8") == healthy_metrics
+    assert "dpl_ons_pay_monitor_healthy{" in healthy_metrics
+    assert "} 1\n" in healthy_metrics
+
+    with pytest.raises(SystemExit) as unhealthy:
+        platform_main(
+            [
+                *args,
+                "--max-missing-pay-percent",
+                "1",
+                "--format",
+                "prometheus",
+                "--textfile",
+                str(output),
+            ]
+        )
+    assert unhealthy.value.code == 1
+    bad_metrics = capsys.readouterr().out
+    assert output.read_text(encoding="utf-8") == bad_metrics
+    assert "dpl_ons_pay_monitor_healthy{" in bad_metrics
+    assert "dpl_ons_pay_monitor_checks_failed{" in bad_metrics
+    assert bad_metrics != healthy_metrics
+    assert not list(tmp_path.glob(".*.tmp"))
+
+    with pytest.raises(SystemExit) as invalid:
+        platform_main([*args, "--textfile", str(output)])
+    assert invalid.value.code == 2
+    assert output.read_text(encoding="utf-8") == bad_metrics
+
+
+def test_cli_textfile_write_error_exits_2_without_touching_old_metrics(
+    ready: tuple[Path, VintageKey, RefreshResult],
+    tmp_path: Path,
+) -> None:
+    root, key, _ = ready
+    actual = tmp_path / "old.prom"
+    actual.write_text("previous complete output\n", encoding="utf-8")
+    alias = tmp_path / "unsafe.prom"
+    alias.symlink_to(actual)
+    with pytest.raises(SystemExit) as invalid:
+        platform_main(
+            [
+                "ons-pay-monitor",
+                "--data-root",
+                str(root),
+                "--registry-commit",
+                key.registry_commit,
+                "--source-sha256",
+                key.source_sha256,
+                "--format",
+                "prometheus",
+                "--textfile",
+                str(alias),
+            ]
+        )
+    assert invalid.value.code == 2
+    assert actual.read_text(encoding="utf-8") == "previous complete output\n"
 
 
 def test_nonexistent_pinned_vintage_is_unhealthy_not_implicitly_promoted(

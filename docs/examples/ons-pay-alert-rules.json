@@ -1,0 +1,39 @@
+{
+  "groups": [
+    {
+      "name": "data-platform-lab-ons-pay",
+      "rules": [
+        {
+          "alert": "OnsPayPinnedMonitorUnhealthy",
+          "expr": "dpl_ons_pay_monitor_healthy{model_version=\"1\",registry_commit=\"COMMIT_SHA40\",source_sha256=\"SOURCE_SHA256\"} == 0",
+          "for": "5m",
+          "labels": { "severity": "critical" },
+          "annotations": {
+            "summary": "Pinned ONS pay monitoring reports an unhealthy vintage",
+            "description": "Inspect the JSON monitor report and refresh audit receipts for the exact configured source pin."
+          }
+        },
+        {
+          "alert": "OnsPayPinnedMonitorStale",
+          "expr": "time() - dpl_ons_pay_monitor_checked_at_seconds{model_version=\"1\",registry_commit=\"COMMIT_SHA40\",source_sha256=\"SOURCE_SHA256\"} > 7200",
+          "for": "10m",
+          "labels": { "severity": "warning" },
+          "annotations": {
+            "summary": "Pinned ONS pay monitor has not completed in two hours",
+            "description": "Check the scheduler, textfile permissions, and textfile-collector scrape health."
+          }
+        },
+        {
+          "alert": "OnsPayPinnedMonitorMissing",
+          "expr": "absent(dpl_ons_pay_monitor_checked_at_seconds{model_version=\"1\",registry_commit=\"COMMIT_SHA40\",source_sha256=\"SOURCE_SHA256\"})",
+          "for": "15m",
+          "labels": { "severity": "warning" },
+          "annotations": {
+            "summary": "No monitoring samples for the pinned ONS pay source",
+            "description": "Verify that the monitor has run, the .prom file is readable, and the metrics target is scraped."
+          }
+        }
+      ]
+    }
+  ]
+}
