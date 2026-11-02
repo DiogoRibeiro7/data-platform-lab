@@ -300,6 +300,27 @@ cross-generation lineage, deterministic transitions, CSV columns, append-only
 durability and trust boundaries. No hosted database, scheduler, or automatic
 rollback is introduced.
 
+### History-based release quality alerts
+
+Evaluate **opt-in** policies over verified, generation-pinned assessment
+history. A mandatory check flags missing evidence for the currently active
+generation; optional thresholds detect stale assessments, consecutive unhealthy
+observations, unhealthy share, and adjacent/cumulative missing-pay-rate drift.
+Unknown evidence is reported as `unavailable`, not silently counted as healthy.
+
+```bash
+poetry run data-platform-lab ons-pay-release --data-root ../data alerts \
+  --last 50 --max-assessment-age-hours 36 --alert-after-unhealthy 3 \
+  --max-missing-pay-increase-pp 3 --max-cumulative-missing-pay-drift-pp 8
+```
+
+The command is read-only by default, returns machine-readable JSON or
+Prometheus gauges, and can atomically write a `.prom` file **only** with an
+explicit `--format prometheus --textfile` destination. See the
+[history-alerting guide](docs/ons-pay-history-alerting.md) for policy details,
+missing-evidence semantics, threshold examples, and offline tests. No provider,
+scheduler, notification system or automatic release action is introduced.
+
 ## Unified CLI
 
 ```text

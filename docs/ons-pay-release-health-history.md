@@ -10,6 +10,9 @@ analysis without choosing a database provider.
 No collection, retention, scheduler, alert receiver, external database,
 automatic promotion, or automatic rollback is enabled.
 
+For an optional read-only evaluation of alert thresholds over these archived
+assessments, see [history-based alert policies](ons-pay-history-alerting.md).
+
 ## Explicitly record an assessment
 
 First complete the [manual release lifecycle](ons-pay-release-lifecycle.md)

@@ -1,4 +1,4 @@
-"""Manual release decisions, health assessment, and opt-in health history."""
+"""Manual release decisions, health assessment, and opt-in history alerts."""
 
 from __future__ import annotations
 
@@ -32,6 +32,16 @@ def main(argv: list[str] | None = None) -> None:
     trends.add_argument("--generation", type=int, help="Restrict the time series to one release")
     trends.add_argument("--format", choices=("json", "csv"), default="json")
 
+    alerts = actions.add_parser("alerts", help="Read-only history-based quality alert policies")
+    alerts.add_argument("--last", type=int, default=50, help="Recent assessments (1-1000)")
+    alerts.add_argument("--max-assessment-age-hours", type=float)
+    alerts.add_argument("--alert-after-unhealthy", type=int)
+    alerts.add_argument("--max-unhealthy-share-percent", type=float)
+    alerts.add_argument("--max-missing-pay-increase-pp", type=float)
+    alerts.add_argument("--max-cumulative-missing-pay-drift-pp", type=float)
+    alerts.add_argument("--format", choices=("json", "prometheus"), default="json")
+    alerts.add_argument("--textfile", type=Path, help="Explicit atomic Prometheus textfile export")
+
     activate = actions.add_parser("activate", help="Preview or apply an exact candidate")
     activate.add_argument("--candidate-registry-commit", required=True)
     activate.add_argument("--candidate-source-sha256", required=True)
@@ -53,11 +63,20 @@ def main(argv: list[str] | None = None) -> None:
     rollback.add_argument("--reason", required=True)
     rollback.add_argument("--apply", action="store_true", help="Write a reviewed rollback")
     args = parser.parse_args(argv)
-    if args.action == "assess" and args.textfile is not None and args.format != "prometheus":
+    if (
+        args.action in {"assess", "alerts"}
+        and args.textfile is not None
+        and args.format != "prometheus"
+    ):
         parser.error("--textfile requires --format prometheus")
 
     # The optional serving dependency is loaded only when this command runs.
     try:
+        from data_platform_lab.observability.ons_pay_history_alerts import (
+            HistoryAlertError,
+            evaluate_ons_pay_history_alerts,
+            format_history_alerts_prometheus,
+        )
         from data_platform_lab.observability.ons_pay_monitor import MonitorError
         from data_platform_lab.observability.ons_pay_release_health import (
             ReleaseHealthError,
@@ -76,6 +95,34 @@ def main(argv: list[str] | None = None) -> None:
 
     store = ReleaseStore(args.data_root)
     try:
+        if args.action == "alerts":
+            alerts_report = evaluate_ons_pay_history_alerts(
+                data_root=args.data_root,
+                last=args.last,
+                max_assessment_age_hours=args.max_assessment_age_hours,
+                alert_after_unhealthy=args.alert_after_unhealthy,
+                max_unhealthy_share_percent=args.max_unhealthy_share_percent,
+                max_missing_pay_increase_pp=args.max_missing_pay_increase_pp,
+                max_cumulative_missing_pay_drift_pp=args.max_cumulative_missing_pay_drift_pp,
+            )
+            if args.format == "prometheus":
+                metrics = format_history_alerts_prometheus(alerts_report)
+                if args.textfile is not None:
+                    from data_platform_lab.observability.textfile import (
+                        TextfileExportError,
+                        write_prometheus_textfile,
+                    )
+
+                    try:
+                        write_prometheus_textfile(path=args.textfile, metrics=metrics)
+                    except TextfileExportError as exc:
+                        parser.error(str(exc))
+                print(metrics, end="")
+            else:
+                print(json.dumps(alerts_report.to_dict(), indent=2))
+            if alerts_report.status != "ok":
+                raise SystemExit(1)
+            return
         if args.action == "trends":
             trends_report = ReleaseHealthArchive(args.data_root).trends(
                 last=args.last, generation=args.generation
@@ -157,7 +204,13 @@ def main(argv: list[str] | None = None) -> None:
             plan = store.plan_rollback(
                 to_generation=args.to_generation, expected_generation=args.expected_generation
             )
-    except (ReleaseError, ReleaseHealthError, ReleaseHistoryError, MonitorError) as exc:
+    except (
+        ReleaseError,
+        ReleaseHealthError,
+        ReleaseHistoryError,
+        HistoryAlertError,
+        MonitorError,
+    ) as exc:
         parser.error(str(exc))
 
     print(json.dumps(plan.to_dict(), indent=2))
