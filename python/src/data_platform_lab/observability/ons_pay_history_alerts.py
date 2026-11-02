@@ -8,13 +8,13 @@ never treated as a successful quality check.
 
 from __future__ import annotations
 
-import math
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal
 
+from data_platform_lab.observability.ons_pay_alert_policy import AlertPolicy, AlertPolicyError
 from data_platform_lab.observability.ons_pay_release_history import (
     HealthSample,
     ReleaseHealthArchive,
@@ -52,25 +52,13 @@ class HistoryAlertReport:
     active_vintage: VintageKey | None
     window_assessments: int
     window_generations: int
+    policy: AlertPolicy
+    policy_sha256: str
     checks: tuple[HistoryAlertCheck, ...]
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the explicit policy evidence for external alert consumers."""
         return asdict(self)
-
-
-def _maximum(value: int | float | None, name: str, *, ceiling: float | None = None) -> None:
-    if value is None:
-        return
-    if type(value) not in {int, float} or value < 0:
-        raise HistoryAlertError(f"{name} requires a finite non-negative number")
-    try:
-        if not math.isfinite(value):
-            raise HistoryAlertError(f"{name} requires a finite non-negative number")
-    except OverflowError as exc:
-        raise HistoryAlertError(f"{name} requires a finite non-negative number") from exc
-    if ceiling is not None and value > ceiling:
-        raise HistoryAlertError(f"{name} cannot exceed {ceiling}")
 
 
 def _upper_check(
@@ -138,7 +126,8 @@ def _missing_drift(
 def evaluate_ons_pay_history_alerts(
     *,
     data_root: Path,
-    last: int = 50,
+    policy: AlertPolicy | None = None,
+    last: int | None = None,
     max_assessment_age_hours: float | None = None,
     alert_after_unhealthy: int | None = None,
     max_unhealthy_share_percent: float | None = None,
@@ -152,16 +141,17 @@ def evaluate_ons_pay_history_alerts(
     thresholds remain explicitly skipped when omitted. All calculations are
     observation-based, not time-weighted or statistical drift estimators.
     """
-    if type(last) is not int or not 1 <= last <= 1000:
-        raise HistoryAlertError("last must be an integer from 1 to 1000")
-    if alert_after_unhealthy is not None and (
-        type(alert_after_unhealthy) is not int or alert_after_unhealthy < 1
-    ):
-        raise HistoryAlertError("alert_after_unhealthy must be a positive integer")
-    _maximum(max_assessment_age_hours, "max_assessment_age_hours")
-    _maximum(max_unhealthy_share_percent, "max_unhealthy_share_percent", ceiling=100)
-    _maximum(max_missing_pay_increase_pp, "max_missing_pay_increase_pp", ceiling=100)
-    _maximum(max_cumulative_missing_pay_drift_pp, "max_cumulative_missing_pay_drift_pp")
+    try:
+        effective_policy = (policy if policy is not None else AlertPolicy()).with_overrides(
+            last=last,
+            max_assessment_age_hours=max_assessment_age_hours,
+            alert_after_unhealthy=alert_after_unhealthy,
+            max_unhealthy_share_percent=max_unhealthy_share_percent,
+            max_missing_pay_increase_pp=max_missing_pay_increase_pp,
+            max_cumulative_missing_pay_drift_pp=max_cumulative_missing_pay_drift_pp,
+        )
+    except AlertPolicyError as exc:
+        raise HistoryAlertError(str(exc)) from exc
 
     checked_at = datetime.now(UTC) if now is None else now
     offset = checked_at.utcoffset()
@@ -171,7 +161,7 @@ def evaluate_ons_pay_history_alerts(
 
     store = ReleaseStore(data_root)
     state = store.history()
-    history = ReleaseHealthArchive(data_root).trends(last=last)
+    history = ReleaseHealthArchive(data_root).trends(last=effective_policy.last)
     active_points = (
         [
             item
@@ -228,7 +218,7 @@ def evaluate_ons_pay_history_alerts(
         by_generation[sample.generation] = sample
     missing_step, cumulative = _missing_drift(latest, by_generation)
 
-    if alert_after_unhealthy is None:
+    if effective_policy.alert_after_unhealthy is None:
         streak_check = HistoryAlertCheck(
             "consecutive_unhealthy", "skipped", unhealthy_streak, None, "Policy not configured"
         )
@@ -237,15 +227,15 @@ def evaluate_ons_pay_history_alerts(
             "consecutive_unhealthy",
             "unavailable",
             None,
-            alert_after_unhealthy,
+            effective_policy.alert_after_unhealthy,
             "No current-generation assessments for streak evaluation",
         )
     else:
         streak_check = HistoryAlertCheck(
             "consecutive_unhealthy",
-            "alert" if unhealthy_streak >= alert_after_unhealthy else "pass",
+            "alert" if unhealthy_streak >= effective_policy.alert_after_unhealthy else "pass",
             unhealthy_streak,
-            alert_after_unhealthy,
+            effective_policy.alert_after_unhealthy,
             "Alert when the trailing unhealthy count reaches the configured minimum",
         )
 
@@ -254,26 +244,26 @@ def evaluate_ons_pay_history_alerts(
         _upper_check(
             "assessment_age_hours",
             age_hours,
-            max_assessment_age_hours,
+            effective_policy.max_assessment_age_hours,
             "No current-generation timestamp to evaluate freshness",
         ),
         streak_check,
         _upper_check(
             "unhealthy_share_percent",
             unhealthy_share,
-            max_unhealthy_share_percent,
+            effective_policy.max_unhealthy_share_percent,
             "No current-generation observations for sample-based unhealthy share",
         ),
         _upper_check(
             "missing_pay_increase_pp",
             missing_step,
-            max_missing_pay_increase_pp,
+            effective_policy.max_missing_pay_increase_pp,
             "Adjacent release generations lack comparable missing-pay observations",
         ),
         _upper_check(
             "cumulative_missing_pay_drift_pp",
             cumulative,
-            max_cumulative_missing_pay_drift_pp,
+            effective_policy.max_cumulative_missing_pay_drift_pp,
             "The window lacks a complete, measurable sequence of release generations",
         ),
     )
@@ -302,6 +292,8 @@ def evaluate_ons_pay_history_alerts(
         active_vintage=state.active if state is not None else None,
         window_assessments=len(history.samples),
         window_generations=len(history.by_generation),
+        policy=effective_policy,
+        policy_sha256=effective_policy.sha256,
         checks=checks,
     )
 
@@ -360,6 +352,15 @@ def format_history_alerts_prometheus(report: HistoryAlertReport) -> str:
         lines.extend(
             (f"# HELP {metric} {help_text}", f"# TYPE {metric} gauge", f"{metric}{labels} {value}")
         )
+    info_metric = "dpl_ons_pay_history_policy_info"
+    lines.extend(
+        (
+            f"# HELP {info_metric} Fingerprint of the effective alert policy.",
+            f"# TYPE {info_metric} gauge",
+            f'{info_metric}{{policy_name="{report.policy.name}",'
+            f'policy_sha256="{report.policy_sha256}"}} 1',
+        )
+    )
     code = {"pass": 0, "alert": 1, "unavailable": 2, "skipped": 3}
     metric = "dpl_ons_pay_history_policy_state"
     lines.extend(

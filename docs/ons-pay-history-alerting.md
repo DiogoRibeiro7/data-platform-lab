@@ -43,6 +43,67 @@ releases were assessed with different health thresholds.
 The command prints structured JSON containing the active generation, release
 event SHA, exact model/registry/source pins, the selected observation-window
 sizes and every policy's state, observed value, threshold and explanation.
+It also includes the **effective policy** and its canonical SHA-256 fingerprint.
+
+## Versioned policy-as-code
+
+Commit a policy file alongside the application to review alert thresholds as
+code. A [strict, versioned example](../configs/ons-pay-alert-policy.example.json)
+is provided:
+
+```json
+{
+  "schema_version": 1,
+  "name": "ons-pay-quality-example",
+  "last": 50,
+  "max_assessment_age_hours": 36,
+  "alert_after_unhealthy": 3,
+  "max_unhealthy_share_percent": 50,
+  "max_missing_pay_increase_pp": 3,
+  "max_cumulative_missing_pay_drift_pp": 8
+}
+```
+
+The thresholds are examples, not approved SLAs. `schema_version` must be `1`
+and `name` a lowercase identifier with optional hyphens. Both are required;
+the observation window and all five optional thresholds can be omitted.
+Unconfigured checks remain `skipped`, and `last` defaults to 50. This file
+contains no credentials or provider-specific connection strings.
+
+```bash
+cd python
+
+# Validate the policy without a curated-data root or active release.
+poetry run data-platform-lab ons-pay-release validate-alert-policy \
+  --policy-file ../configs/ons-pay-alert-policy.example.json
+
+# Apply the pinned policy to verified release history (read-only).
+poetry run data-platform-lab ons-pay-release --data-root ../data alerts \
+  --policy-file ../configs/ons-pay-alert-policy.example.json
+
+# Explicit CLI flags override matching fields in the file.
+poetry run data-platform-lab ons-pay-release --data-root ../data alerts \
+  --policy-file ../configs/ons-pay-alert-policy.example.json \
+  --last 100 --max-assessment-age-hours 24
+```
+
+Precedence is **built-in defaults < versioned policy file < explicit CLI flags**.
+The standard flag-only command still works. The JSON response includes the
+resolved `policy` object and `policy_sha256`, computed over canonical JSON
+(sorted keys, stable separators, UTF-8) **after all overrides**. It is stable
+across file whitespace and key-order changes, and differs when the name,
+window or thresholds differ. The fingerprint represents the effective
+decision settings, not the byte-for-byte file or its Git commit. Use Git
+history to establish who approved the file and when.
+
+The validation-only command returns `policy` and `policy_sha256` with exit `0`
+for valid input or `2` for errors. It requires neither a release nor an
+archive and performs no writes. Duplicate or unknown keys, unsupported schema
+versions, boolean numbers, invalid types, non-finite values, impossible limits,
+missing files, symlinked policy files and files over 64 KiB are errors. A
+malformed file is
+rejected **even if a CLI override would replace the offending threshold**.
+Nothing implicitly loads a policy from a directory or environment variable.
 
 ### Policy semantics
 
@@ -94,6 +155,9 @@ optional check is neither a pass nor an error.
 - Exit `2`: invalid policy/options, tampered or unsafe historical evidence,
   changed release pointer during evaluation, or an export error.
 
+`validate-alert-policy` only returns `0` or `2`, because it checks the policy
+schema without assessing an active release.
+
 Inputs must be finite and non-negative; unhealthy share and single-step drift
 thresholds cannot exceed 100. The consecutive-unhealthy threshold must be a
 positive integer. An absent active release is an explicit alert and is not
@@ -131,10 +195,12 @@ Useful gauges include:
 | `dpl_ons_pay_history_assessments` | Assessment count in the selected window |
 | `dpl_ons_pay_history_checks_alerting` | Number of alerting checks |
 | `dpl_ons_pay_history_checks_unavailable` | Number of checks lacking evidence |
+| `dpl_ons_pay_history_policy_info{policy_name="...",policy_sha256="..."}` | `1` labels the effective versioned policy used for this evaluation |
 | `dpl_ons_pay_history_policy_state{policy="..."}` | Per-check state: `0` pass, `1` alert, `2` unavailable, `3` skipped |
 
 The broad gauges are labeled with current model version, registry commit and
-source SHA when a release exists. The policy-state gauge has its fixed policy
+source SHA when a release exists. The policy-info gauge carries the canonical
+policy fingerprint and name; the policy-state gauge has its fixed policy
 label. These metrics describe **an evaluation**, not proof that an external
 collector successfully scraped the textfile. Operators must configure their
 own scrape cadence, alert receiver, retention and stale-file monitoring;
@@ -145,6 +211,7 @@ missing checks or an obsolete export should not be interpreted as healthy.
 ```bash
 cd python
 poetry run pytest tests/test_ons_pay_history_alerts.py -q
+poetry run pytest tests/test_ons_pay_alert_policy.py -q
 poetry run ruff check src/ tests/
 poetry run ruff format --check src/ tests/
 poetry run mypy src/
@@ -156,3 +223,6 @@ cumulative drift, simulate generation gaps and broken Parquet, and enforce
 fail-closed archive validation, CLI exit codes and read-only defaults. No
 database provider, credentials, network, alert service or automatic rollback
 is required.
+The policy suite adds schema hardening, malformed/duplicate JSON, unsafe input
+paths, fingerprint stability, explicit override precedence and validation
+without an active release.

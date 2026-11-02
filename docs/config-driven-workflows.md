@@ -1,7 +1,8 @@
 # Config-Driven Workflows
 
-Three workflows support JSON config files as an alternative to CLI flags.
-Config files make runs reproducible and shareable without long command lines.
+Three exercise workflows support general JSON config files, while ONS pay
+release alerting supports a stricter versioned JSON policy. Config files make
+runs reproducible and shareable without long command lines.
 
 ---
 
@@ -12,6 +13,7 @@ Config files make runs reproducible and shareable without long command lines.
 | Streaming processor | `input`, `output_dir`, `pipeline_name`, `lateness_threshold` | `streaming.cli` |
 | Warehouse loader | `data_dir`, `db_path`, `report_dir`, `sql_dir` | `warehouse.cli` |
 | Benchmark | `work_dir`, `num_files`, `rows_per_file`, `max_workers` | `benchmark.cli` |
+| ONS pay release alerts | `schema_version`, `name`, `last`, and optional quality thresholds | `serving.release_cli` (`alerts`) |
 
 ---
 
@@ -24,6 +26,11 @@ defaults  <  config file  <  CLI flags
 - If no `--config` is provided, CLI flags and built-in defaults apply.
 - If `--config` is provided, config values override defaults.
 - CLI flags always override config values when explicitly provided.
+
+For ONS pay alerts, use `--policy-file` (not `--config`). The policy parser
+**rejects unknown and duplicate keys**, validates a versioned schema, and
+emits a canonical SHA-256 fingerprint over the effective values after CLI
+overrides. See [history-based alerting](ons-pay-history-alerting.md).
 
 ---
 
@@ -43,6 +50,9 @@ Plain JSON objects with `snake_case` keys (matching the platform convention).
 - Unknown keys produce a warning but are not errors.
 - Missing required keys (e.g. `input` for streaming) are an error unless
   provided via CLI flag.
+
+ONS pay alert policies differ: `schema_version` and `name` are mandatory,
+other fields are optional, and **unknown keys are errors**, not warnings.
 
 ---
 
@@ -83,6 +93,11 @@ The repository includes ready-to-use examples in `configs/`:
 }
 ```
 
+### `configs/ons-pay-alert-policy.example.json`
+
+See the [policy-as-code example](../configs/ons-pay-alert-policy.example.json)
+for a complete set of versioned thresholds and observation-window settings.
+
 ---
 
 ## Running with config
@@ -100,6 +115,10 @@ poetry run python -m data_platform_lab.warehouse.cli --config ../configs/warehou
 
 # Benchmark
 poetry run python -m data_platform_lab.benchmark.cli --config ../configs/benchmark.json
+
+# Validate an ONS pay alert policy without any active release.
+poetry run data-platform-lab ons-pay-release validate-alert-policy \
+  --policy-file ../configs/ons-pay-alert-policy.example.json
 ```
 
 ### JavaScript
@@ -145,7 +164,10 @@ The config system is a shared module used by all three CLIs:
 - **Python**: `data_platform_lab.config` — `load_config()`, `validate_config()`, `merge_config()`
 - **JavaScript**: `src/config.js` — `loadConfig()`, `validateConfig()`, `mergeConfig()`
 
-Both provide the same API and enforce the same precedence model.
+Both provide the same API and enforce the same precedence model. ONS pay
+alerting uses the separate, stricter
+`data_platform_lab.observability.ons_pay_alert_policy` module to prevent
+silently ignored quality limits.
 
 ---
 
