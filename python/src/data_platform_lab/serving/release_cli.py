@@ -33,7 +33,8 @@ def main(argv: list[str] | None = None) -> None:
     trends.add_argument("--format", choices=("json", "csv"), default="json")
 
     alerts = actions.add_parser("alerts", help="Read-only history-based quality alert policies")
-    alerts.add_argument("--last", type=int, default=50, help="Recent assessments (1-1000)")
+    alerts.add_argument("--policy-file", type=Path, help="Versioned JSON alert policy")
+    alerts.add_argument("--last", type=int, help="Recent assessments (1-1000); overrides policy")
     alerts.add_argument("--max-assessment-age-hours", type=float)
     alerts.add_argument("--alert-after-unhealthy", type=int)
     alerts.add_argument("--max-unhealthy-share-percent", type=float)
@@ -41,6 +42,11 @@ def main(argv: list[str] | None = None) -> None:
     alerts.add_argument("--max-cumulative-missing-pay-drift-pp", type=float)
     alerts.add_argument("--format", choices=("json", "prometheus"), default="json")
     alerts.add_argument("--textfile", type=Path, help="Explicit atomic Prometheus textfile export")
+
+    validate_policy = actions.add_parser(
+        "validate-alert-policy", help="Validate a policy file without requiring a release"
+    )
+    validate_policy.add_argument("--policy-file", type=Path, required=True)
 
     activate = actions.add_parser("activate", help="Preview or apply an exact candidate")
     activate.add_argument("--candidate-registry-commit", required=True)
@@ -70,8 +76,28 @@ def main(argv: list[str] | None = None) -> None:
     ):
         parser.error("--textfile requires --format prometheus")
 
+    if args.action == "validate-alert-policy":
+        # Pure policy validation needs neither an active release nor the
+        # optional serving/database dependency.
+        from data_platform_lab.observability.ons_pay_alert_policy import (
+            AlertPolicyError,
+            load_alert_policy,
+        )
+
+        try:
+            policy = load_alert_policy(args.policy_file)
+        except AlertPolicyError as exc:
+            parser.error(str(exc))
+        print(json.dumps({"policy": policy.to_dict(), "policy_sha256": policy.sha256}, indent=2))
+        return
+
     # The optional serving dependency is loaded only when this command runs.
     try:
+        from data_platform_lab.observability.ons_pay_alert_policy import (
+            AlertPolicy,
+            AlertPolicyError,
+            load_alert_policy,
+        )
         from data_platform_lab.observability.ons_pay_history_alerts import (
             HistoryAlertError,
             evaluate_ons_pay_history_alerts,
@@ -96,8 +122,10 @@ def main(argv: list[str] | None = None) -> None:
     store = ReleaseStore(args.data_root)
     try:
         if args.action == "alerts":
+            policy = load_alert_policy(args.policy_file) if args.policy_file else AlertPolicy()
             alerts_report = evaluate_ons_pay_history_alerts(
                 data_root=args.data_root,
+                policy=policy,
                 last=args.last,
                 max_assessment_age_hours=args.max_assessment_age_hours,
                 alert_after_unhealthy=args.alert_after_unhealthy,
@@ -209,6 +237,7 @@ def main(argv: list[str] | None = None) -> None:
         ReleaseHealthError,
         ReleaseHistoryError,
         HistoryAlertError,
+        AlertPolicyError,
         MonitorError,
     ) as exc:
         parser.error(str(exc))

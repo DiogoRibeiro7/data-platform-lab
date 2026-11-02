@@ -316,8 +316,18 @@ poetry run data-platform-lab ons-pay-release --data-root ../data alerts \
 
 The command is read-only by default, returns machine-readable JSON or
 Prometheus gauges, and can atomically write a `.prom` file **only** with an
-explicit `--format prometheus --textfile` destination. See the
-[history-alerting guide](docs/ons-pay-history-alerting.md) for policy details,
+explicit `--format prometheus --textfile` destination. Versioned JSON
+**policy-as-code** is also supported: validate a policy without any active
+release, or evaluate it with explicit CLI overrides and a canonical fingerprint.
+
+```bash
+poetry run data-platform-lab ons-pay-release validate-alert-policy \
+  --policy-file ../configs/ons-pay-alert-policy.example.json
+poetry run data-platform-lab ons-pay-release --data-root ../data alerts \
+  --policy-file ../configs/ons-pay-alert-policy.example.json
+```
+
+See the [history-alerting guide](docs/ons-pay-history-alerting.md) for policy details,
 missing-evidence semantics, threshold examples, and offline tests. No provider,
 scheduler, notification system or automatic release action is introduced.
 

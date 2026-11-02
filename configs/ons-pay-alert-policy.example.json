@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "ons-pay-quality-example",
+  "last": 50,
+  "max_assessment_age_hours": 36,
+  "alert_after_unhealthy": 3,
+  "max_unhealthy_share_percent": 50,
+  "max_missing_pay_increase_pp": 3,
+  "max_cumulative_missing_pay_drift_pp": 8
+}
