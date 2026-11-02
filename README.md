@@ -331,6 +331,26 @@ See the [history-alerting guide](docs/ons-pay-history-alerting.md) for policy de
 missing-evidence semantics, threshold examples, and offline tests. No provider,
 scheduler, notification system or automatic release action is introduced.
 
+### Replaying alert policies over historical releases
+
+`ons-pay-release replay-alerts` re-evaluates a versioned policy at verified
+historical assessment checkpoints. It keeps the complete preceding observation
+window even when only a few recent checkpoints are requested, preventing
+look-ahead leakage and truncated drift comparisons. Deterministic JSON and
+flat CSV provide reproducible evidence for threshold review.
+
+```bash
+poetry run data-platform-lab ons-pay-release --data-root ../data replay-alerts \
+  --policy-file ../configs/ons-pay-alert-policy.example.json \
+  --replay-last 100 --format csv
+```
+
+The [historical replay guide](docs/ons-pay-history-replay.md) explains the
+distinction between simulated assessment outcomes and real-time incident
+detection, as well as policy fingerprints, exit codes, and offline tests.
+Replay never schedules a job, pages an operator, writes a record, or changes
+an active release.
+
 ## Unified CLI
 
 ```text

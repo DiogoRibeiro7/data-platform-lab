@@ -606,9 +606,14 @@ class ReleaseHealthArchive:
             self._publish(payload, sha)
         return sha
 
-    def trends(self, *, last: int = 50, generation: int | None = None) -> HealthTrends:
-        """Validate **all** stored records before filtering and summarizing them."""
-        if type(last) is not int or not 1 <= last <= 1000:
+    def trends(self, *, last: int | None = 50, generation: int | None = None) -> HealthTrends:
+        """Validate **all** records before filtering; None returns the full archive.
+
+        The CLI keeps its 1-1000 sample limit. Internal historical replay
+        requires the complete verified prefix to avoid look-ahead bias or
+        truncating evidence before the first requested checkpoint.
+        """
+        if last is not None and (type(last) is not int or not 1 <= last <= 1000):
             raise ReleaseHistoryError("last must be an integer from 1 to 1000")
         if generation is not None and (type(generation) is not int or generation < 1):
             raise ReleaseHistoryError("generation filter must be a positive integer")
@@ -630,7 +635,7 @@ class ReleaseHealthArchive:
         samples.sort(key=lambda item: (item.checked_at_utc, item.record_sha256))
         if generation is not None:
             samples = [item for item in samples if item.generation == generation]
-        selected = tuple(samples[-last:])
+        selected = tuple(samples if last is None else samples[-last:])
         latest_state = self.release.history()
         if (
             latest_state is None
