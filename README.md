@@ -276,6 +276,30 @@ The command can print Prometheus gauges or explicitly export an atomic
 [active-release health guide](docs/ons-pay-release-health.md) for decision
 rules, failure handling, metrics, and tests.
 
+### Historical release-health trends
+
+Add `--record` to `ons-pay-release assess` to explicitly archive a complete
+health report as canonical, SHA-256-addressed JSON linked to the exact active
+generation. The archive is append-only and can preserve incidents even when
+the active curated Parquet has become untrusted. Without `--record`, assessment
+still writes no archive data.
+
+```bash
+# Explicitly save an assessment (including failed checks).
+poetry run data-platform-lab ons-pay-release --data-root ../data assess \
+  --max-missing-pay-percent 5 --record
+
+# Read-only trends, summaries and flat CSV export.
+poetry run data-platform-lab ons-pay-release --data-root ../data trends --last 50
+poetry run data-platform-lab ons-pay-release --data-root ../data trends \
+  --generation 2 --last 100 --format csv
+```
+
+The [health-history guide](docs/ons-pay-release-health-history.md) documents
+cross-generation lineage, deterministic transitions, CSV columns, append-only
+durability and trust boundaries. No hosted database, scheduler, or automatic
+rollback is introduced.
+
 ## Unified CLI
 
 ```text
