@@ -53,6 +53,16 @@ def main(argv: list[str] | None = None) -> None:
     replay.add_argument("--replay-last", type=int, default=50, help="Output checkpoints (1-1000)")
     replay.add_argument("--format", choices=("json", "csv"), default="json")
 
+    compare_policies = actions.add_parser(
+        "compare-alert-policies", help="Compare two policies at the same verified checkpoints"
+    )
+    compare_policies.add_argument("--baseline-policy-file", required=True, type=Path)
+    compare_policies.add_argument("--candidate-policy-file", required=True, type=Path)
+    compare_policies.add_argument(
+        "--replay-last", type=int, default=50, help="Paired output checkpoints (1-1000)"
+    )
+    compare_policies.add_argument("--format", choices=("json", "csv"), default="json")
+
     validate_policy = actions.add_parser(
         "validate-alert-policy", help="Validate a policy file without requiring a release"
     )
@@ -103,6 +113,10 @@ def main(argv: list[str] | None = None) -> None:
 
     # The optional serving dependency is loaded only when this command runs.
     try:
+        from data_platform_lab.observability.ons_pay_alert_comparison import (
+            compare_ons_pay_alert_policies,
+            format_alert_policy_comparison_csv,
+        )
         from data_platform_lab.observability.ons_pay_alert_policy import (
             AlertPolicy,
             AlertPolicyError,
@@ -135,6 +149,22 @@ def main(argv: list[str] | None = None) -> None:
 
     store = ReleaseStore(args.data_root)
     try:
+        if args.action == "compare-alert-policies":
+            baseline_policy = load_alert_policy(args.baseline_policy_file)
+            candidate_policy = load_alert_policy(args.candidate_policy_file)
+            comparison = compare_ons_pay_alert_policies(
+                data_root=args.data_root,
+                baseline=baseline_policy,
+                candidate=candidate_policy,
+                replay_last=args.replay_last,
+            )
+            if args.format == "csv":
+                print(format_alert_policy_comparison_csv(comparison), end="")
+            else:
+                print(json.dumps(comparison.to_dict(), indent=2))
+            if not comparison.points:
+                raise SystemExit(1)
+            return
         if args.action == "replay-alerts":
             base_policy = load_alert_policy(args.policy_file) if args.policy_file else AlertPolicy()
             effective = base_policy.with_overrides(
