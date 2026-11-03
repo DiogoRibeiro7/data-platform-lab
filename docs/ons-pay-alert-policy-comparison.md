@@ -90,6 +90,11 @@ six fixed checks. The JSON report preserves observed values, thresholds,
 check details, the full status matrix and summary. The CSV is suitable for
 pandas, DuckDB, R or BI tools; it is written only to stdout.
 
+For explicit, reproducible CI pass/fail review over these same paired
+counts, add an opt-in [comparison acceptance gate](ons-pay-alert-comparison-gates.md).
+Without a gate, the comparison remains descriptive and does not reject a
+candidate policy merely because simulated decisions differ.
+
 ## Integrity and limits
 
 - The release history and **every archived assessment** are checked against

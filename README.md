@@ -373,6 +373,24 @@ explains checkpoint alignment, interpretation, evidence gaps, and integrity
 checks. No supplier, service, schedule, persisted result or automatic action
 is required.
 
+For reproducible candidate review in CI, an optional **versioned acceptance
+gate** checks the number of newly alerting, newly unavailable, and changed
+checkpoints against explicit operator budgets. It includes a mandatory
+minimum-evidence check and emits an auditable JSON verdict and exit code.
+
+```bash
+poetry run data-platform-lab ons-pay-release --data-root ../data \
+  compare-alert-policies \
+  --baseline-policy-file ../configs/ons-pay-alert-policy.example.json \
+  --candidate-policy-file ../configs/ons-pay-alert-policy.candidate.example.json \
+  --gate-file ../configs/ons-pay-alert-comparison-gate.example.json
+```
+
+The [comparison acceptance-gate guide](docs/ons-pay-alert-comparison-gates.md)
+documents strict policy-as-code validation, counts, missing-evidence
+semantics and read-only CI use. A gate never deploys an alert policy or
+selects a database provider.
+
 ## Unified CLI
 
 ```text

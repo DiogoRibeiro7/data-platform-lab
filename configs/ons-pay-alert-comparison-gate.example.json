@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "name": "candidate-rollout-review",
+  "min_evaluated": 10,
+  "max_alert_added": 3,
+  "max_became_unavailable": 0,
+  "max_alert_to_unavailable": 0,
+  "max_status_changed": 5
+}
