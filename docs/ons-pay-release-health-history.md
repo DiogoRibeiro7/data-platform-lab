@@ -12,6 +12,8 @@ automatic promotion, or automatic rollback is enabled.
 
 For an optional read-only evaluation of alert thresholds over these archived
 assessments, see [history-based alert policies](ons-pay-history-alerting.md).
+To evaluate those policies at past observation checkpoints, see
+[historical alert replay](ons-pay-history-replay.md).
 
 ## Explicitly record an assessment
 

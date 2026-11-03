@@ -123,54 +123,29 @@ def _missing_drift(
     return step, round(cumulative, 6)
 
 
-def evaluate_ons_pay_history_alerts(
+def _evaluate_window(
     *,
-    data_root: Path,
-    policy: AlertPolicy | None = None,
-    last: int | None = None,
-    max_assessment_age_hours: float | None = None,
-    alert_after_unhealthy: int | None = None,
-    max_unhealthy_share_percent: float | None = None,
-    max_missing_pay_increase_pp: float | None = None,
-    max_cumulative_missing_pay_drift_pp: float | None = None,
-    now: datetime | None = None,
+    policy: AlertPolicy,
+    samples: tuple[HealthSample, ...],
+    checked_at: datetime,
+    generation: int | None,
+    event_sha256: str | None,
+    vintage: VintageKey | None,
 ) -> HistoryAlertReport:
-    """Evaluate bounded history with conservative missing-evidence semantics.
+    """Evaluate one verified, bounded observation prefix without I/O.
 
-    A mandatory check rejects an unassessed active generation. Optional
-    thresholds remain explicitly skipped when omitted. All calculations are
-    observation-based, not time-weighted or statistical drift estimators.
+    Both live alerts and historical replay call this common implementation;
+    callers own archive verification and active-pointer consistency checks.
     """
-    try:
-        effective_policy = (policy if policy is not None else AlertPolicy()).with_overrides(
-            last=last,
-            max_assessment_age_hours=max_assessment_age_hours,
-            alert_after_unhealthy=alert_after_unhealthy,
-            max_unhealthy_share_percent=max_unhealthy_share_percent,
-            max_missing_pay_increase_pp=max_missing_pay_increase_pp,
-            max_cumulative_missing_pay_drift_pp=max_cumulative_missing_pay_drift_pp,
-        )
-    except AlertPolicyError as exc:
-        raise HistoryAlertError(str(exc)) from exc
-
-    checked_at = datetime.now(UTC) if now is None else now
-    offset = checked_at.utcoffset()
-    if offset is None:
-        raise HistoryAlertError("alert reference time must be timezone-aware")
-    checked_at = checked_at.astimezone(UTC)
-
-    store = ReleaseStore(data_root)
-    state = store.history()
-    history = ReleaseHealthArchive(data_root).trends(last=effective_policy.last)
     active_points = (
         [
             item
-            for item in history.samples
-            if state is not None
-            and item.generation == state.generation
-            and item.event_sha256 == state.event_sha256
+            for item in samples
+            if generation is not None
+            and item.generation == generation
+            and item.event_sha256 == event_sha256
         ]
-        if state is not None
+        if generation is not None
         else []
     )
     latest = active_points[-1] if active_points else None
@@ -214,11 +189,11 @@ def evaluate_ons_pay_history_alerts(
         )
 
     by_generation: dict[int, HealthSample] = {}
-    for sample in history.samples:
+    for sample in samples:
         by_generation[sample.generation] = sample
     missing_step, cumulative = _missing_drift(latest, by_generation)
 
-    if effective_policy.alert_after_unhealthy is None:
+    if policy.alert_after_unhealthy is None:
         streak_check = HistoryAlertCheck(
             "consecutive_unhealthy", "skipped", unhealthy_streak, None, "Policy not configured"
         )
@@ -227,15 +202,15 @@ def evaluate_ons_pay_history_alerts(
             "consecutive_unhealthy",
             "unavailable",
             None,
-            effective_policy.alert_after_unhealthy,
+            policy.alert_after_unhealthy,
             "No current-generation assessments for streak evaluation",
         )
     else:
         streak_check = HistoryAlertCheck(
             "consecutive_unhealthy",
-            "alert" if unhealthy_streak >= effective_policy.alert_after_unhealthy else "pass",
+            "alert" if unhealthy_streak >= policy.alert_after_unhealthy else "pass",
             unhealthy_streak,
-            effective_policy.alert_after_unhealthy,
+            policy.alert_after_unhealthy,
             "Alert when the trailing unhealthy count reaches the configured minimum",
         )
 
@@ -244,26 +219,26 @@ def evaluate_ons_pay_history_alerts(
         _upper_check(
             "assessment_age_hours",
             age_hours,
-            effective_policy.max_assessment_age_hours,
+            policy.max_assessment_age_hours,
             "No current-generation timestamp to evaluate freshness",
         ),
         streak_check,
         _upper_check(
             "unhealthy_share_percent",
             unhealthy_share,
-            effective_policy.max_unhealthy_share_percent,
+            policy.max_unhealthy_share_percent,
             "No current-generation observations for sample-based unhealthy share",
         ),
         _upper_check(
             "missing_pay_increase_pp",
             missing_step,
-            effective_policy.max_missing_pay_increase_pp,
+            policy.max_missing_pay_increase_pp,
             "Adjacent release generations lack comparable missing-pay observations",
         ),
         _upper_check(
             "cumulative_missing_pay_drift_pp",
             cumulative,
-            effective_policy.max_cumulative_missing_pay_drift_pp,
+            policy.max_cumulative_missing_pay_drift_pp,
             "The window lacks a complete, measurable sequence of release generations",
         ),
     )
@@ -275,6 +250,66 @@ def evaluate_ons_pay_history_alerts(
         else "ok"
     )
 
+    return HistoryAlertReport(
+        checked_at_utc=checked_at.isoformat(),
+        status=status,
+        active_generation=generation,
+        active_event_sha256=event_sha256,
+        active_vintage=vintage,
+        window_assessments=len(samples),
+        window_generations=len(by_generation),
+        policy=policy,
+        policy_sha256=policy.sha256,
+        checks=checks,
+    )
+
+
+def evaluate_ons_pay_history_alerts(
+    *,
+    data_root: Path,
+    policy: AlertPolicy | None = None,
+    last: int | None = None,
+    max_assessment_age_hours: float | None = None,
+    alert_after_unhealthy: int | None = None,
+    max_unhealthy_share_percent: float | None = None,
+    max_missing_pay_increase_pp: float | None = None,
+    max_cumulative_missing_pay_drift_pp: float | None = None,
+    now: datetime | None = None,
+) -> HistoryAlertReport:
+    """Evaluate current active history with conservative missing-evidence semantics.
+
+    A mandatory check rejects an unassessed active generation. Thresholds
+    remain skipped when omitted; observations are not time-weighted.
+    """
+    try:
+        effective_policy = (policy if policy is not None else AlertPolicy()).with_overrides(
+            last=last,
+            max_assessment_age_hours=max_assessment_age_hours,
+            alert_after_unhealthy=alert_after_unhealthy,
+            max_unhealthy_share_percent=max_unhealthy_share_percent,
+            max_missing_pay_increase_pp=max_missing_pay_increase_pp,
+            max_cumulative_missing_pay_drift_pp=max_cumulative_missing_pay_drift_pp,
+        )
+    except AlertPolicyError as exc:
+        raise HistoryAlertError(str(exc)) from exc
+
+    checked_at = datetime.now(UTC) if now is None else now
+    if checked_at.utcoffset() is None:
+        raise HistoryAlertError("alert reference time must be timezone-aware")
+    checked_at = checked_at.astimezone(UTC)
+
+    store = ReleaseStore(data_root)
+    state = store.history()
+    history = ReleaseHealthArchive(data_root).trends(last=effective_policy.last)
+    report = _evaluate_window(
+        policy=effective_policy,
+        samples=history.samples,
+        checked_at=checked_at,
+        generation=state.generation if state is not None else None,
+        event_sha256=state.event_sha256 if state is not None else None,
+        vintage=state.active if state is not None else None,
+    )
+
     # Archive reads and release promotions are independent. Invalidate a
     # report whose active generation changed during assessment.
     current = store.history()
@@ -284,18 +319,7 @@ def evaluate_ons_pay_history_alerts(
         and (current.generation != state.generation or current.event_sha256 != state.event_sha256)
     ):
         raise HistoryAlertError("active release changed during alert evaluation; retry")
-    return HistoryAlertReport(
-        checked_at_utc=checked_at.isoformat(),
-        status=status,
-        active_generation=state.generation if state is not None else None,
-        active_event_sha256=state.event_sha256 if state is not None else None,
-        active_vintage=state.active if state is not None else None,
-        window_assessments=len(history.samples),
-        window_generations=len(history.by_generation),
-        policy=effective_policy,
-        policy_sha256=effective_policy.sha256,
-        checks=checks,
-    )
+    return report
 
 
 def format_history_alerts_prometheus(report: HistoryAlertReport) -> str:

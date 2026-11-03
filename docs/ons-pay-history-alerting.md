@@ -105,6 +105,11 @@ malformed file is
 rejected **even if a CLI override would replace the offending threshold**.
 Nothing implicitly loads a policy from a directory or environment variable.
 
+For read-only evaluation of a policy at *historical* assessment checkpoints,
+including a deterministic CSV timeline, see the
+[alert replay guide](ons-pay-history-replay.md). Historical signals must not
+be confused with current incident status or missing scheduled observations.
+
 ### Policy semantics
 
 | JSON check name | When it alerts | Missing evidence |

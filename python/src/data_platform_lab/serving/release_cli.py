@@ -7,6 +7,17 @@ import json
 from pathlib import Path
 
 
+def _add_alert_policy_options(command: argparse.ArgumentParser) -> None:
+    """Keep live and replay policy arguments identical, without implicit files."""
+    command.add_argument("--policy-file", type=Path, help="Versioned JSON alert policy")
+    command.add_argument("--last", type=int, help="Recent assessments (1-1000); overrides policy")
+    command.add_argument("--max-assessment-age-hours", type=float)
+    command.add_argument("--alert-after-unhealthy", type=int)
+    command.add_argument("--max-unhealthy-share-percent", type=float)
+    command.add_argument("--max-missing-pay-increase-pp", type=float)
+    command.add_argument("--max-cumulative-missing-pay-drift-pp", type=float)
+
+
 def main(argv: list[str] | None = None) -> None:
     """Report active status or preview/apply one explicitly versioned decision."""
     parser = argparse.ArgumentParser(
@@ -33,15 +44,14 @@ def main(argv: list[str] | None = None) -> None:
     trends.add_argument("--format", choices=("json", "csv"), default="json")
 
     alerts = actions.add_parser("alerts", help="Read-only history-based quality alert policies")
-    alerts.add_argument("--policy-file", type=Path, help="Versioned JSON alert policy")
-    alerts.add_argument("--last", type=int, help="Recent assessments (1-1000); overrides policy")
-    alerts.add_argument("--max-assessment-age-hours", type=float)
-    alerts.add_argument("--alert-after-unhealthy", type=int)
-    alerts.add_argument("--max-unhealthy-share-percent", type=float)
-    alerts.add_argument("--max-missing-pay-increase-pp", type=float)
-    alerts.add_argument("--max-cumulative-missing-pay-drift-pp", type=float)
+    _add_alert_policy_options(alerts)
     alerts.add_argument("--format", choices=("json", "prometheus"), default="json")
     alerts.add_argument("--textfile", type=Path, help="Explicit atomic Prometheus textfile export")
+
+    replay = actions.add_parser("replay-alerts", help="Replay verified historical quality checks")
+    _add_alert_policy_options(replay)
+    replay.add_argument("--replay-last", type=int, default=50, help="Output checkpoints (1-1000)")
+    replay.add_argument("--format", choices=("json", "csv"), default="json")
 
     validate_policy = actions.add_parser(
         "validate-alert-policy", help="Validate a policy file without requiring a release"
@@ -103,6 +113,10 @@ def main(argv: list[str] | None = None) -> None:
             evaluate_ons_pay_history_alerts,
             format_history_alerts_prometheus,
         )
+        from data_platform_lab.observability.ons_pay_history_replay import (
+            format_history_replay_csv,
+            replay_ons_pay_history_alerts,
+        )
         from data_platform_lab.observability.ons_pay_monitor import MonitorError
         from data_platform_lab.observability.ons_pay_release_health import (
             ReleaseHealthError,
@@ -121,6 +135,26 @@ def main(argv: list[str] | None = None) -> None:
 
     store = ReleaseStore(args.data_root)
     try:
+        if args.action == "replay-alerts":
+            base_policy = load_alert_policy(args.policy_file) if args.policy_file else AlertPolicy()
+            effective = base_policy.with_overrides(
+                last=args.last,
+                max_assessment_age_hours=args.max_assessment_age_hours,
+                alert_after_unhealthy=args.alert_after_unhealthy,
+                max_unhealthy_share_percent=args.max_unhealthy_share_percent,
+                max_missing_pay_increase_pp=args.max_missing_pay_increase_pp,
+                max_cumulative_missing_pay_drift_pp=args.max_cumulative_missing_pay_drift_pp,
+            )
+            replay_report = replay_ons_pay_history_alerts(
+                data_root=args.data_root, policy=effective, replay_last=args.replay_last
+            )
+            if args.format == "csv":
+                print(format_history_replay_csv(replay_report), end="")
+            else:
+                print(json.dumps(replay_report.to_dict(), indent=2))
+            if not replay_report.points:
+                raise SystemExit(1)
+            return
         if args.action == "alerts":
             policy = load_alert_policy(args.policy_file) if args.policy_file else AlertPolicy()
             alerts_report = evaluate_ons_pay_history_alerts(

@@ -31,6 +31,8 @@ For ONS pay alerts, use `--policy-file` (not `--config`). The policy parser
 **rejects unknown and duplicate keys**, validates a versioned schema, and
 emits a canonical SHA-256 fingerprint over the effective values after CLI
 overrides. See [history-based alerting](ons-pay-history-alerting.md).
+The same policy file can be passed to `ons-pay-release replay-alerts` for
+an offline, read-only historical assessment timeline.
 
 ---
 
