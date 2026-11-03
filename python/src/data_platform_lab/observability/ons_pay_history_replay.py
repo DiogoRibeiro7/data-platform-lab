@@ -22,6 +22,7 @@ from data_platform_lab.observability.ons_pay_history_alerts import (
     _evaluate_window,
 )
 from data_platform_lab.observability.ons_pay_release_history import (
+    HealthSample,
     HealthStatus,
     ReleaseHealthArchive,
 )
@@ -90,22 +91,55 @@ def replay_ons_pay_history_alerts(
     receives a bounded prefix from the *complete* archive, so selecting the
     last few points cannot accidentally erase their earlier policy context.
     """
-    if type(replay_last) is not int or not 1 <= replay_last <= 1000:
-        raise HistoryAlertError("replay_last must be an integer from 1 to 1000")
+    _validate_replay_last(replay_last)
     effective = policy if policy is not None else AlertPolicy()
 
     store = ReleaseStore(data_root)
     state = store.history()
     trends = ReleaseHealthArchive(data_root).trends(last=None)
-    all_samples = trends.samples
+    report = _replay_verified_samples(
+        samples=trends.samples,
+        total_records=trends.total_records,
+        policy=effective,
+        replay_last=replay_last,
+    )
+
+    # The historical archive verifies a stable pointer during its own read.
+    # Re-check after replay, which may take longer than the archive scan.
+    current = store.history()
+    if (current is None) != (state is None) or (
+        state is not None
+        and current is not None
+        and (current.generation != state.generation or current.event_sha256 != state.event_sha256)
+    ):
+        raise HistoryAlertError("active release changed during history replay; retry")
+    return report
+
+
+def _validate_replay_last(replay_last: int) -> None:
+    """Reject invalid checkpoint limits before opening the archive."""
+    if type(replay_last) is not int or not 1 <= replay_last <= 1000:
+        raise HistoryAlertError("replay_last must be an integer from 1 to 1000")
+
+
+def _replay_verified_samples(
+    *, samples: tuple[HealthSample, ...], total_records: int, policy: AlertPolicy, replay_last: int
+) -> HistoryReplay:
+    """Replay a verified snapshot in memory; shared by replay and paired comparison.
+
+    The caller must first verify the entire archive and later recheck the
+    active release. This function has no filesystem reads or writes.
+    """
+    _validate_replay_last(replay_last)
+    all_samples = samples
     start = max(0, len(all_samples) - replay_last)
     points: list[ReplayPoint] = []
     for index in range(start, len(all_samples)):
         observation = all_samples[index]
         # An observation made later must not influence an earlier replay.
-        prefix = all_samples[max(0, index - effective.last + 1) : index + 1]
+        prefix = all_samples[max(0, index - policy.last + 1) : index + 1]
         replayed = _evaluate_window(
-            policy=effective,
+            policy=policy,
             samples=prefix,
             checked_at=datetime.fromisoformat(observation.checked_at_utc),
             generation=observation.generation,
@@ -126,16 +160,6 @@ def replay_ons_pay_history_alerts(
             )
         )
 
-    # The historical archive verifies a stable pointer during its own read.
-    # Re-check after replay, which may take longer than the archive scan.
-    current = store.history()
-    if (current is None) != (state is None) or (
-        state is not None
-        and current is not None
-        and (current.generation != state.generation or current.event_sha256 != state.event_sha256)
-    ):
-        raise HistoryAlertError("active release changed during history replay; retry")
-
     summary = ReplaySummary(
         evaluated=len(points),
         ok=sum(point.alert_status == "ok" for point in points),
@@ -145,10 +169,10 @@ def replay_ons_pay_history_alerts(
         last_checked_at_utc=points[-1].checked_at_utc if points else None,
     )
     return HistoryReplay(
-        total_records=trends.total_records,
+        total_records=total_records,
         replay_last=replay_last,
-        policy=effective,
-        policy_sha256=effective.sha256,
+        policy=policy,
+        policy_sha256=policy.sha256,
         summary=summary,
         points=tuple(points),
     )

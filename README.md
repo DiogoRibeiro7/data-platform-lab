@@ -351,6 +351,28 @@ detection, as well as policy fingerprints, exit codes, and offline tests.
 Replay never schedules a job, pages an operator, writes a record, or changes
 an active release.
 
+### Comparing two historical alert policies
+
+`ons-pay-release compare-alert-policies` evaluates two explicit, versioned
+policies against the **same verified recorded checkpoints**. A deterministic
+JSON report includes the full `ok`/`alert`/`unavailable` transition matrix,
+changed check evidence and both policy fingerprints; flat paired CSV can be
+used for offline review. A transition from `alert` to `unavailable` is never
+misreported as a resolved alert.
+
+```bash
+poetry run data-platform-lab ons-pay-release --data-root ../data \
+  compare-alert-policies \
+  --baseline-policy-file ../configs/ons-pay-alert-policy.example.json \
+  --candidate-policy-file ../configs/ons-pay-alert-policy.candidate.example.json \
+  --replay-last 50 --format csv
+```
+
+The [paired comparison guide](docs/ons-pay-alert-policy-comparison.md)
+explains checkpoint alignment, interpretation, evidence gaps, and integrity
+checks. No supplier, service, schedule, persisted result or automatic action
+is required.
+
 ## Unified CLI
 
 ```text

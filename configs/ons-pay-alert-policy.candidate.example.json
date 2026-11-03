@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "ons-pay-quality-sensitive",
+  "last": 20,
+  "max_assessment_age_hours": 24,
+  "alert_after_unhealthy": 2,
+  "max_unhealthy_share_percent": 40,
+  "max_missing_pay_increase_pp": 2,
+  "max_cumulative_missing_pay_drift_pp": 5
+}

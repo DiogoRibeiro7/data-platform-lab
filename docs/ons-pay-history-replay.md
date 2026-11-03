@@ -6,6 +6,9 @@ database supplier or executing any release action. `ons-pay-release
 replay-alerts` produces a deterministic checkpoint timeline for operators
 reviewing thresholds **before** using them to monitor a running platform.
 
+For direct baseline-versus-candidate comparisons over these exact same
+checkpoints, see the [paired alert policy comparison](ons-pay-alert-policy-comparison.md).
+
 This is an **assessment-sequence replay**, not a scheduler simulation or a
 statistical estimate of false-positive/false-negative rates. It uses existing,
 verified recorded health and missing-pay metrics; it never reopens historical
