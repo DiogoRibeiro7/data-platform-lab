@@ -7,6 +7,8 @@ on:
       - "sql/platform/**"
       - "python/pyproject.toml"
       - "python/src/data_platform_lab/metadata/**"
+      - "python/src/data_platform_lab/serving/**"
+      - "python/tests/test_ons_pay_publish_*.py"
       - "python/src/data_platform_lab/cli/main.py"
       - ".github/workflows/postgres-integration.yml"
   pull_request:
@@ -15,6 +17,8 @@ on:
       - "sql/platform/**"
       - "python/pyproject.toml"
       - "python/src/data_platform_lab/metadata/**"
+      - "python/src/data_platform_lab/serving/**"
+      - "python/tests/test_ons_pay_publish_*.py"
       - "python/src/data_platform_lab/cli/main.py"
       - ".github/workflows/postgres-integration.yml"
 
@@ -32,12 +36,18 @@ jobs:
         run: pipx install poetry
       - name: Install Python dependencies
         working-directory: python
-        run: poetry install --no-interaction
+        run: poetry install --no-interaction --extras serving
       - name: Run metadata smoke
         working-directory: python
         run: poetry run data-platform-lab metadata
       - name: Inspect persisted run
         run: docker compose exec -T postgres psql -U data_platform_lab -d data_platform_lab -c "TABLE pipeline_runs;"
+      - name: Live pinned Gold publishing smoke
+        working-directory: python
+        env:
+          ONS_PAY_LIVE_POSTGRES: "1"
+          ONS_PAY_POSTGRES_DSN: postgresql://data_platform_lab:data_platform_lab@localhost:5432/data_platform_lab
+        run: poetry run pytest -q tests/test_ons_pay_publish_postgres_live.py
       - name: Diagnostics
         if: failure()
         run: docker compose logs postgres

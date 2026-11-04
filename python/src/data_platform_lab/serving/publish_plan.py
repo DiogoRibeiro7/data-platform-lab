@@ -7,10 +7,12 @@ All source files must satisfy the existing pinned curation contracts first.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
@@ -333,3 +335,108 @@ def plan_ons_pay_publishing(
         records_sha256=hashlib.sha256(_canonical_json(records)).hexdigest(),
         records=tuple(records),
     )
+
+
+def validate_publishing_plan(
+    plan: PublishPlan, *, expected_shape: SinkShape
+) -> tuple[ProjectedRecord, ...]:
+    """Check a complete preview before an adapter can touch external state.
+
+    PublishPlan is frozen, but its nested dictionaries are not. A deep copy
+    isolates the verified records from later caller mutations during I/O.
+    The fingerprint checks integrity of the in-memory preview; it is not an
+    external signature or a substitute for validating source receipts.
+    """
+    if type(plan) is not PublishPlan or type(plan.vintage) is not VintageKey:
+        raise PublishPlanError("expected a versioned ONS publishing plan")
+    _validate_request(plan.vintage, plan.table, plan.shape, _MAX_ROWS)
+    if plan.shape != expected_shape:
+        raise PublishPlanError(f"sink requires a {expected_shape} publishing plan")
+    if (
+        type(plan.schema_version) is not int
+        or plan.schema_version != 1
+        or plan.dataset_id != DATASET_ID
+        or type(plan.source_rows) is not int
+        or not 0 <= plan.source_rows <= _MAX_ROWS
+        or type(plan.source_artifact_sha256) is not str
+        or _SHA.fullmatch(plan.source_artifact_sha256) is None
+        or type(plan.records_sha256) is not str
+        or _SHA.fullmatch(plan.records_sha256) is None
+        or type(plan.records) is not tuple
+        or len(plan.records) != plan.source_rows
+    ):
+        raise PublishPlanError("publishing plan metadata or row count is invalid")
+    contract = _TABLES[plan.table]
+    records = copy.deepcopy(plan.records)
+    seen: set[str] = set()
+    for record in records:
+        if type(record) is not dict:
+            raise PublishPlanError("publishing plan must contain plain record objects")
+        row: Mapping[str, object]
+        if expected_shape == "relational":
+            if set(record) != {"record_id", "model_version", *contract.columns}:
+                raise PublishPlanError("relational record columns differ from the v1 contract")
+            if type(record["model_version"]) is not int or (
+                record["model_version"] != plan.vintage.model_version
+            ):
+                raise PublishPlanError("relational record model pin is invalid")
+            identifier = record["record_id"]
+            row = {name: record[name] for name in contract.columns}
+        else:
+            if set(record) != {"_id", "schema_version", "dataset_id", "table", "vintage", "data"}:
+                raise PublishPlanError("document record fields differ from the v1 contract")
+            if (
+                type(record["schema_version"]) is not int
+                or record["schema_version"] != plan.schema_version
+                or record["dataset_id"] != plan.dataset_id
+                or record["table"] != plan.table
+                or type(record["vintage"]) is not dict
+                or type(record["vintage"].get("model_version")) is not int
+                or record["vintage"] != asdict(plan.vintage)
+                or type(record["data"]) is not dict
+                or set(record["data"]) != set(contract.columns)
+            ):
+                raise PublishPlanError("document record metadata or fields are invalid")
+            identifier = record["_id"]
+            row = record["data"]
+        if type(identifier) is not str or _SHA.fullmatch(identifier) is None:
+            raise PublishPlanError("record ID must be a SHA-256 hex string")
+
+        # Convert stored ISO date strings back to their strict Gold types.
+        values: list[object] = []
+        for name in contract.columns:
+            value: object = row[name]
+            if name == "reference_date":
+                if type(value) is not str:
+                    raise PublishPlanError("reference_date must be an ISO calendar date")
+                try:
+                    parsed = date.fromisoformat(value)
+                except ValueError as exc:
+                    raise PublishPlanError("reference_date must be an ISO calendar date") from exc
+                if parsed.isoformat() != value:
+                    raise PublishPlanError("reference_date must be canonical YYYY-MM-DD")
+                value = parsed
+            values.append(value)
+        verified_row = _convert_row(
+            columns=contract.columns,
+            values=tuple(values),
+            contract=contract,
+            vintage=plan.vintage,
+        )
+        if verified_row != row:
+            raise PublishPlanError("published row differs from its typed Gold contract")
+        expected_id = _id(
+            table=plan.table,
+            vintage=plan.vintage,
+            grain={name: verified_row[name] for name in contract.grain},
+        )
+        if identifier != expected_id or identifier in seen:
+            raise PublishPlanError("publishing plan contains an invalid or duplicate record ID")
+        seen.add(identifier)
+    try:
+        fingerprint = hashlib.sha256(_canonical_json(records)).hexdigest()
+    except (TypeError, ValueError) as exc:
+        raise PublishPlanError("publishing plan contains values unsafe for JSON") from exc
+    if fingerprint != plan.records_sha256:
+        raise PublishPlanError("publishing plan record fingerprint does not match")
+    return records

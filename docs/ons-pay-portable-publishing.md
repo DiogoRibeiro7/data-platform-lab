@@ -118,4 +118,129 @@ Offline fixtures build **real ONS Gold Parquet outputs**, compare both
 representations and their stable IDs, check null/suppression preservation,
 verify deterministic record fingerprints, and reject corrupted artifacts,
 schema drift, duplicate grains, invalid inputs and attempts to exceed the
-row budget. Hosted relational and document backends remain future adapters.
+row budget.
+
+## Explicit opt-in publishing adapters
+
+The Python module
+`data_platform_lab.serving.publish_sinks` can **apply** an existing plan
+to either PostgreSQL (including providers based on PostgreSQL) or a
+MongoDB-compatible collection. This is distinct from the read-only CLI
+above. Importing the module opens no connections; writes occur only when
+the caller invokes `publish_postgres` or `publish_mongodb` with an
+already-open, caller-owned connection/collection.
+
+Both adapters revalidate the complete in-memory plan **before any writes**:
+schema version and dataset identity, exact source and registry pins, shape
+and Gold column contracts, typed nullable metrics, ISO dates, IDs based on
+full vintage and natural grain, duplicate IDs, row counts, and the canonical
+record fingerprint. They deep-copy the verified records before I/O, so a
+caller mutating the preview during a write does not change the applied batch.
+The plan fingerprint detects local alteration; it is **not a digital
+signature**. The read-only planning step must still verify the actual local
+curation receipt and Parquet inputs.
+
+### PostgreSQL
+
+`postgres_schema_sql(table)` emits the fixed v1 DDL for
+`ons_pay_geography_year` and `ons_pay_local_authority_yoy`. Each table has
+a primary key on the deterministic `record_id`, explicit SQL types, and
+nullability matching the Gold contract. The geography table additionally
+checks that area counts reconcile. `postgres_upsert_sql(table)` emits
+parameterized `%s` placeholders and an `ON CONFLICT (record_id)` upsert.
+No caller-controlled SQL identifier is interpolated.
+
+```python
+import os
+from pathlib import Path
+
+import psycopg
+
+from data_platform_lab.serving.catalog import VintageKey
+from data_platform_lab.serving.publish_plan import plan_ons_pay_publishing
+from data_platform_lab.serving.publish_sinks import publish_postgres
+
+vintage = VintageKey(
+    model_version=1,
+    registry_commit=os.environ["ONS_REGISTRY_COMMIT"],
+    source_sha256=os.environ["ONS_SOURCE_SHA256"],
+)
+plan = plan_ons_pay_publishing(
+    data_root=Path("../data"),
+    vintage=vintage,
+    table="local_authority_yoy",
+    shape="relational",
+)
+# The operator explicitly opens the connection; the adapter performs the write.
+with psycopg.connect(os.environ["DATABASE_URL"], autocommit=False) as connection:
+    receipt = publish_postgres(plan, connection, batch_size=500)
+```
+
+The connection must have `autocommit=False`. The adapter creates the fixed
+table if absent, upserts in bounded batches, and commits once. On a statement or commit error
+it attempts rollback and raises `PublishSinkError`, never a success receipt.
+It does not close a caller-owned connection. Reapplying the exact same plan
+is idempotent; distinct pinned vintages receive distinct IDs. A live local
+PostgreSQL smoke test is opt-in and runs in the PostgreSQL integration CI job.
+
+### MongoDB-compatible documents
+
+```python
+import os
+from pathlib import Path
+
+from pymongo import MongoClient
+
+from data_platform_lab.serving.catalog import VintageKey
+from data_platform_lab.serving.publish_plan import plan_ons_pay_publishing
+from data_platform_lab.serving.publish_sinks import publish_mongodb
+
+plan = plan_ons_pay_publishing(
+    data_root=Path("../data"),
+    vintage=VintageKey(
+        model_version=1,
+        registry_commit=os.environ["ONS_REGISTRY_COMMIT"],
+        source_sha256=os.environ["ONS_SOURCE_SHA256"],
+    ),
+    table="local_authority_yoy",
+    shape="document",
+)
+# PyMongo is an optional driver installed by the calling application.
+with MongoClient(os.environ["MONGODB_URI"]) as client:
+    receipt = publish_mongodb(plan, client["data_platform_lab"]["ons_pay_local_authority_yoy"])
+```
+
+The adapter calls `replace_one({"_id": stable_id}, document, upsert=True)`
+and requires an acknowledged result for every record. It never performs a
+delete or changes unrelated vintages. **The batch is not atomic** without
+an externally managed MongoDB transaction: if a later replacement fails,
+earlier records can already be visible. The error explicitly instructs
+retrying the exact same pinned plan. Stable IDs and whole-document
+replacement make a replay idempotent, including after partial completion.
+Atomic batch visibility, run-ledger tracking, and tenant authorization
+remain future production-hardening work; this is a controlled DE exercise.
+
+PyMongo is **not a dependency** of the core project: install it in the
+calling application's environment if choosing that backend. No AWS,
+Supabase, Neon, Atlas or other hosted accounts are needed for offline
+tests. A MongoDB-compatible live integration is not yet part of CI.
+
+### Safety and verification
+
+- The operation is restricted to the two fixed ONS Gold table contracts;
+  arbitrary SQL/table/collection names are not accepted.
+- PostgreSQL uses one transaction and parameterized upserts; document
+  replacement uses acknowledged, stable-key operations with replay semantics.
+- Neither adapter selects `latest`, trusts a mismatched shape, truncates a
+  table/collection, deletes older vintages, creates external connections,
+  or silently switches to another destination.
+- A successful `PublishReceipt` reports the requested sink, table, exact
+  vintage, attempted record count and content hash. It is not a substitute
+  for read-after-write verification or an audit ledger.
+
+```bash
+cd python
+poetry run pytest tests/test_ons_pay_publish_sinks.py -q
+poetry run ruff check src/ tests/
+poetry run mypy src/
+```
