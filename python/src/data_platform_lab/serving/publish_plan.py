@@ -160,9 +160,9 @@ def _scalar(value: object) -> JsonScalar:
     if value is None or type(value) in {str, int}:
         return cast(JsonScalar, value)
     if type(value) is date:
-        return cast(date, value).isoformat()
+        return value.isoformat()
     if type(value) is float and math.isfinite(value):
-        return cast(float, value)
+        return value
     raise PublishPlanError("curated Gold data contains an unsafe scalar")
 
 
