@@ -151,6 +151,27 @@ See [the serving API contract](docs/ons-pay-serving.md) for endpoints,
 filters, pagination, integrity and safety boundaries, and offline tests.
 It requires no hosted database and binds to loopback by default (no auth).
 
+## Relational and document publishing preview
+
+Before choosing hosted SQL and NoSQL suppliers, the read-only
+`ons-pay-publish-plan` command projects a verified, exact ONS pay Gold vintage
+into either flat relational rows or nested documents. Both shapes have
+identical deterministic record IDs, full lineage pins, preserved nulls and a
+canonical batch fingerprint. It does not write to either type of database.
+
+```bash
+cd python
+poetry run data-platform-lab ons-pay-publish-plan \
+  --data-root ../data \
+  --registry-commit COMMIT_SHA40 --source-sha256 SOURCE_SHA256 \
+  --table local_authority_yoy --shape document
+```
+
+The [portable publishing guide](docs/ons-pay-portable-publishing.md)
+documents the target shapes, natural keys, data contracts, trust boundaries
+and offline verification. Database adapters can be added later without
+changing the curated source or choosing a provider now.
+
 ## Pinned refresh and historical backfill
 
 The ONS pay pipeline now has a single machine-invokable refresh command. It
