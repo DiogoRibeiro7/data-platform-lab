@@ -61,12 +61,21 @@ def main(argv: list[str] | None = None) -> None:
     compare_policies.add_argument(
         "--replay-last", type=int, default=50, help="Paired output checkpoints (1-1000)"
     )
+    compare_policies.add_argument(
+        "--gate-file", type=Path, help="Optional explicit comparison acceptance gate JSON"
+    )
     compare_policies.add_argument("--format", choices=("json", "csv"), default="json")
 
     validate_policy = actions.add_parser(
         "validate-alert-policy", help="Validate a policy file without requiring a release"
     )
     validate_policy.add_argument("--policy-file", type=Path, required=True)
+
+    validate_gate = actions.add_parser(
+        "validate-alert-comparison-gate",
+        help="Validate an acceptance gate without reading release history",
+    )
+    validate_gate.add_argument("--gate-file", type=Path, required=True)
 
     activate = actions.add_parser("activate", help="Preview or apply an exact candidate")
     activate.add_argument("--candidate-registry-commit", required=True)
@@ -111,11 +120,35 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps({"policy": policy.to_dict(), "policy_sha256": policy.sha256}, indent=2))
         return
 
+    if args.action == "validate-alert-comparison-gate":
+        # Gate configuration is independent of the serving/database extra.
+        from data_platform_lab.observability.ons_pay_alert_comparison_gate import (
+            AlertComparisonGateError,
+            load_alert_comparison_gate,
+        )
+
+        try:
+            validated_gate = load_alert_comparison_gate(args.gate_file)
+        except AlertComparisonGateError as exc:
+            parser.error(str(exc))
+        print(
+            json.dumps(
+                {"gate": validated_gate.to_dict(), "gate_sha256": validated_gate.sha256},
+                indent=2,
+            )
+        )
+        return
+
     # The optional serving dependency is loaded only when this command runs.
     try:
         from data_platform_lab.observability.ons_pay_alert_comparison import (
             compare_ons_pay_alert_policies,
             format_alert_policy_comparison_csv,
+        )
+        from data_platform_lab.observability.ons_pay_alert_comparison_gate import (
+            AlertComparisonGateError,
+            evaluate_alert_comparison_gate,
+            load_alert_comparison_gate,
         )
         from data_platform_lab.observability.ons_pay_alert_policy import (
             AlertPolicy,
@@ -152,17 +185,30 @@ def main(argv: list[str] | None = None) -> None:
         if args.action == "compare-alert-policies":
             baseline_policy = load_alert_policy(args.baseline_policy_file)
             candidate_policy = load_alert_policy(args.candidate_policy_file)
+            gate = (
+                load_alert_comparison_gate(args.gate_file) if args.gate_file is not None else None
+            )
             comparison = compare_ons_pay_alert_policies(
                 data_root=args.data_root,
                 baseline=baseline_policy,
                 candidate=candidate_policy,
                 replay_last=args.replay_last,
             )
+            gate_evaluation = (
+                evaluate_alert_comparison_gate(report=comparison, gate=gate)
+                if gate is not None
+                else None
+            )
             if args.format == "csv":
                 print(format_alert_policy_comparison_csv(comparison), end="")
             else:
-                print(json.dumps(comparison.to_dict(), indent=2))
-            if not comparison.points:
+                body = comparison.to_dict()
+                if gate_evaluation is not None:
+                    body["acceptance_gate"] = gate_evaluation.to_dict()
+                print(json.dumps(body, indent=2))
+            if not comparison.points or (
+                gate_evaluation is not None and gate_evaluation.status == "fail"
+            ):
                 raise SystemExit(1)
             return
         if args.action == "replay-alerts":
@@ -302,6 +348,7 @@ def main(argv: list[str] | None = None) -> None:
         ReleaseHistoryError,
         HistoryAlertError,
         AlertPolicyError,
+        AlertComparisonGateError,
         MonitorError,
     ) as exc:
         parser.error(str(exc))
