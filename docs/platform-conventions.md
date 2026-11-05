@@ -139,6 +139,16 @@ Modules that use the shared `write_manifest` utility:
 - Streaming processor (`sensor_stream`)
 - Warehouse loader (`warehouse`)
 
+ONS sink-publication evidence preserves the required manifest fields and uses
+`validate_manifest`, but publishes immutable content-addressed records under
+`manifests/ons_pay_publication/` using atomic hard links and fsync. Its separate
+`outcome` is `accepted`, `rejected` or `failed`; the manifest `status` remains
+`success` only for acceptance and `failed` otherwise. The run ID is a UUID for
+one final publication attempt. See the
+[publication evidence contract](ons-pay-portable-publishing.md#durable-publication-evidence)
+for retries, bounded read-only history and trust assumptions. These records do
+not alter the ONS release lifecycle or replace mutable run-store snapshots.
+
 The end-to-end demo (`ecommerce_demo`) writes its own manifest with a
 different structure (`run` + `tables` fields) and does not use the shared
 utility.

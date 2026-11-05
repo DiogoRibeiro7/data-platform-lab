@@ -17,6 +17,7 @@ from data_platform_lab.recovery.cli import main as recovery_main
 from data_platform_lab.serving.cli import main as ons_pay_serve_main
 from data_platform_lab.serving.ons_pay_compare_cli import main as ons_pay_compare_main
 from data_platform_lab.serving.publish_cli import main as ons_pay_publish_main
+from data_platform_lab.serving.publish_evidence_cli import main as ons_pay_publication_history_main
 from data_platform_lab.serving.publish_plan_cli import main as ons_pay_publish_plan_main
 from data_platform_lab.serving.release_cli import main as ons_pay_release_main
 from data_platform_lab.storage.cli import main as storage_main
@@ -34,6 +35,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "ons-pay-curate": ons_pay_curate_main,
     "ons-pay-monitor": ons_pay_monitor_main,
     "ons-pay-publish": ons_pay_publish_main,
+    "ons-pay-publication-history": ons_pay_publication_history_main,
     "ons-pay-publish-plan": ons_pay_publish_plan_main,
     "ons-pay-refresh": ons_pay_refresh_main,
     "ons-pay-release": ons_pay_release_main,
