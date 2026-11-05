@@ -151,7 +151,7 @@ See [the serving API contract](docs/ons-pay-serving.md) for endpoints,
 filters, pagination, integrity and safety boundaries, and offline tests.
 It requires no hosted database and binds to loopback by default (no auth).
 
-## Relational and document publishing preview
+## Relational and document publishing
 
 Before choosing hosted SQL and NoSQL suppliers, the read-only
 `ons-pay-publish-plan` command projects a verified, exact ONS pay Gold vintage
@@ -181,6 +181,27 @@ read-back report to agree with that plan, including an independently recomputed
 sink hash. `publish_and_accept_postgres` and `publish_and_accept_mongodb`
 combine the explicit steps with injected handles. Acceptance does not advance
 a release pointer or roll back writes that already committed.
+
+The operator command `ons-pay-publish` combines these contracts. It requires
+all source pins, a model version, table and sink. With no operation flag it
+prints a summary preview without connecting to a sink or writing files:
+
+```bash
+poetry run data-platform-lab ons-pay-publish \
+  --data-root ../data --model-version 1 \
+  --registry-commit COMMIT_SHA40 --source-sha256 SOURCE_SHA256 \
+  --table local_authority_yoy --sink postgresql
+```
+
+Set `ONS_PAY_POSTGRES_DSN`, then add `--apply` to publish and require acceptance,
+or `--verify` to reconcile an existing vintage without writes. For `--sink mongodb`,
+install the optional PyMongo driver and set `ONS_PAY_MONGODB_URI` and
+`ONS_PAY_MONGODB_DATABASE`. Verification reports `verified`, never `accepted`.
+Every operation emits JSON summaries without credentials or record values.
+Exit codes are `0` success, `2` validation/configuration failure, `3`
+reconciliation/acceptance rejection and `4` database failure. See the
+[operator walkthrough](docs/ons-pay-portable-publishing.md#operator-publishing-cli)
+for both sinks, error semantics and recovery.
 
 ## Pinned refresh and historical backfill
 

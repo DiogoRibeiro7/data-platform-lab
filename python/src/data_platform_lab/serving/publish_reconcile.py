@@ -36,6 +36,10 @@ class ReconciliationError(RuntimeError):
     """A sink read could not produce a trustworthy, bounded comparison."""
 
 
+class ReconciliationReadError(ReconciliationError):
+    """Database I/O failed, as distinct from an invalid or mismatched population."""
+
+
 @dataclass(frozen=True, slots=True)
 class ReconciliationReport:
     """Complete, deterministic comparison for one pinned table and vintage."""
@@ -278,7 +282,7 @@ def reconcile_postgres(plan: PublishPlan, connection: PostgresReader) -> Reconci
             ),
         ).fetchall()
     except Exception as exc:
-        raise ReconciliationError("PostgreSQL reconciliation SELECT failed") from exc
+        raise ReconciliationReadError("PostgreSQL reconciliation SELECT failed") from exc
     if len(rows) > _MAX_ROWS:
         raise ReconciliationError("sink vintage exceeds the 100000-row reconciliation limit")
     observed: list[dict[str, SafeValue]] = []
@@ -311,7 +315,7 @@ def reconcile_mongodb(plan: PublishPlan, collection: MongoReader) -> Reconciliat
     except Exception as exc:
         if isinstance(exc, ReconciliationError):
             raise
-        raise ReconciliationError("MongoDB reconciliation find failed") from exc
+        raise ReconciliationReadError("MongoDB reconciliation find failed") from exc
     observed: list[dict[str, SafeValue]] = []
     for raw in observed_raw:
         normalized = _safe(raw)
