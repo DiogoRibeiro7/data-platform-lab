@@ -11,6 +11,7 @@ from test_ons_pay_serving import _curate, _pin
 
 from data_platform_lab.serving.catalog import VintageKey
 from data_platform_lab.serving.publish_plan import TableName, plan_ons_pay_publishing
+from data_platform_lab.serving.publish_reconcile import reconcile_postgres
 from data_platform_lab.serving.publish_sinks import publish_postgres
 
 pytestmark = pytest.mark.skipif(
@@ -37,6 +38,10 @@ def test_live_postgres_upsert_preserves_pins_and_replays(tmp_path: Path, table: 
         first = publish_postgres(plan, connection, batch_size=2)
         second = publish_postgres(plan, connection, batch_size=3)
         assert first == second
+        reconciled = reconcile_postgres(plan, connection)
+        assert reconciled.passed
+        assert reconciled.expected_count == reconciled.observed_count == plan.source_rows
+        assert reconciled.expected_sink_sha256 == reconciled.observed_sink_sha256
         # The identifier is fixed by a validated table enumeration, not user SQL.
         with connection.cursor() as cursor:
             cursor.execute(
@@ -61,3 +66,16 @@ def test_live_postgres_upsert_preserves_pins_and_replays(tmp_path: Path, table: 
             assert suppressed[0].isoformat() == "2024-04-01"
             assert suppressed[1] is None
             assert suppressed[2] == "x"
+            # An uncommitted mutation must show up as drift; rollback restores
+            # the original pinned records without changing the source.
+            identifier = plan.records[0]["record_id"]
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE ons_pay_local_authority_yoy SET status_code = %s WHERE record_id = %s",
+                    ("tampered", identifier),
+                )
+            drift = reconcile_postgres(plan, connection)
+            assert not drift.passed
+            assert drift.changed_fields == {str(identifier): ("status_code",)}
+            connection.rollback()
+            assert reconcile_postgres(plan, connection).passed
