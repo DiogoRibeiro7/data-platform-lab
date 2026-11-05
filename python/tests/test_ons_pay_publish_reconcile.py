@@ -485,6 +485,18 @@ def test_reconciliation_rejects_over_budget_document_vintage(
     assert collection.cursor is not None and collection.cursor.maximum == 100001
 
 
+def test_reconciliation_rejects_over_budget_sql_vintage(
+    curated: tuple[Path, VintageKey],
+) -> None:
+    plan = _plan(curated, table="geography_year", shape="relational")
+    duplicate = _pg_values(plan)[0]
+    reader = FakePostgresReader([duplicate] * 100001, plan.table)
+    with pytest.raises(ReconciliationError, match="100000-row"):
+        reconcile_postgres(plan, reader)
+    assert len(reader.calls) == 1
+    assert reader.calls[0][1][-1] == 100001
+
+
 def test_report_has_no_secrets_or_record_values(curated: tuple[Path, VintageKey]) -> None:
     plan = _plan(curated, table="local_authority_yoy", shape="document")
     documents = copy.deepcopy(list(plan.records))
