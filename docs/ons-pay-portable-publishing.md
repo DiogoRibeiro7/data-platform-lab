@@ -1,4 +1,4 @@
-# Portable SQL/document publishing plans for ONS pay Gold data
+# Portable SQL/document publishing for ONS pay Gold data
 
 The optional `ons-pay-publish-plan` command models a verified, exact ONS pay
 Gold vintage in two target representations: flat relational rows and nested
@@ -6,9 +6,10 @@ documents. It is a **read-only publishing preview**, not a database writer.
 Neither representation requires choosing Supabase, Neon, MongoDB, DynamoDB or
 another hosted provider.
 
-The goal is to establish source pins, stable identities, schemas and null
-semantics before adding actual adapters. Both representations come from the
-**same curated Parquet artifact**, with no automatic `latest` selection.
+The `ons-pay-publish` operator command uses these plans for explicit PostgreSQL
+or MongoDB-compatible publication and independent verification. Both representations
+come from the **same curated Parquet artifact**, with source pins, stable identities,
+schemas and null semantics preserved, and no automatic `latest` selection.
 
 ## Prepare a pinned vintage
 
@@ -48,6 +49,143 @@ same source observation has the **same record ID** in both representations;
 two distinct vintages get distinct IDs, even if their business keys match.
 Duplicate or null business keys are rejected.
 
+## Operator publishing CLI
+
+`data-platform-lab ons-pay-publish` provides a summary-only operator workflow
+over the same planner, publishing adapters, reconciliation reports and acceptance
+gate. All invocations require explicit `--model-version 1`, `--registry-commit`,
+`--source-sha256`, `--table` and `--sink` (`postgresql` or `mongodb`). The two
+operation flags `--apply` and `--verify` are mutually exclusive; omitting both
+previews the plan. Abbreviated flags are rejected.
+
+From `python/`, prepare your source pins and choose one operation:
+
+```bash
+poetry install --extras serving
+
+# Summary preview: no sink connection, credentials, driver import or file writes.
+poetry run data-platform-lab ons-pay-publish \
+  --data-root ../data --model-version 1 \
+  --registry-commit "$ONS_REGISTRY_COMMIT" --source-sha256 "$ONS_SOURCE_SHA256" \
+  --table local_authority_yoy --sink postgresql
+
+# Supply ONS_PAY_POSTGRES_DSN through your environment before these commands.
+# Publish, commit, read the full vintage back, and require the acceptance gate.
+poetry run data-platform-lab ons-pay-publish \
+  --data-root ../data --model-version 1 \
+  --registry-commit "$ONS_REGISTRY_COMMIT" --source-sha256 "$ONS_SOURCE_SHA256" \
+  --table local_authority_yoy --sink postgresql --apply
+
+# Independent read-only check: never publishes, creates tables or repairs drift.
+poetry run data-platform-lab ons-pay-publish \
+  --data-root ../data --model-version 1 \
+  --registry-commit "$ONS_REGISTRY_COMMIT" --source-sha256 "$ONS_SOURCE_SHA256" \
+  --table local_authority_yoy --sink postgresql --verify
+```
+
+Preview uses the existing in-memory DuckDB/Parquet validation; it opens no
+PostgreSQL or MongoDB connection and does not access connection settings.
+`--max-rows` retains the planner's 1–100000 source-row budget. For a
+record-by-record source preview, the existing `ons-pay-publish-plan` command
+is unchanged.
+
+### Connection settings and ownership
+
+| Sink | Required environment | Fixed destination |
+| --- | --- | --- |
+| `postgresql` | `ONS_PAY_POSTGRES_DSN` | `ons_pay_geography_year` or `ons_pay_local_authority_yoy` |
+| `mongodb` | `ONS_PAY_MONGODB_URI`, `ONS_PAY_MONGODB_DATABASE` | Same fixed collection names, in the explicitly configured database |
+
+There are no default credentials or connection-string CLI flags. Database
+clients are loaded only for an apply/verify operation. Psycopg is supplied by
+the existing project dependencies. PyMongo remains optional; install it in
+your environment before selecting MongoDB. For example, in a disposable
+local environment:
+
+```bash
+poetry run python -m pip install 'pymongo>=4.10,<5'
+
+# Set ONS_PAY_MONGODB_URI and ONS_PAY_MONGODB_DATABASE in your environment.
+poetry run data-platform-lab ons-pay-publish \
+  --data-root ../data --model-version 1 \
+  --registry-commit "$ONS_REGISTRY_COMMIT" --source-sha256 "$ONS_SOURCE_SHA256" \
+  --table geography_year --sink mongodb --apply
+
+# Use the same pins, table and sink with --verify for a separate read-only check.
+```
+
+The CLI closes the connections it creates on success or failure. PostgreSQL
+uses `autocommit=False`, and verification sets the owned connection to read-only.
+Psycopg's connect timeout is 10 seconds; MongoDB selection/connect timeouts
+are 10 seconds and its socket timeout is 30 seconds. These are not whole-workflow
+deadlines. No indexes, background retry loops or automatic repairs are added.
+MongoDB read concern and PostgreSQL query/lock timeouts can be configured
+through the connection settings as appropriate for the deployment.
+
+Python callers and offline tests can call `publish_cli.main(argv, environ=...)`
+with an injected settings mapping, or pass `postgres_connection=...` or
+`mongo_collection=...`. Supplied handles bypass credential loading and remain
+caller-owned, including transaction cleanup. Apply requires a handle supporting
+both existing writer and reader protocols; verify only requires the reader.
+
+### Revalidation, JSON and exit codes
+
+After connecting and immediately before sink I/O, the CLI rebuilds the plan
+from the local curated receipt and all verified Silver/Gold artifacts. It
+rejects any difference from the initial plan. The adapter then revalidates and
+snapshots the in-memory records before writing. Local files are assumed to
+have a trusted single writer; this is not a filesystem lock or authentication.
+
+Except for `--help`, the command prints one JSON object to stdout on both
+success and expected failure. Errors do not echo raw arguments, driver
+exceptions, source/sink values, connection settings or record identifiers.
+
+| JSON field | Meaning |
+| --- | --- |
+| `schema_version` | Operator result schema, currently `1` |
+| `operation`, `sink`, `table`, `vintage` | Selected operation and validated source pins; unavailable information is `null` |
+| `status` | `previewed`, `accepted`, `verified`, `rejected`, or `failed` |
+| `counts` | Source, successfully applied and observed row counts; unknown/not applicable is `null` |
+| `fingerprints` | Source artifact, source plan, expected sink and observed sink SHA-256; unobserved hashes are `null` |
+| `reconciliation` | Pass/fail and counts of missing/unexpected records, changed records and changed fields; no record-level detail |
+| `acceptance` | Existing gate's evidence only for a successful apply; otherwise `null` |
+| `error` | Stable error `code` and sanitized message; `null` on success |
+
+| Exit | Meaning | Error codes |
+| --- | --- | --- |
+| `0` | Preview completed, publication accepted, or verification passed | None |
+| `2` | Invalid syntax, source pins/files/limits, missing settings or dependency | `invalid_arguments`, `source_validation_failed`, `configuration_error` |
+| `3` | Drift, unsafe/malformed sink data, or rejected acceptance evidence | `reconciliation_failed`, `acceptance_rejected` |
+| `4` | Connection, database write/read, or owned-client cleanup failed | `database_error` |
+
+A successful `--verify` has status `verified` and `acceptance: null`: it has
+no write receipt and cannot fabricate publication acceptance. The command
+does not persist evidence or activate a release. To keep its JSON, explicitly
+redirect stdout; durable evidence is a separate workflow.
+
+An error does not mean the database is unchanged. PostgreSQL commits before
+read-back; MongoDB replacements are individually atomic but the batch is not.
+If a write fails partway, `counts.applied` remains `null` because no complete
+receipt exists. A read or close failure may occur after all writes completed.
+Inspect the target and source first, then explicitly repeat `--apply` with the
+same exact pins to replay idempotently. Unexpected extra records remain a
+reconciliation failure: replay does not delete them. Concurrent sink writers
+can invalidate a checked snapshot; configure isolation/read concern and access
+control separately.
+
+Run the offline CLI tests and the existing opt-in integration entry point:
+
+```bash
+poetry run pytest -q tests/test_ons_pay_publish_cli.py
+# Start a disposable local PostgreSQL service and set ONS_PAY_POSTGRES_DSN.
+ONS_PAY_LIVE_POSTGRES=1 poetry run pytest -q tests/test_ons_pay_publish_postgres_live.py
+```
+
+The PostgreSQL CI workflow exercises both Gold tables through real CLI-owned
+connections, including replay, read-only verification, controlled drift and
+explicit recovery. MongoDB CLI coverage currently uses injected collections;
+live MongoDB recovery testing is a separate follow-up.
+
 ## Output contract
 
 Each invocation prints one JSON object with these fields:
@@ -68,8 +206,8 @@ and natural keys suitable for a future SQL upsert, without issuing SQL.
 
 The `document` shape uses `_id`, `schema_version`, `dataset_id`, `table`, an
 explicit `vintage` object and the original Gold fields under `data`. It
-models a versioned document record, without claiming MongoDB or DynamoDB
-compatibility until an actual adapter has been tested.
+models the versioned document record consumed by the MongoDB-compatible adapter.
+Other document stores require separately implemented and tested adapters.
 
 Both shapes preserve integers and finite floats as JSON numbers, missing
 metrics and suppressed pay as **JSON null**, and dates as ISO `YYYY-MM-DD`
@@ -289,8 +427,8 @@ row budget.
 The Python module
 `data_platform_lab.serving.publish_sinks` can **apply** an existing plan
 to either PostgreSQL (including providers based on PostgreSQL) or a
-MongoDB-compatible collection. This is distinct from the read-only CLI
-above. Importing the module opens no connections; writes occur only when
+MongoDB-compatible collection. The operator CLI above uses these adapters
+only with `--apply`. Importing the module opens no connections; writes occur only when
 the caller invokes `publish_postgres` or `publish_mongodb` with an
 already-open, caller-owned connection/collection.
 
