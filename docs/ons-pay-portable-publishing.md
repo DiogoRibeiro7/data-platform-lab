@@ -114,6 +114,98 @@ poetry run ruff format --check src/ tests/
 poetry run mypy src/
 ```
 
+## Read-after-write sink reconciliation
+
+The provider-independent module
+`data_platform_lab.serving.publish_reconcile` adds **read-only checks**
+that verify an entire exact-vintage population after optional publication.
+It does not rely on the publisher's success receipt as evidence of stored
+content. Each function accepts an existing, caller-owned database handle;
+no connection, credential, table, index or external write is created.
+
+```python
+from data_platform_lab.serving.publish_reconcile import (
+    reconcile_mongodb,
+    reconcile_postgres,
+)
+
+# After explicitly publishing a relational plan using publish_postgres:
+sql_report = reconcile_postgres(relational_plan, open_postgres_connection)
+if not sql_report.passed:
+    raise RuntimeError(sql_report.to_dict())
+
+# Or, after explicitly publishing a document plan using publish_mongodb:
+mongo_report = reconcile_mongodb(document_plan, open_mongo_collection)
+if not mongo_report.passed:
+    raise RuntimeError(mongo_report.to_dict())
+```
+
+These names represent **already-created** plans and open connections; the
+examples intentionally do not initiate a second publication or contain
+credentials. `reconcile_postgres` reads a fixed, parameterized SELECT on
+`model_version`, `registry_commit` and `source_sha256`, against one
+whitelisted table. `reconcile_mongodb` filters the three corresponding
+`vintage.*` fields and uses a bounded cursor. Neither checks just the
+expected IDs: both inspect the complete selected vintage, allowing an extra
+row or document to be detected.
+
+The `ReconciliationReport` fields are:
+
+| Field | Interpretation |
+| --- | --- |
+| `sink`, `table`, `vintage` | Target type and full source pins |
+| `passed` | True only if counts, identities, fields and sink fingerprints all agree |
+| `expected_count` / `observed_count` | Exact row/document counts for the selected vintage |
+| `source_plan_sha256` | Original, source-grain-ordered `PublishPlan.records_sha256` |
+| `expected_sink_sha256` / `observed_sink_sha256` | Canonical record-ID-ordered hashes using sink-normalized types |
+| `missing_ids` / `unexpected_ids` | Stable record IDs present on only one side |
+| `changed_fields` | Per-ID field paths that differ, without source or sink values |
+
+For SQL, PostgreSQL `DATE` values normalize to ISO dates; permitted
+`DOUBLE PRECISION` storage normalizes safely representable integer-valued
+Gold measures to floats. Other type differences are reported as drift.
+MongoDB documents retain the strict source JSON scalar types and nesting.
+The sink hashes are calculated in **record-ID order**, independent of
+physical row order, and may differ from the source-plan hash even when
+the data match. Comparisons are exact; suppressed or missing measurements
+remain `null`, never zero.
+
+The contract fails closed on invalid source plans, unreadable sources,
+unsafe database values, invalid/duplicate stored IDs, malformed SQL rows
+and over-budget vintages (more than 100000 observed rows). A read error
+raises `ReconciliationError`; ordinary missing, extra or changed records
+return a structured `passed=False` report.
+
+### Consistency and operational boundaries
+
+- A mismatched lineage field causes the record to disappear from the exact
+  vintage filter and therefore appear as a **missing ID**. Other vintages
+  are deliberately outside this comparison.
+- PostgreSQL executes a single bounded SELECT; the caller should use a
+  consistent snapshot if concurrent writers may change the table.
+  MongoDB uses a bounded cursor; strict collection-wide snapshot
+  consistency likewise requires an externally configured read concern or
+  session. The adapter issues no transaction-control commands; an SQL driver
+  may implicitly open a read transaction, whose lifecycle the caller owns.
+- For large sinks, indexes on the full vintage pins would avoid scans.
+  Index creation and schema permissions are intentionally operator-owned.
+- Results are a validation report, **not** a durable audit ledger, a
+  digital signature, or evidence that an untrusted external data publisher
+  is authentic. They do not authorize a follow-up write or automated repair.
+
+```bash
+cd python
+poetry run pytest tests/test_ons_pay_publish_reconcile.py -q
+poetry run ruff check src/ tests/
+poetry run mypy src/
+```
+
+The real PostgreSQL integration workflow additionally reconciles both
+Gold tables after publication, intentionally modifies one stored value
+in an uncommitted test transaction, verifies that drift is detected, then
+rolls it back and verifies recovery. MongoDB behavior is tested against
+an injected fake collection; no hosted document-store account is required.
+
 Offline fixtures build **real ONS Gold Parquet outputs**, compare both
 representations and their stable IDs, check null/suppression preservation,
 verify deterministic record fingerprints, and reject corrupted artifacts,

@@ -173,7 +173,9 @@ and offline verification. Explicit Python adapters now support transactional,
 parameterized PostgreSQL upserts and idempotent MongoDB-style document
 replacements using injected connections. There are **no automatic writes**,
 hosted credentials or scheduled publication steps; the choice of hosting
-supplier remains open.
+supplier remains open. Read-only `reconcile_postgres` and `reconcile_mongodb`
+functions compare a complete pinned sink vintage to the independently verified
+plan, reporting missing, unexpected and altered records without exposing values.
 
 ## Pinned refresh and historical backfill
 
