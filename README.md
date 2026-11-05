@@ -169,8 +169,11 @@ poetry run data-platform-lab ons-pay-publish-plan \
 
 The [portable publishing guide](docs/ons-pay-portable-publishing.md)
 documents the target shapes, natural keys, data contracts, trust boundaries
-and offline verification. Database adapters can be added later without
-changing the curated source or choosing a provider now.
+and offline verification. Explicit Python adapters now support transactional,
+parameterized PostgreSQL upserts and idempotent MongoDB-style document
+replacements using injected connections. There are **no automatic writes**,
+hosted credentials or scheduled publication steps; the choice of hosting
+supplier remains open.
 
 ## Pinned refresh and historical backfill
 
