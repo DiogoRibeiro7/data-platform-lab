@@ -10,6 +10,11 @@ import pytest
 from test_ons_pay_serving import _curate, _pin
 
 from data_platform_lab.serving.catalog import VintageKey
+from data_platform_lab.serving.publish_gate import (
+    PublicationAcceptanceError,
+    accept_publication,
+    publish_and_accept_postgres,
+)
 from data_platform_lab.serving.publish_plan import TableName, plan_ons_pay_publishing
 from data_platform_lab.serving.publish_reconcile import reconcile_postgres
 from data_platform_lab.serving.publish_sinks import publish_postgres
@@ -42,6 +47,9 @@ def test_live_postgres_upsert_preserves_pins_and_replays(tmp_path: Path, table: 
         assert reconciled.passed
         assert reconciled.expected_count == reconciled.observed_count == plan.source_rows
         assert reconciled.expected_sink_sha256 == reconciled.observed_sink_sha256
+        accepted = accept_publication(plan, second, reconciled)
+        assert accepted.sink_snapshot_sha256 == reconciled.observed_sink_sha256
+        assert accepted.records_accepted == plan.source_rows
         # The identifier is fixed by a validated table enumeration, not user SQL.
         with connection.cursor() as cursor:
             cursor.execute(
@@ -77,5 +85,11 @@ def test_live_postgres_upsert_preserves_pins_and_replays(tmp_path: Path, table: 
             drift = reconcile_postgres(plan, connection)
             assert not drift.passed
             assert drift.changed_fields == {str(identifier): ("status_code",)}
+            with pytest.raises(PublicationAcceptanceError, match="sink read-back"):
+                accept_publication(plan, second, drift)
             connection.rollback()
             assert reconcile_postgres(plan, connection).passed
+
+        # The combined opt-in path publishes, reads back and requires a gate.
+        verified = publish_and_accept_postgres(plan, writer=connection, reader=connection)
+        assert verified == accepted

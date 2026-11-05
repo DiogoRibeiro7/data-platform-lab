@@ -176,6 +176,11 @@ hosted credentials or scheduled publication steps; the choice of hosting
 supplier remains open. Read-only `reconcile_postgres` and `reconcile_mongodb`
 functions compare a complete pinned sink vintage to the independently verified
 plan, reporting missing, unexpected and altered records without exposing values.
+An opt-in `accept_publication` gate now requires the write receipt and complete
+read-back report to agree with that plan, including an independently recomputed
+sink hash. `publish_and_accept_postgres` and `publish_and_accept_mongodb`
+combine the explicit steps with injected handles. Acceptance does not advance
+a release pointer or roll back writes that already committed.
 
 ## Pinned refresh and historical backfill
 

@@ -206,6 +206,78 @@ in an uncommitted test transaction, verifies that drift is detected, then
 rolls it back and verifies recovery. MongoDB behavior is tested against
 an injected fake collection; no hosted document-store account is required.
 
+### Explicit publication acceptance gate
+
+`data_platform_lab.serving.publish_gate` provides an **opt-in, fail-closed
+acceptance boundary** after a publisher returns a `PublishReceipt` and a
+read-back produces a `ReconciliationReport`. A successful write receipt alone,
+or even an unrelated passing reconciliation, is not sufficient. Acceptance
+requires all of these to agree:
+
+1. The full source plan is still valid for the receipt's sink shape.
+2. Sink, table, model version, registry commit and source SHA-256 match across
+   the plan, receipt and read-back report.
+3. The applied, expected and observed counts are all the complete plan count;
+   the receipt's canonical plan hash and the report's source hash match it.
+4. The read-back passed with no missing, unexpected or changed fields. Both
+   sink hashes must match an **independently recomputed expected sink hash**
+   using PostgreSQL's normalized SQL values or MongoDB's document semantics.
+
+For explicit, separate steps:
+
+```python
+from data_platform_lab.serving.publish_gate import accept_publication
+from data_platform_lab.serving.publish_reconcile import reconcile_postgres
+from data_platform_lab.serving.publish_sinks import publish_postgres
+
+# plan is the existing verified relational PublishPlan.
+# connection is caller-owned and already connected (autocommit=False).
+receipt = publish_postgres(plan, connection)
+report = reconcile_postgres(plan, connection)
+accepted = accept_publication(plan, receipt, report)
+print(accepted.to_dict())
+```
+
+Or use a convenience wrapper that writes, reads back and returns **only** an
+`AcceptedPublication` on success:
+
+```python
+from data_platform_lab.serving.publish_gate import (
+    publish_and_accept_mongodb,
+    publish_and_accept_postgres,
+)
+
+# Both handles are injected; a single psycopg connection can serve both roles.
+accepted_sql = publish_and_accept_postgres(
+    relational_plan, writer=postgres_connection, reader=postgres_connection
+)
+
+# One PyMongo collection can also serve as both writer and reader.
+accepted_docs = publish_and_accept_mongodb(
+    document_plan, writer=mongo_collection, reader=mongo_collection
+)
+```
+
+The acceptance evidence has status `accepted`, sink/table, complete vintage,
+accepted count, source-plan fingerprint and verified sink snapshot fingerprint.
+No `rejected` record is emitted by the gate: invalid evidence raises
+`PublicationAcceptanceError`; a read failure raises `ReconciliationError`.
+Neither path silently repairs drift or switches to an unpinned vintage.
+
+**Important:** PostgreSQL publishing commits *before* the read-back; MongoDB
+replacements can already be partially visible. A failed gate does **not**
+undo those writes or imply atomic visibility. No active-release pointer,
+audit ledger, external notification or downstream publication is advanced.
+The caller controls snapshot isolation and trusted database handles. Evidence
+is not a digital signature and only establishes agreement at the checked
+snapshot; concurrent changes can invalidate it afterward.
+
+```bash
+cd python
+poetry run pytest tests/test_ons_pay_publish_gate.py -q
+poetry run pytest tests/test_ons_pay_publish_postgres_live.py -q
+```
+
 Offline fixtures build **real ONS Gold Parquet outputs**, compare both
 representations and their stable IDs, check null/suppression preservation,
 verify deterministic record fingerprints, and reject corrupted artifacts,

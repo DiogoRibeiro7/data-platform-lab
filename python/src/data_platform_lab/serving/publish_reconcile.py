@@ -162,6 +162,26 @@ def _digest(snapshot: Snapshot) -> str:
     return hashlib.sha256(_canonical_json(records)).hexdigest()
 
 
+def _expected_records(plan: PublishPlan, *, sink: SinkName) -> list[dict[str, SafeValue]]:
+    """Validate and normalize a plan using the selected sink's storage semantics."""
+    if sink == "postgresql":
+        records = validate_publishing_plan(plan, expected_shape="relational")
+        return [_normalized_flat(record, table=plan.table) for record in records]
+    if sink == "mongodb":
+        documents = validate_publishing_plan(plan, expected_shape="document")
+        return [cast(dict[str, SafeValue], _safe(record)) for record in documents]
+    raise ReconciliationError("unsupported sink for expected snapshot")
+
+
+def expected_sink_fingerprint(plan: PublishPlan, *, sink: SinkName) -> str:
+    """Recompute the expected ID-ordered sink hash from a validated source plan.
+
+    This independent check lets an acceptance gate reject a report whose
+    expected and observed hashes agree with *each other*, but not the plan.
+    """
+    return _digest(_by_id(_expected_records(plan, sink=sink), sink))
+
+
 def _changed_paths(expected: object, actual: object, prefix: str = "") -> tuple[str, ...]:
     """List field paths without revealing sensitive values in drift reports."""
     if type(expected) is dict and type(actual) is dict:
@@ -245,8 +265,7 @@ def reconcile_postgres(plan: PublishPlan, connection: PostgresReader) -> Reconci
     Runs one bounded, parameterized SELECT. The caller is responsible for
     snapshot isolation if concurrent writers might change the sink mid-read.
     """
-    validated = validate_publishing_plan(plan, expected_shape="relational")
-    expected_records = [_normalized_flat(record, table=plan.table) for record in validated]
+    expected_records = _expected_records(plan, sink="postgresql")
     columns = ("record_id", "model_version", *_TABLES[plan.table].columns)
     try:
         rows = connection.execute(
@@ -274,8 +293,7 @@ def reconcile_postgres(plan: PublishPlan, connection: PostgresReader) -> Reconci
 
 def reconcile_mongodb(plan: PublishPlan, collection: MongoReader) -> ReconciliationReport:
     """Read a bounded document vintage with a full, exact nested pin filter."""
-    validated = validate_publishing_plan(plan, expected_shape="document")
-    expected_records = [cast(dict[str, SafeValue], _safe(record)) for record in validated]
+    expected_records = _expected_records(plan, sink="mongodb")
     pins: dict[str, object] = {
         "vintage.model_version": plan.vintage.model_version,
         "vintage.registry_commit": plan.vintage.registry_commit,
