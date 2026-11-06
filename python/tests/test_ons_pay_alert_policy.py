@@ -194,7 +194,8 @@ def test_api_evaluation_includes_canonical_effective_policy(tmp_path: Path) -> N
         ('{"schema_version":1,"name":"one","max_assessment_age_hours":NaN}', "non-finite"),
         (
             '{"schema_version":1,"name":"one","unused":' + "[" * 12_000 + "0" + "]" * 12_000 + "}",
-            "UTF-8 JSON",
+            # Decoder nesting limits differ across supported Python versions.
+            "UTF-8 JSON|unknown alert policy fields: unused",
         ),
         ("[]", "JSON object"),
         ("{bad JSON", "UTF-8 JSON"),
@@ -212,7 +213,8 @@ def test_malformed_policies_fail_closed(
             ["ons-pay-release", "validate-alert-policy", "--policy-file", str(policy_file)]
         )
     assert exit_code.value.code == 2
-    assert capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert error and "Traceback" not in error
     assert list(tmp_path.iterdir()) == [policy_file]
 
 

@@ -2,6 +2,7 @@ name: S3 Integration
 
 on:
   push:
+    branches: [main]
     paths:
       - "compose.yaml"
       - "infra/garage/**"

@@ -2,6 +2,7 @@ name: Platform Recovery
 
 on:
   push:
+    branches: [main]
     paths:
       - "compose.yaml"
       - "infra/garage/**"

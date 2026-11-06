@@ -2,7 +2,9 @@
 
 > **This is a point-in-time snapshot from 2026-03-16.** Numbers and findings
 > reflect the state of the repository at that date and are no longer current.
-> For the latest assessment, see [current-state-review.md](current-state-review.md).
+> The later [March review](current-state-review.md) is also historical. For the
+> current ONS publishing assessment, see the
+> [release-readiness checklist](ons-pay-publishing-readiness.md).
 
 Audit date: 2026-03-16
 

@@ -10,6 +10,9 @@ documents. It is a **read-only publishing preview**, not a database writer.
 Neither representation requires choosing Supabase, Neon, MongoDB, DynamoDB or
 another hosted provider.
 
+See the [release-readiness checklist](ons-pay-publishing-readiness.md) for the
+verified support matrix, resource limits and production gaps.
+
 The `ons-pay-publish` operator command uses these plans for explicit PostgreSQL
 or MongoDB-compatible publication and independent verification. Both representations
 come from the **same curated Parquet artifact**, with source pins, stable identities,
@@ -174,6 +177,9 @@ An error does not mean the database is unchanged. PostgreSQL commits before
 read-back; MongoDB replacements are individually atomic but the batch is not.
 If a write fails partway, `counts.applied` remains `null` because no complete
 receipt exists. A read or close failure may occur after all writes completed.
+If PostgreSQL commits but the connection loses the acknowledgment, a subsequent
+rollback cannot undo that commit. The outcome remains failed and unaccepted;
+it does not prove that the target is unchanged.
 Inspect the target and source first, then explicitly repeat `--apply` with the
 same exact pins to replay idempotently. Unexpected extra records remain a
 reconciliation failure: replay does not delete them. Concurrent sink writers
@@ -695,6 +701,8 @@ with psycopg.connect(os.environ["DATABASE_URL"], autocommit=False) as connection
 The connection must have `autocommit=False`. The adapter creates the fixed
 table if absent, upserts in bounded batches, and commits once. On a statement or commit error
 it attempts rollback and raises `PublishSinkError`, never a success receipt.
+A lost commit acknowledgment leaves an uncertain commit outcome even when the
+rollback call succeeds; verify the target and explicitly replay the pinned plan.
 It does not close a caller-owned connection. Reapplying the exact same plan
 is idempotent; distinct pinned vintages receive distinct IDs. A live local
 PostgreSQL smoke test is opt-in and runs in the PostgreSQL integration CI job.

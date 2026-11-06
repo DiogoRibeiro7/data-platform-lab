@@ -2,6 +2,7 @@ name: Kafka Integration
 
 on:
   push:
+    branches: [main]
     paths:
       - "compose.yaml"
       - "python/pyproject.toml"

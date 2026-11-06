@@ -208,11 +208,37 @@ def test_postgres_failures_always_attempt_rollback(
 ) -> None:
     plan = _plan(curated, shape="relational")
     conn = FakePgConnection(fail_on=stage)
-    with pytest.raises(PublishSinkError, match="transaction rolled back"):
+    with pytest.raises(PublishSinkError, match="rollback attempted"):
         publish_postgres(plan, conn)
     assert conn.rollbacks == 1
     assert not conn.staged
     assert not conn.persisted
+
+
+def test_lost_commit_acknowledgment_withholds_receipt_and_allows_explicit_replay(
+    curated: tuple[Path, VintageKey],
+) -> None:
+    """A successful rollback cannot undo a commit whose acknowledgment was lost."""
+    plan = _plan(curated, shape="relational")
+    conn = FakePgConnection()
+    commit = conn.commit
+
+    def commit_then_disconnect() -> None:
+        commit()
+        raise OSError("connection lost after server commit")
+
+    with (
+        patch.object(conn, "commit", side_effect=commit_then_disconnect),
+        pytest.raises(PublishSinkError, match="commit outcome may be unknown"),
+    ):
+        publish_postgres(plan, conn)
+    assert conn.rollbacks == 1
+    assert len(conn.persisted) == plan.source_rows
+    snapshot = dict(conn.persisted)
+
+    receipt = publish_postgres(plan, conn)
+    assert receipt.records_applied == plan.source_rows
+    assert conn.persisted == snapshot
 
 
 def test_postgres_rollback_failure_is_reported(curated: tuple[Path, VintageKey]) -> None:

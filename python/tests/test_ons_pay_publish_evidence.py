@@ -403,6 +403,36 @@ def test_cli_records_failure_or_rejection_without_acceptance(
     assert repeated["evidence"]["record_sha256"] == result["evidence"]["record_sha256"]
 
 
+def test_lost_postgres_commit_ack_records_failure_before_explicit_recovery(
+    curated: Any,
+    capsys: Any,
+) -> None:
+    """Visible SQL rows cannot create accepted evidence without a completed write receipt."""
+    connection = CliPostgres("local_authority_yoy")
+    commit = connection.commit
+
+    def commit_then_disconnect() -> None:
+        commit()
+        raise OSError("connection lost after server commit")
+
+    args = [*_args(curated), "--apply", "--record-evidence"]
+    with patch.object(connection, "commit", side_effect=commit_then_disconnect):
+        failed = _invoke(capsys, args, postgres_connection=connection, expected_exit=4)
+    assert connection.persisted and connection.rollbacks == 1
+    assert failed["acceptance"] is None and failed["counts"]["applied"] is None
+    archive = PublicationArchive(curated[0])
+    prior = archive.get_attempt(failed["evidence"]["attempt_id"])
+    assert prior.to_dict()["outcome"] == "failed"
+    assert prior.to_dict()["receipt"] is None
+    snapshot = dict(connection.persisted)
+
+    recovered = _invoke(capsys, args, postgres_connection=connection)
+    assert recovered["status"] == "accepted"
+    assert recovered["evidence"]["attempt_id"] != failed["evidence"]["attempt_id"]
+    assert connection.persisted == snapshot
+    assert archive.get_attempt(failed["evidence"]["attempt_id"]).payload == prior.payload
+
+
 def test_cli_new_attempt_explicitly_recovers_partial_publication(curated: Any, capsys: Any) -> None:
     mongo = CliMongo(fail_at=2)
     args = [*_args(curated, "mongodb"), "--apply", "--record-evidence"]
