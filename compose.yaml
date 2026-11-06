@@ -35,6 +35,21 @@ services:
       timeout: 3s
       retries: 20
 
+  mongodb:
+    image: mongo:9.0.4
+    profiles: ["mongodb"]
+    ports:
+      - "127.0.0.1:${ONS_PAY_MONGODB_PORT:-27017}:27017"
+    # Disposable integration data; never shared with the core platform volumes.
+    tmpfs:
+      - /data/db
+      - /data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand({ping: 1}).ok ? 0 : 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   kafka:
     image: apache/kafka:4.3.1
     restart: unless-stopped

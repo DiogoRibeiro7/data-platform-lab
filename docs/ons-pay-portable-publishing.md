@@ -103,7 +103,7 @@ your environment before selecting MongoDB. For example, in a disposable
 local environment:
 
 ```bash
-poetry run python -m pip install 'pymongo>=4.10,<5'
+poetry install --extras "serving mongodb"
 
 # Set ONS_PAY_MONGODB_URI and ONS_PAY_MONGODB_DATABASE in your environment.
 poetry run data-platform-lab ons-pay-publish \
@@ -118,7 +118,9 @@ The CLI closes the connections it creates on success or failure. PostgreSQL
 uses `autocommit=False`, and verification sets the owned connection to read-only.
 Psycopg's connect timeout is 10 seconds; MongoDB selection/connect timeouts
 are 10 seconds and its socket timeout is 30 seconds. These are not whole-workflow
-deadlines. No indexes, background retry loops or automatic repairs are added.
+deadlines. CLI-owned MongoDB clients explicitly disable `retryReads` and
+`retryWrites`, overriding URI retry options, so failures require an operator action.
+No indexes, background retry loops or automatic repairs are added.
 MongoDB read concern and PostgreSQL query/lock timeouts can be configured
 through the connection settings as appropriate for the deployment.
 
@@ -184,8 +186,72 @@ ONS_PAY_LIVE_POSTGRES=1 poetry run pytest -q tests/test_ons_pay_publish_postgres
 
 The PostgreSQL CI workflow exercises both Gold tables through real CLI-owned
 connections, including replay, read-only verification, controlled drift and
-explicit recovery. MongoDB CLI coverage currently uses injected collections;
-live MongoDB recovery testing is a separate follow-up.
+explicit recovery. The optional MongoDB workflow exercises the actual PyMongo
+driver, CLI-owned connections, server-rejected partial writes, drift, explicit
+recovery and durable outcomes for both tables, as described below.
+
+### Disposable local MongoDB integration
+
+The `mongodb` Compose profile provides **MongoDB 9.0.4** independently of the
+default platform services. Its host binding is loopback only, with a configurable
+port to avoid an existing installation. Data lives in container tmpfs and is
+discarded when the service stops. This unauthenticated standalone instance is
+for disposable local tests only; no hosted account or credentials are needed.
+PyMongo is installed only with the `mongodb` Python extra.
+The server pin includes the [Ubuntu kernel-detection fix](https://jira.mongodb.org/browse/SERVER-131779)
+needed by current GitHub-hosted runners; no kernel safety checks are bypassed.
+
+Run from the repository root on Linux or WSL (durable evidence needs POSIX
+locks and directory fsync):
+
+```bash
+# Choose an unused port; omit this export to use 27017.
+export ONS_PAY_MONGODB_PORT=27028
+docker compose -p ons-pay-mongodb-test --profile mongodb up -d --wait mongodb
+(
+  cd python
+  poetry install --no-interaction --extras "serving mongodb"
+  ONS_PAY_LIVE_MONGODB=1 \
+    ONS_PAY_MONGODB_URI="mongodb://127.0.0.1:${ONS_PAY_MONGODB_PORT:-27017}" \
+    poetry run pytest -q tests/test_ons_pay_publish_mongodb_live.py
+)
+# This project name scopes cleanup to the disposable integration service.
+docker compose -p ons-pay-mongodb-test --profile mongodb down -v
+```
+
+Without `ONS_PAY_LIVE_MONGODB=1`, the tests skip without importing PyMongo or
+connecting. An opted-in run requires the driver and a reachable server; these
+are failures rather than skips when missing. Each test creates and finally
+drops its own `ons_pay_test_<UUID>` database. Tests ignore
+`ONS_PAY_MONGODB_DATABASE`, reject credentials and hosted URI targets, and
+accept only loopback or the Docker-network service name `mongodb`.
+The [MongoDB integration workflow](../.github/workflows/mongodb-integration.yml)
+uses the same profile and tests, with teardown even on failure.
+
+The live suite checks exact document contents and scalar types, deterministic
+IDs, all source pins, repeated publication, missing/extra/altered documents,
+and isolation when either source SHA or registry commit changes. A temporary
+server-side collection validator rejects the second document after the first
+has been acknowledged. Removing that injected failure does not resume work:
+an explicit replay of the same pinned plan is required. CLI tests persist
+`failed`, `rejected` and `accepted` outcomes and prove earlier records remain
+unchanged. Reusing a failed attempt UUID returns its historical failure;
+recovery uses a new attempt UUID with the same plan. Unexpected documents
+remain a rejection until explicitly removed by the operator; publication
+never deletes them automatically.
+
+This is **not a multi-document transaction or snapshot guarantee**. Each
+replacement is individually atomic, and other readers can see a partial batch.
+The standalone test service uses acknowledged writes and primary reads with
+one writer per test. Production callers must prevent concurrent modifications
+during publication and reconciliation and configure acknowledged write concern
+and read consistency for their topology. An ordinary cursor, including one
+using majority read concern, does not by itself establish a whole-workflow
+snapshot. Replica-set failover, secondary reads and session/transaction wrappers
+are outside this test's guarantees; the CLI does not create those sessions.
+Injected clients must also disable driver retries if explicit recovery is required.
+See MongoDB's [atomicity documentation](https://www.mongodb.com/docs/manual/core/write-operations-atomicity/)
+and [PyMongo operation configuration](https://www.mongodb.com/docs/languages/python/pymongo-driver/current/crud/configure/).
 
 ## Durable publication evidence
 
@@ -463,9 +529,10 @@ return a structured `passed=False` report.
   are deliberately outside this comparison.
 - PostgreSQL executes a single bounded SELECT; the caller should use a
   consistent snapshot if concurrent writers may change the table.
-  MongoDB uses a bounded cursor; strict collection-wide snapshot
-  consistency likewise requires an externally configured read concern or
-  session. The adapter issues no transaction-control commands; an SQL driver
+  MongoDB uses a bounded cursor; prevent concurrent modifications or provide
+  an appropriate external session/transaction wrapper for a consistent
+  snapshot. Read concern alone does not make publication plus reconciliation
+  atomic. The adapter issues no transaction-control commands; an SQL driver
   may implicitly open a read transaction, whose lifecycle the caller owns.
 - For large sinks, indexes on the full vintage pins would avoid scans.
   Index creation and schema permissions are intentionally operator-owned.
@@ -483,8 +550,9 @@ poetry run mypy src/
 The real PostgreSQL integration workflow additionally reconciles both
 Gold tables after publication, intentionally modifies one stored value
 in an uncommitted test transaction, verifies that drift is detected, then
-rolls it back and verifies recovery. MongoDB behavior is tested against
-an injected fake collection; no hosted document-store account is required.
+rolls it back and verifies recovery. MongoDB has both offline fake-collection
+tests and the disposable PyMongo integration suite above; no hosted
+document-store account is required.
 
 ### Explicit publication acceptance gate
 
@@ -650,7 +718,7 @@ plan = plan_ons_pay_publishing(
     shape="document",
 )
 # PyMongo is an optional driver installed by the calling application.
-with MongoClient(os.environ["MONGODB_URI"]) as client:
+with MongoClient(os.environ["MONGODB_URI"], retryReads=False, retryWrites=False) as client:
     receipt = publish_mongodb(plan, client["data_platform_lab"]["ons_pay_local_authority_yoy"])
 ```
 
@@ -665,10 +733,11 @@ Atomic batch visibility and tenant authorization remain future production-harden
 work; this is a controlled DE exercise. The operator CLI can now persist local
 publication outcomes, but those manifests do not make document batches atomic.
 
-PyMongo is **not a dependency** of the core project: install it in the
-calling application's environment if choosing that backend. No AWS,
-Supabase, Neon, Atlas or other hosted accounts are needed for offline
-tests. A MongoDB-compatible live integration is not yet part of CI.
+PyMongo is **not a required dependency** of the core project: select the
+`mongodb` extra if choosing that backend. No AWS, Supabase, Neon, Atlas or
+other hosted accounts are needed. CI tests the real driver against the
+version-pinned disposable MongoDB service described above; it does not certify
+other MongoDB-compatible products.
 
 ### Safety and verification
 

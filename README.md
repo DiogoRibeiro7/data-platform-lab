@@ -195,8 +195,9 @@ poetry run data-platform-lab ons-pay-publish \
 
 Set `ONS_PAY_POSTGRES_DSN`, then add `--apply` to publish and require acceptance,
 or `--verify` to reconcile an existing vintage without writes. For `--sink mongodb`,
-install the optional PyMongo driver and set `ONS_PAY_MONGODB_URI` and
-`ONS_PAY_MONGODB_DATABASE`. Verification reports `verified`, never `accepted`.
+install the optional driver with `poetry install --extras "serving mongodb"`
+and set `ONS_PAY_MONGODB_URI` and `ONS_PAY_MONGODB_DATABASE`.
+Verification reports `verified`, never `accepted`.
 Every operation emits JSON summaries without credentials or record values.
 Exit codes are `0` success, `2` validation/configuration failure, `3`
 reconciliation/acceptance rejection and `4` database failure. See the
@@ -211,6 +212,14 @@ Inspect records with `data-platform-lab ons-pay-publication-history --data-root 
 Durable writes require a local POSIX filesystem; inspection is read-only.
 See [durable publication evidence](docs/ons-pay-portable-publishing.md#durable-publication-evidence)
 for outcome semantics, persistence failures, concurrency and trust limits.
+
+Real PyMongo integration is available through the optional `mongodb` Compose
+profile, using MongoDB 9.0.4 with disposable storage and a loopback-only port.
+The [local test commands](docs/ons-pay-portable-publishing.md#disposable-local-mongodb-integration)
+exercise both Gold tables, idempotency, vintage isolation, drift, partial-write
+recovery and durable outcomes. The same suite runs in CI without hosted
+credentials. MongoDB batches remain non-atomic; recovery is explicit and
+CLI-owned clients disable automatic driver retries.
 
 ## Pinned refresh and historical backfill
 

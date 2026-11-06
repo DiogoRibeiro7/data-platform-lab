@@ -410,6 +410,14 @@ def test_owned_mongodb_selects_fixed_collection_and_closes(curated: Any, capsys:
     ):
         result = _invoke(capsys, [*_args(curated, "mongodb"), "--apply"], environ=settings)
     assert result["status"] == "accepted"
+    factory.assert_called_once_with(
+        SECRET,
+        serverSelectionTimeoutMS=10_000,
+        connectTimeoutMS=10_000,
+        socketTimeoutMS=30_000,
+        retryReads=False,
+        retryWrites=False,
+    )
     client.__getitem__.assert_called_once_with("local_test")
     database.__getitem__.assert_called_once_with("ons_pay_local_authority_yoy")
     client.close.assert_called_once_with()
