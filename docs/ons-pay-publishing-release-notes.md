@@ -29,6 +29,8 @@ database. The offline CI suite covers Python 3.11–3.14 with separate interpret
 caches. Python/platform workflows run on PRs and `main` pushes, avoiding duplicate
 feature-branch runs. Live database tests and the packaged walkthrough remain
 separate checks of driver behavior and installation/orchestration.
+The malformed-policy test accepts safe rejection at either JSON decoding or
+schema validation, accommodating interpreter differences in nesting limits.
 
 ## Operator contract and limitations
 
