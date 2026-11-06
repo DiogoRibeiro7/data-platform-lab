@@ -13,7 +13,6 @@ build/
 venv/
 env/
 .python-version
-poetry.lock
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/

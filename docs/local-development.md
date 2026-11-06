@@ -9,7 +9,7 @@ Everything you need to clone, set up, and work with this repository locally.
 | Tool | Version | Check command | Notes |
 |------|---------|---------------|-------|
 | Python | 3.11–3.14 | `python --version` | Required for the Python exercises; 3.15 is excluded |
-| Poetry | 1.8+ | `poetry --version` | Python dependency manager ([install guide](https://python-poetry.org/docs/#installation)) |
+| Poetry | 2.5.1 | `poetry --version` | Version used to generate the lockfile and run CI ([install guide](https://python-poetry.org/docs/#installation)) |
 | Node.js | 22.13+ (22.x) or 24+ | `node --version` | Required for the JavaScript exercises and ESLint 10; Node 23 is unsupported |
 | Corepack | (bundled) | `corepack --version` | Ships with Node.js; used to enable Yarn |
 | SQLite | 3.35+ | `sqlite3 --version` | Optional; only needed for SQL exercises |
@@ -31,7 +31,8 @@ cd data-platform-lab
 
 ```bash
 cd python
-poetry install --extras serving
+poetry check --lock
+poetry sync --extras serving
 ```
 
 This installs the package in editable mode, the optional analytics/serving
@@ -178,12 +179,29 @@ Alternatively, if Poetry is installed via `pip install poetry` inside a conda en
 
 If `yarn install` fails with "command not found" or a version mismatch, run `corepack enable` first. This is a one-time operation per Node.js installation.
 
-### Lock files are not committed
+### Dependency lockfiles
 
-The Python `poetry.lock` file is gitignored, so fresh Python environments can
-resolve different compatible dependency versions. JavaScript's `yarn.lock` is
-tracked. The publishing assessment documents the remaining Python dependency
-reproducibility limit; CI success certifies the versions resolved for that run.
+Both `python/poetry.lock` and `javascript/yarn.lock` are committed. Python's
+lockfile records exact versions, artifact hashes, and environment markers for
+Python 3.11–3.14, including optional extras and development tools. The same lock
+is used by CI and the packaged ONS demo. Python 3.15 remains excluded.
+
+For normal Python setup, run `poetry check --lock` followed by
+`poetry sync --extras serving` from `python/`. Add `mongodb` to the extras for
+live MongoDB tests. `sync` removes packages not selected by the lock and extras;
+use a dedicated project virtualenv. `poetry install` also uses the committed
+lock, but does not remove unrelated installed packages.
+
+To change dependencies deliberately, update `pyproject.toml` as needed and run
+`poetry lock`, or use `poetry update PACKAGE` to refresh a selected dependency.
+Review and commit the resulting lockfile with the manifest changes. Run
+`poetry check --lock`, synchronize the environment, and run the relevant tests
+before opening a PR. CI rejects missing/stale locks and lockfile changes made
+during installation; lock-only updates trigger the integration workflows.
+
+The lockfile controls Python package versions and verifies downloaded artifacts.
+It does not pin the operating system, container image digests, or Poetry's own
+bootstrap dependencies, and it is not a security-audit result.
 
 ### `*.log` files in data/sample/
 

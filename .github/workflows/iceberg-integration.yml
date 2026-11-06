@@ -7,6 +7,7 @@ on:
       - "compose.yaml"
       - "infra/garage/**"
       - "python/pyproject.toml"
+      - "python/poetry.lock"
       - "python/src/data_platform_lab/iceberg/**"
       - "python/src/data_platform_lab/cli/main.py"
       - ".github/workflows/iceberg-integration.yml"
@@ -15,6 +16,7 @@ on:
       - "compose.yaml"
       - "infra/garage/**"
       - "python/pyproject.toml"
+      - "python/poetry.lock"
       - "python/src/data_platform_lab/iceberg/**"
       - "python/src/data_platform_lab/cli/main.py"
       - ".github/workflows/iceberg-integration.yml"
@@ -37,11 +39,14 @@ jobs:
           python-version: "3.11"
 
       - name: Install Poetry
-        run: pipx install poetry
+        run: pipx install poetry==2.5.1
 
       - name: Install Python dependencies
         working-directory: python
-        run: poetry install --no-interaction
+        run: |
+          poetry check --lock
+          poetry sync --no-interaction
+          git diff --exit-code -- poetry.lock
 
       - name: Iceberg round trip
         working-directory: python

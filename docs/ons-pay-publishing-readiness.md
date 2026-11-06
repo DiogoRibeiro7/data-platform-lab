@@ -89,7 +89,7 @@ change the demo runner's pinned Python 3.11 image.
 | Persistence | Trusted local POSIX filesystem with advisory locks, hard links and directory fsync. Sink writes and local evidence are not a distributed transaction; a killed process can leave writes without evidence. |
 | Concurrency | One controlled writer per source and selected sink vintage. The archive lock serializes manifest publication, not database writes. Reconciliation proves the checked observation, not a durable snapshot against later writers. |
 | Identity | Hashes establish integrity, not authenticated provenance or server/operator identity. Archive records name the logical sink/table, not its physical database. Operators must retain the attempt-to-target association. A historical UUID retry never rechecks the current sink. |
-| Dependencies | Server image versions are pinned; Python dependency ranges and the base image's OS packages are not locked to immutable digests. Reproduction guarantees assume the same resolved versions; a future install can differ. |
+| Dependencies | Python runtime/development dependencies and optional extras are pinned in `python/poetry.lock`, with artifact hashes and markers for Python 3.11–3.14. CI and the packaged demo validate and consume the lock. Server image tags, OS packages and Poetry bootstrap dependencies are not pinned to immutable digests by this lock. |
 
 ## Outside the verified scope
 
@@ -105,8 +105,9 @@ seven JavaScript development-tooling alerts (four high, three moderate).
 The subsequent [JavaScript dependency remediation](../javascript/README.md#dependency-security-checks)
 updates `js-yaml`, `brace-expansion` and `@humanfs/node` to patched versions
 and adds a recursive CI audit. This Python publishing assessment does not
-certify the repository's overall dependency security. Python's unlocked
-dependency ranges still require deployment-specific review and version control.
+certify the repository's overall dependency security. Python now uses a
+committed lockfile; see the [dependency update workflow](local-development.md#dependency-lockfiles).
+Locked versions still require security review and deliberate updates.
 
 No tag, package publication, infrastructure deployment or release activation is
 part of this assessment. The [unreleased notes](ons-pay-publishing-release-notes.md)
