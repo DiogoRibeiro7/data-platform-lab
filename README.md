@@ -502,7 +502,7 @@ The root CLI delegates to the existing workflow CLIs rather than duplicating the
 ### Prerequisites
 
 - Python 3.11–3.14 and Poetry
-- Node.js 22+ and Corepack/Yarn
+- Node.js 22.13+ (22.x) or 24+ and Corepack/Yarn
 - SQLite 3.35+ for warehouse exercises
 - Docker Compose for the optional local infrastructure stack
 
