@@ -8,7 +8,7 @@ The project uses ESM modules, the Node.js built-in test runner, and minimal exte
 
 ```bash
 cd javascript
-yarn install
+yarn install --immutable
 ```
 
 ## Available Scripts
@@ -19,6 +19,42 @@ yarn install
 | `lint` | `yarn lint` | Lint source and test files with ESLint |
 | `lint:fix` | `yarn lint:fix` | Lint and auto-fix where possible |
 | `check` | `yarn check` | Syntax-check all source files with `node --check` |
+
+## Dependency security checks
+
+The committed `yarn.lock` pins resolved dependencies and checksums. Normal
+installs and CI use `yarn install --immutable`, which fails if installation
+would rewrite the lockfile. Dependency updates must explicitly regenerate and
+commit it before review.
+The generated `.yarn/install-state.gz` is ignored and recreated by installation.
+
+```bash
+yarn install --immutable
+yarn npm audit --all --recursive --no-deprecations
+yarn lint
+yarn test
+```
+
+The [recursive audit](https://yarnpkg.com/cli/npm/audit) includes direct and
+transitive packages in both production and development dependencies. CI runs
+it without ignored advisories or package exclusions and fails on security
+findings. `--no-deprecations` separates package deprecation notices from this
+security gate; it does not ignore advisories. Omit that flag to inspect
+deprecations separately. Results depend on the registry's data at check time.
+
+The seven development-tooling alerts identified on 2026-11-06 are addressed
+by these compatible transitive updates; the direct ESLint requirements remain
+unchanged:
+
+| Package | Previous version | Patched version | Alerts addressed |
+| --- | --- | --- | --- |
+| `brace-expansion` | 1.1.12 | 1.1.21 | 2 |
+| `js-yaml` | 4.1.1 | 4.3.2 | 4 |
+| `@humanfs/node` | 0.16.7 | 0.16.8 | 1 |
+
+`@humanfs/node` also requires the corresponding `@humanfs/core` 0.19.2 and
+`@humanfs/types` 0.15.0 updates. GitHub closes the default-branch alerts after
+the patched lockfile is merged and its dependency graph is refreshed.
 
 ## Testing
 

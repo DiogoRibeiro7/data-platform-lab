@@ -100,12 +100,13 @@ monitoring. MongoDB batch atomicity, replica-set failover, secondary consistency
 cross-host evidence locking and signed attestations are not demonstrated.
 Other MongoDB-compatible products are not certified by the MongoDB live suite.
 
-The repository's dependency-alert snapshot on 2026-11-06 contains seven open
-alerts (four high, three moderate), all in development dependencies recorded in
-`javascript/yarn.lock`: `js-yaml`, `brace-expansion` and `@humanfs/node`. They
-require a separate JavaScript tooling update; this Python publishing audit does
-not certify the repository's overall dependency security. Python's unlocked
-dependency ranges also require deployment-specific review and version control.
+The dependency-alert snapshot taken during the 2026-11-06 audit identified
+seven JavaScript development-tooling alerts (four high, three moderate).
+The subsequent [JavaScript dependency remediation](../javascript/README.md#dependency-security-checks)
+updates `js-yaml`, `brace-expansion` and `@humanfs/node` to patched versions
+and adds a recursive CI audit. This Python publishing assessment does not
+certify the repository's overall dependency security. Python's unlocked
+dependency ranges still require deployment-specific review and version control.
 
 No tag, package publication, infrastructure deployment or release activation is
 part of this assessment. The [unreleased notes](ons-pay-publishing-release-notes.md)
