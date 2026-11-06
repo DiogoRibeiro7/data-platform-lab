@@ -2,7 +2,7 @@
 
 Assessment date: **2026-11-06**. Scope: the Python ONS workflow from registry
 handoff to persisted publication outcomes. This is a **portfolio-ready local
-data engineering workflow**, subject to the verification evidence below. It is
+data engineering workflow**, based on the verification evidence below. It is
 not a production deployment certification or authorization to activate a release.
 
 ## Capability checklist
@@ -28,17 +28,30 @@ regular local platform stack.
 
 ## Verification evidence
 
-The merged demonstration baseline was verified at commit
-`4162749af82a5fa9553904355703aafdc181a67a`:
+The audited implementation and tests at commit
+`a273bf4c4e1781a0e08411b60627aa020772f01c` passed all eight workflows:
 
-- [Python suite and quality checks](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42201538866): 837 passed, 25 opt-in skips; Ruff/format and strict mypy passed.
-- [PostgreSQL](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42201539282): 6 live tests passed. [MongoDB](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42201538740): 18 live tests passed.
-- [Packaged demo](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42201539208): two independent executions passed in one smoke test, with retained reports/evidence. Recovery produces 12 accepted outcomes and 4 expected rejections.
-- A local Windows/Docker Desktop execution also verified artifact hashes,
-  durable outcomes and service cleanup. Processing ran inside Linux containers.
+| Verification | Observed result |
+| --- | --- |
+| [Python matrix and quality checks](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42204111102) | **839 passed, 25 opt-in skips on each of Python 3.11, 3.12, 3.13 and 3.14**; both existing demo smokes passed on every version. Ruff/format and strict mypy passed (89 source files). |
+| [PostgreSQL](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42204111149) | **6 live tests passed**, plus run-metadata smoke. |
+| [MongoDB](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42204111351) | **18 live tests passed**, including partial-write recovery and immutable outcomes. |
+| [Packaged ONS demo](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42204111135) | **1 smoke test passed**, executing the launcher twice. Recovery verifies 12 accepted outcomes and 4 expected rejections; [reports and evidence](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42204111135/artifacts/13496390498) are retained subject to CI artifact retention. |
+| [S3](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42204111210), [Kafka](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42204111059), [Iceberg](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42204111145), [platform recovery](https://github.com/DiogoRibeiro7/data-platform-lab/actions/runs/42204111213) | All passed with disposable services. |
 
-Audit-branch results, including the added commit-acknowledgment regressions and
-Python version matrix, will be recorded here after validation. Historical
+The matrix includes the two new SQL commit-acknowledgment regressions. Its first
+3.14 run exposed a test-specific assumption about JSON decoder recursion: the
+same invalid policy can instead reach schema validation. The corrected test
+requires safe rejection and CLI exit 2 without a traceback on every version.
+An existing Starlette/httpx deprecation warning remains; it did not fail tests.
+
+Local targeted checks passed: 45 adapter tests and 18 malformed-policy cases,
+Ruff/format, mypy using Linux platform semantics, documentation links and
+whitespace validation. The merged demo had also been executed on Windows/Docker
+Desktop, verifying artifact hashes, outcomes and cleanup inside Linux containers.
+Native Windows is not presented as a POSIX persistence validation environment.
+
+Historical
 [March reviews](current-state-review.md) retain their original findings and
 counts; they do not describe the current publishing implementation.
 
