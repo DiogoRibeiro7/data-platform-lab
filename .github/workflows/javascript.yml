@@ -36,11 +36,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: javascript/.yarn/cache
-          key: yarn-${{ runner.os }}-${{ hashFiles('javascript/package.json') }}
+          key: yarn-${{ runner.os }}-${{ hashFiles('javascript/yarn.lock', 'javascript/.yarnrc.yml') }}
           restore-keys: yarn-${{ runner.os }}-
 
       - name: Install dependencies
-        run: yarn install --immutable || yarn install
+        run: yarn install --immutable
+
+      - name: Audit all dependencies
+        run: yarn npm audit --all --recursive --no-deprecations
 
       - name: ESLint
         run: yarn lint
@@ -62,11 +65,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: javascript/.yarn/cache
-          key: yarn-${{ runner.os }}-${{ hashFiles('javascript/package.json') }}
+          key: yarn-${{ runner.os }}-${{ hashFiles('javascript/yarn.lock', 'javascript/.yarnrc.yml') }}
           restore-keys: yarn-${{ runner.os }}-
 
       - name: Install dependencies
-        run: yarn install --immutable || yarn install
+        run: yarn install --immutable
 
       - name: Run tests
         run: yarn test
