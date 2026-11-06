@@ -96,7 +96,7 @@ Additional module directories (`cli/`, `storage/`, `streaming/`, `warehouse/`, `
 
 ## Conventions
 
-- **Python 3.11+** is required.
+- **Python 3.11–3.14** is required.
 - **Type annotations** on all public functions and methods.
 - **Docstrings** on all modules and public interfaces.
 - **Tests** live in `tests/` and mirror the `src/` structure.

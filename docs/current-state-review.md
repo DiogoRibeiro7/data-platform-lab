@@ -1,6 +1,10 @@
-# Current State Review
+# Current State Review (Historical Snapshot)
 
 Reviewed: 2026-03-19
+
+This review describes the repository on that date. Its findings and counts are
+retained as history. For the current ONS publishing assessment, see the
+[release-readiness checklist](ons-pay-publishing-readiness.md).
 
 ---
 

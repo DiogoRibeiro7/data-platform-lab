@@ -8,7 +8,7 @@ Everything you need to clone, set up, and work with this repository locally.
 
 | Tool | Version | Check command | Notes |
 |------|---------|---------------|-------|
-| Python | 3.11+ | `python --version` | Required for the Python exercises |
+| Python | 3.11–3.14 | `python --version` | Required for the Python exercises; 3.15 is excluded |
 | Poetry | 1.8+ | `poetry --version` | Python dependency manager ([install guide](https://python-poetry.org/docs/#installation)) |
 | Node.js | 22+ | `node --version` | Required for the JavaScript exercises (22+ needed for `node:sqlite`) |
 | Corepack | (bundled) | `corepack --version` | Ships with Node.js; used to enable Yarn |
@@ -31,10 +31,13 @@ cd data-platform-lab
 
 ```bash
 cd python
-poetry install
+poetry install --extras serving
 ```
 
-This installs the `data_platform_lab` package in editable mode plus three dev tools: **pytest**, **ruff**, and **mypy**.
+This installs the package in editable mode, the optional analytics/serving
+dependencies used by the full offline suite, and development tools. Add the
+`mongodb` extra for the opt-in live MongoDB tests. The complete publishing demo
+also runs through its [Docker launcher](ons-pay-publishing-demo.md).
 
 Verify:
 

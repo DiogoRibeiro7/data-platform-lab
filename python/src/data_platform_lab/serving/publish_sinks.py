@@ -177,7 +177,9 @@ def publish_postgres(
 
     This function does not own or close the connection. Pass a connection with
     autocommit disabled; DDL and all row writes share one transaction. A failed
-    commit or statement triggers rollback and never returns a success receipt.
+    commit or statement triggers a rollback attempt and never returns a success
+    receipt. A lost commit acknowledgment can leave committed writes despite
+    a successful subsequent rollback; inspect the sink before explicit replay.
     """
     if type(batch_size) is not int or not 1 <= batch_size <= 5000:
         raise PublishPlanError("PostgreSQL batch_size must be an integer from 1 to 5000")
@@ -205,7 +207,9 @@ def publish_postgres(
             raise PublishSinkError("PostgreSQL publication and rollback both failed") from (
                 rollback_exc
             )
-        raise PublishSinkError("PostgreSQL publication failed; transaction rolled back") from exc
+        raise PublishSinkError(
+            "PostgreSQL publication failed; rollback attempted, commit outcome may be unknown"
+        ) from exc
     return PublishReceipt(
         sink="postgresql",
         table=plan.table,

@@ -1,1 +1,1 @@
-"""Provider-independent, read-only access to verified ONS pay Gold tables."""
+"""Verified ONS pay reads, explicit sink publishing and manual release controls."""

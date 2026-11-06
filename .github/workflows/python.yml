@@ -2,6 +2,7 @@ name: Python
 
 on:
   push:
+    branches: [main]
     paths:
       - "python/**"
       - "scripts/ons_pay_publishing_demo.py"
@@ -41,8 +42,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: python/.venv
-          key: py-venv-${{ runner.os }}-${{ hashFiles('python/pyproject.toml') }}
-          restore-keys: py-venv-${{ runner.os }}-
+          key: py-venv-${{ runner.os }}-3.11-${{ hashFiles('python/pyproject.toml') }}
+          restore-keys: py-venv-${{ runner.os }}-3.11-
 
       - name: Install dependencies with serving contract types
         run: poetry install --no-interaction --extras serving
@@ -57,14 +58,19 @@ jobs:
         run: poetry run mypy src/ ../scripts
 
   test:
-    name: Test & smoke
+    # Preserve the existing 3.11 status-check name for branch protection.
+    name: ${{ matrix.python-version == '3.11' && 'Test & smoke' || format('Test & smoke (Python {0})', matrix.python-version) }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Poetry
         run: pipx install poetry
@@ -76,8 +82,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: python/.venv
-          key: py-venv-${{ runner.os }}-${{ hashFiles('python/pyproject.toml') }}
-          restore-keys: py-venv-${{ runner.os }}-
+          key: py-venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('python/pyproject.toml') }}
+          restore-keys: py-venv-${{ runner.os }}-${{ matrix.python-version }}-
 
       - name: Install dependencies with analytics and serving models
         run: poetry install --no-interaction --extras serving

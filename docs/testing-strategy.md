@@ -8,7 +8,9 @@ How tests are organized, what they cover, and how to run them.
 
 ```bash
 # Python — all tests
-cd python && poetry run pytest
+cd python
+poetry install --extras serving
+poetry run pytest
 
 # Python — single file
 poetry run pytest tests/test_incremental_etl.py -v
@@ -110,6 +112,31 @@ input order.
 
 ## What is covered
 
+The ONS publishing checks extend the foundational exercise coverage below:
+
+| Contract | Verification |
+| --- | --- |
+| Source and analytical lineage | Real Git blob/checksum checks, curation quality gates, immutable output hashes, schema and source-pin validation |
+| Plans and sink adapters | Both Gold tables, stable IDs, null/type semantics, row/batch budgets, rollback attempts, partial writes and explicit replay |
+| Operator CLI | Preview side effects, required pins, argument parsing, lazy clients, safe JSON/exit codes, read-only verification and client cleanup |
+| Gate and evidence | Independent expected fingerprints, no acceptance without a complete write receipt, corruption detection, interrupted persistence, concurrent local archive writers and historical retries |
+| Live databases | Disposable PostgreSQL and MongoDB tests, complete read-back, vintage isolation, drift detection and recovery |
+| Packaged demonstration | Two runs of the documented Docker launcher, matching source/plan pins, deliberate rejection/recovery, evidence hashes and scoped cleanup |
+
+The Python CI workflow runs the full offline suite and existing demo smokes on
+Python **3.11, 3.12, 3.13 and 3.14**. Ruff/format/mypy run once on 3.11; virtualenv
+cache keys include the interpreter version. Live integration workflows and the
+packaged ONS demo also use 3.11; other interpreter/database combinations are
+not separately certified. Database and Docker tests skip in the offline suite
+and run with explicit opt-in in their dedicated workflows.
+
+Python/platform workflows run on pull requests and pushes to `main`, avoiding
+duplicate feature-branch push and PR runs. Path filters retain relevant changes;
+PostgreSQL includes curation and the shared serving fixture. The live adapter
+tests cover failure contracts that the end-to-end smoke does not, so both remain.
+See the [publishing checklist](ons-pay-publishing-readiness.md) for run evidence
+and [local commands](ons-pay-portable-publishing.md#operator-publishing-cli).
+
 | Area | Unit | Integration | Rerun | Failure | Golden | Shape |
 |------|:----:|:-----------:|:-----:|:-------:|:------:|:-----:|
 | CSV ingestion | x | x | x | x | | |
@@ -138,11 +165,10 @@ input order.
 | Area | Reason |
 |------|--------|
 | Performance / large datasets | This is a learning repo; sample data is intentionally small |
-| Concurrent pipeline runs | Single-process design; concurrency is documented as a limitation |
+| Concurrent database publishing | Local archive writer conflicts are tested; cross-host and concurrent sink snapshots are outside the supported execution model |
 | Network failures in API ingestion | Tests use mocked HTTP; real network tests would be flaky |
-| File permission errors | OS-specific and difficult to test portably |
+| Exhaustive filesystem/platform combinations | Selected evidence write/lock failures are tested; filesystem guarantees remain platform-dependent |
 | SQLite file-backed databases | Tests use `:memory:` for speed; file I/O is trivially different |
-| CLI argument parsing | Thin wrappers over tested library functions |
 | Benchmark timing assertions | Machine-dependent, would produce flaky tests |
 
 ---

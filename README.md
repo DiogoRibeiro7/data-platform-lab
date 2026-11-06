@@ -153,6 +153,11 @@ It requires no hosted database and binds to loopback by default (no auth).
 
 ## Relational and document publishing
 
+The [release-readiness checklist](docs/ons-pay-publishing-readiness.md) records
+the supported execution paths, verification evidence and operational limits.
+[Unreleased publishing notes](docs/ons-pay-publishing-release-notes.md) describe
+the operator commands and recovery behavior.
+
 Run the complete synthetic source-to-database walkthrough with local Docker:
 
 ```bash
@@ -496,7 +501,7 @@ The root CLI delegates to the existing workflow CLIs rather than duplicating the
 
 ### Prerequisites
 
-- Python 3.11+ and Poetry
+- Python 3.11–3.14 and Poetry
 - Node.js 22+ and Corepack/Yarn
 - SQLite 3.35+ for warehouse exercises
 - Docker Compose for the optional local infrastructure stack

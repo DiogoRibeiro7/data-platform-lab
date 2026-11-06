@@ -19,6 +19,8 @@ services:
 
   postgres:
     image: postgres:18.6
+    # Reap orphaned health probes without making PostgreSQL handle their exits.
+    init: true
     restart: unless-stopped
     environment:
       POSTGRES_DB: data_platform_lab
@@ -30,7 +32,7 @@ services:
       - postgres-data:/var/lib/postgresql
       - ./sql/platform/001_pipeline_runs.sql:/docker-entrypoint-initdb.d/001_pipeline_runs.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U data_platform_lab -d data_platform_lab"]
+      test: ["CMD", "pg_isready", "-U", "data_platform_lab", "-d", "data_platform_lab"]
       interval: 5s
       timeout: 3s
       retries: 20

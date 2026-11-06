@@ -2,6 +2,7 @@ name: ONS Pay Publishing Demo
 
 on:
   push:
+    branches: [main]
     paths:
       - "python/**"
       - "scripts/ons_pay_publishing_demo.py"
