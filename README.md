@@ -214,7 +214,7 @@ See [durable publication evidence](docs/ons-pay-portable-publishing.md#durable-p
 for outcome semantics, persistence failures, concurrency and trust limits.
 
 Real PyMongo integration is available through the optional `mongodb` Compose
-profile, using MongoDB 8.0.32 with disposable storage and a loopback-only port.
+profile, using MongoDB 9.0.4 with disposable storage and a loopback-only port.
 The [local test commands](docs/ons-pay-portable-publishing.md#disposable-local-mongodb-integration)
 exercise both Gold tables, idempotency, vintage isolation, drift, partial-write
 recovery and durable outcomes. The same suite runs in CI without hosted

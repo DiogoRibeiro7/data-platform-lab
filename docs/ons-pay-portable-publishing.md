@@ -192,12 +192,14 @@ recovery and durable outcomes for both tables, as described below.
 
 ### Disposable local MongoDB integration
 
-The `mongodb` Compose profile provides **MongoDB 8.0.32** independently of the
+The `mongodb` Compose profile provides **MongoDB 9.0.4** independently of the
 default platform services. Its host binding is loopback only, with a configurable
 port to avoid an existing installation. Data lives in container tmpfs and is
 discarded when the service stops. This unauthenticated standalone instance is
 for disposable local tests only; no hosted account or credentials are needed.
 PyMongo is installed only with the `mongodb` Python extra.
+The server pin includes the [Ubuntu kernel-detection fix](https://jira.mongodb.org/browse/SERVER-131779)
+needed by current GitHub-hosted runners; no kernel safety checks are bypassed.
 
 Run from the repository root on Linux or WSL (durable evidence needs POSIX
 locks and directory fsync):

@@ -36,7 +36,7 @@ services:
       retries: 20
 
   mongodb:
-    image: mongo:8.0.32
+    image: mongo:9.0.4
     profiles: ["mongodb"]
     ports:
       - "127.0.0.1:${ONS_PAY_MONGODB_PORT:-27017}:27017"
