@@ -122,8 +122,8 @@ pipeline run produced so that downstream consumers know what to expect.
 | `pipeline_name` | string | Which pipeline created this output |
 | `run_id` | string | Unique identifier for the run |
 | `created_at` | string | ISO 8601 timestamp |
-| `source` | string | Input path or URL |
-| `output` | string | Output path |
+| `source` | string or string[] | Input path(s) or URL; CSV sources include the input directory |
+| `output` | string or string[] | Output path(s), or the output directory for a collection of artifacts |
 | `row_count` | integer | Number of rows in the output |
 | `schema_hint` | string[] | Column names or top-level keys in the output |
 | `status` | string | `"success"` or `"failed"` |
@@ -137,6 +137,7 @@ Modules that use the shared `write_manifest` utility:
 - API ingestion (`api_ingestion`)
 - Incremental ETL (`events_etl`)
 - Streaming processor (`sensor_stream`)
+- Sensor demonstration (`sensor_demo`)
 - Warehouse loader (`warehouse`)
 
 ONS sink-publication evidence preserves the required manifest fields and uses
@@ -153,10 +154,25 @@ The end-to-end demo (`ecommerce_demo`) writes its own manifest with a
 different structure (`run` + `tables` fields) and does not use the shared
 utility.
 
-Manifest writes are not uniformly guarded. The warehouse loader wraps the
-call in try/except so a write failure does not stop the pipeline. The other
-modules call `write_manifest` without exception handling — a write failure
-will propagate and fail the run.
+Manifest persistence errors propagate to the caller in both languages. The
+six shared-writer pipelines do not silently suppress them or return a successful
+result without its manifest once the manifest-writing stage is reached. Python
+wraps filesystem errors in `FileWriteError` and preserves their cause;
+JavaScript propagates the filesystem error. Early returns before that stage
+(such as CSV ingestion with no input files) retain their existing behavior.
+
+This is not a transaction with the pipeline's data files or checkpoints. A
+manifest failure can occur after those writes have completed; callers must
+inspect existing state before retrying. A persisted manifest may itself record
+`status: "failed"` when an orchestration step failed.
+
+`python/tests/test_pipeline_manifests.py` and
+`javascript/tests/pipeline-manifests.test.js` run every shared-writer pipeline
+in a temporary working directory. They read back the real manifests and output
+files, compare provenance and row counts, verify failed-run status, and force
+filesystem write failures. Only the API network boundary is replaced by a
+local test double. The end-to-end demo's separate manifest format remains
+covered by its demo tests.
 
 ---
 

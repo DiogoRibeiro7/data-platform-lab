@@ -212,25 +212,20 @@ export async function runIncrementalEtl({
     checkpointUpdated = true;
   }
 
-  // 8. Write manifest (best-effort)
-  let manifestPath = "";
-  try {
-    manifestPath = writeManifest({
-      pipeline_name: pipelineName,
-      run_id: generateRunId(),
-      source: inputDir,
-      output: outputDir,
-      row_count: recordsProcessed,
-      extras: {
-        records_seen: recordsSeen,
-        records_skipped: recordsSkipped,
-        records_failed: recordsFailed,
-        checkpoint_updated: checkpointUpdated,
-      },
-    });
-  } catch {
-    // Manifest writing is best-effort — skip in test environments
-  }
+  // 8. Write manifest
+  const manifestPath = writeManifest({
+    pipeline_name: pipelineName,
+    run_id: generateRunId(),
+    source: inputDir,
+    output: outputDir,
+    row_count: recordsProcessed,
+    extras: {
+      records_seen: recordsSeen,
+      records_skipped: recordsSkipped,
+      records_failed: recordsFailed,
+      checkpoint_updated: checkpointUpdated,
+    },
+  });
 
   // 9. Return run summary
   return {

@@ -309,24 +309,20 @@ export function runWarehousePipeline({
     })),
   };
 
-  try {
-    const manifestPath = writeManifest({
-      pipeline_name: "warehouse",
-      run_id: generateRunId(),
-      source: dataDir,
-      output: reportDir || dbPath,
-      row_count: Object.values(warehouseTables).reduce((a, b) => a + b, 0),
-      status: summary.status,
-      extras: {
-        staging_tables: stagingTables,
-        warehouse_tables: warehouseTables,
-        db_path: dbPath,
-      },
-    });
-    summary.manifest_path = manifestPath;
-  } catch {
-    // Manifest writing is best-effort — skip in test environments
-  }
+  const manifestPath = writeManifest({
+    pipeline_name: "warehouse",
+    run_id: generateRunId(),
+    source: dataDir,
+    output: reportDir || dbPath,
+    row_count: Object.values(warehouseTables).reduce((a, b) => a + b, 0),
+    status: summary.status,
+    extras: {
+      staging_tables: stagingTables,
+      warehouse_tables: warehouseTables,
+      db_path: dbPath,
+    },
+  });
+  summary.manifest_path = manifestPath;
 
   return summary;
 }

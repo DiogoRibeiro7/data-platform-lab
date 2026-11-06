@@ -304,25 +304,21 @@ export async function runPipeline({ inputDir, outputPath, requiredColumns }) {
     `${result.duplicates_removed} duplicates removed.`,
   );
 
-  try {
-    const manifestPath = writeManifest({
-      pipeline_name: "csv_ingestion",
-      run_id: generateRunId(),
-      source: csvFiles,
-      output: outputPath,
-      row_count: result.rows_written,
-      schema_hint: mergedHeaders || undefined,
-      warnings: result.files_rejected.length > 0 ? result.files_rejected : undefined,
-      extras: {
-        rows_read: result.rows_read,
-        duplicates_removed: result.duplicates_removed,
-        files_processed: result.files_processed,
-      },
-    });
-    result.manifest_path = manifestPath;
-  } catch {
-    // Manifest writing is best-effort — skip in test environments
-  }
+  const manifestPath = writeManifest({
+    pipeline_name: "csv_ingestion",
+    run_id: generateRunId(),
+    source: csvFiles.map((file) => join(inputDir, file)),
+    output: outputPath,
+    row_count: result.rows_written,
+    schema_hint: mergedHeaders || undefined,
+    warnings: result.files_rejected.length > 0 ? result.files_rejected : undefined,
+    extras: {
+      rows_read: result.rows_read,
+      duplicates_removed: result.duplicates_removed,
+      files_processed: result.files_processed,
+    },
+  });
+  result.manifest_path = manifestPath;
 
   return result;
 }
