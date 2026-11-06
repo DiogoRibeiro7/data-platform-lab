@@ -8,12 +8,19 @@ Type hints are expected throughout. Each module is designed to work independentl
 
 ```bash
 cd python
-poetry install --extras serving
+poetry check --lock
+poetry sync --extras serving
 ```
 
 This installs the package in editable mode, development dependencies, and the
 optional analytics/serving dependencies required by the complete offline suite.
 Add the `mongodb` extra for live PyMongo tests. Core-only users can omit extras.
+
+Use Poetry **2.5.1**, as used by CI. The committed `poetry.lock` covers Python
+**3.11–3.14**, all optional extras, and development dependencies. Normal setup
+uses its recorded versions and hashes. `sync` also removes unselected packages
+from the project virtualenv. See the [lockfile workflow](../docs/local-development.md#dependency-lockfiles)
+for deliberate updates and reproducibility limits.
 
 ## Development Setup
 
@@ -23,7 +30,7 @@ The project uses three development tools:
 - **ruff** — linter and formatter
 - **mypy** — static type checker
 
-All three are included in the `dev` dependency group and installed automatically by `poetry install`.
+All three are included in the `dev` dependency group and installed automatically by `poetry sync` or `poetry install`.
 
 ## Commands
 

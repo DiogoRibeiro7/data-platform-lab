@@ -7,6 +7,7 @@ on:
       - "compose.yaml"
       - "sql/platform/**"
       - "python/pyproject.toml"
+      - "python/poetry.lock"
       - "python/src/data_platform_lab/metadata/**"
       - "python/src/data_platform_lab/serving/**"
       - "python/src/data_platform_lab/curation/**"
@@ -19,6 +20,7 @@ on:
       - "compose.yaml"
       - "sql/platform/**"
       - "python/pyproject.toml"
+      - "python/poetry.lock"
       - "python/src/data_platform_lab/metadata/**"
       - "python/src/data_platform_lab/serving/**"
       - "python/src/data_platform_lab/curation/**"
@@ -38,10 +40,13 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install Poetry
-        run: pipx install poetry
+        run: pipx install poetry==2.5.1
       - name: Install Python dependencies
         working-directory: python
-        run: poetry install --no-interaction --extras serving
+        run: |
+          poetry check --lock
+          poetry sync --no-interaction --extras serving
+          git diff --exit-code -- poetry.lock
       - name: Run metadata smoke
         working-directory: python
         run: poetry run data-platform-lab metadata

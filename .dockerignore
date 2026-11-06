@@ -1,6 +1,7 @@
 **
 !python
 !python/pyproject.toml
+!python/poetry.lock
 !python/README.md
 !python/src
 !python/src/**

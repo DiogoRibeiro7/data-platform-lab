@@ -19,6 +19,12 @@ Python runner and starts PostgreSQL **18.6** and MongoDB **9.0.4**. Initial setu
 downloads public images and Python/OS packages; it downloads **no dataset** and
 needs no hosted database account. Later builds reuse Docker's cache.
 
+The runner installs its Python packages from the committed `python/poetry.lock`
+with the `analytics` and `mongodb` extras. The image build checks that the lock
+matches `pyproject.toml`; changing the lock invalidates the dependency layer.
+Poetry 2.5.1 runs in an isolated build environment and is absent from the final
+runtime image. OS packages and image digests remain outside the Python lock.
+
 `--exercise-recovery` explicitly authorizes the scripted mutation, expected
 gate rejection, and subsequent replay. Without that flag the demo performs
 normal publication and an idempotent repeat, with no drift exercise. Unexpected
