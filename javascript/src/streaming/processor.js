@@ -371,25 +371,21 @@ export async function processStream(inputPath, outputDir, { pipelineName = "sens
     `(${durationSeconds}s)`,
   );
 
-  try {
-    const manifestPath = writeManifest({
-      pipeline_name: pipelineName,
-      run_id: generateRunId(),
-      source: inputPath,
-      output: acceptedPath,
-      row_count: eventsAccepted,
-      extras: {
-        events_seen: eventsSeen,
-        events_rejected: eventsRejected,
-        events_duplicate: eventsDuplicate,
-        events_late: lateEvents.length,
-        dead_letter_path: deadLetterPath,
-      },
-    });
-    summary.manifest_path = manifestPath;
-  } catch {
-    // Manifest writing is best-effort — skip in test environments
-  }
+  const manifestPath = writeManifest({
+    pipeline_name: pipelineName,
+    run_id: generateRunId(),
+    source: inputPath,
+    output: acceptedPath,
+    row_count: eventsAccepted,
+    extras: {
+      events_seen: eventsSeen,
+      events_rejected: eventsRejected,
+      events_duplicate: eventsDuplicate,
+      events_late: lateEvents.length,
+      dead_letter_path: deadLetterPath,
+    },
+  });
+  summary.manifest_path = manifestPath;
 
   return summary;
 }

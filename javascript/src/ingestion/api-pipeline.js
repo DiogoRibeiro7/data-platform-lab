@@ -323,25 +323,20 @@ export async function runApiPipeline({
   const durationSeconds =
     Math.round(((performance.now() - startTime) / 1000) * 1000) / 1000;
 
-  let manifestPath = "";
-  try {
-    manifestPath = writeManifest({
-      pipeline_name: "api_ingestion",
-      run_id: runId,
-      source: baseUrl,
-      output: processedPath,
-      row_count: transformed.length,
-      status: errors.length > 0 ? "failed" : "success",
-      warnings: errors.length > 0 ? errors : undefined,
-      extras: {
-        pages_fetched: pagesFetched,
-        total_records: records.length,
-        raw_path: rawPath,
-      },
-    });
-  } catch {
-    // Manifest writing is best-effort — skip in test environments
-  }
+  const manifestPath = writeManifest({
+    pipeline_name: "api_ingestion",
+    run_id: runId,
+    source: baseUrl,
+    output: processedPath,
+    row_count: transformed.length,
+    status: errors.length > 0 ? "failed" : "success",
+    warnings: errors.length > 0 ? errors : undefined,
+    extras: {
+      pages_fetched: pagesFetched,
+      total_records: records.length,
+      raw_path: rawPath,
+    },
+  });
 
   const summary = {
     run_id: runId,
