@@ -1,5 +1,9 @@
 # Portable SQL/document publishing for ONS pay Gold data
 
+For a complete local example, run the [synthetic publishing demonstration](ons-pay-publishing-demo.md).
+It exercises both sinks and Gold tables, durable outcomes, controlled drift and
+explicit recovery without hosted services or external dataset downloads.
+
 The optional `ons-pay-publish-plan` command models a verified, exact ONS pay
 Gold vintage in two target representations: flat relational rows and nested
 documents. It is a **read-only publishing preview**, not a database writer.

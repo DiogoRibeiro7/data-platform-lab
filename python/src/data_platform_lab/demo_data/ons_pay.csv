@@ -1,0 +1,9 @@
+areacd,areanm,geography,indicator,period,observation,measure,unit,lci_95,uci_95,status,notes
+D001,Demo North,Local Authority District,Gross median weekly pay,2022-04-01,400,Pounds,£,390,410,,Synthetic demonstration; not official ONS statistics
+D001,Demo North,Local Authority District,Gross median weekly pay,2023-04-01,440,Pounds,£,430,450,,Synthetic demonstration; not official ONS statistics
+D001,Demo North,Local Authority District,Gross median weekly pay,2024-04-01,,Pounds,£,,,x,Synthetic demonstration; not official ONS statistics
+D001,Demo North,Local Authority District,Gross median weekly pay,2025-04-01,480,Pounds,£,470,490,,Synthetic demonstration; not official ONS statistics
+D002,Demo South,Local Authority District,Gross median weekly pay,2022-04-01,500,Pounds,£,490,510,,Synthetic demonstration; not official ONS statistics
+D002,Demo South,Local Authority District,Gross median weekly pay,2023-04-01,550,Pounds,£,540,560,,Synthetic demonstration; not official ONS statistics
+D002,Demo South,Local Authority District,Gross median weekly pay,2024-04-01,600,Pounds,£,590,610,,Synthetic demonstration; not official ONS statistics
+D003,Demo Region,Region,Gross median weekly pay,2023-04-01,520,Pounds,£,510,530,,Synthetic demonstration; not official ONS statistics

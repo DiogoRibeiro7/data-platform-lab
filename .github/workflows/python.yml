@@ -4,12 +4,14 @@ on:
   push:
     paths:
       - "python/**"
+      - "scripts/ons_pay_publishing_demo.py"
       - "data/sample/**"
       - "sql/**"
       - ".github/workflows/python.yml"
   pull_request:
     paths:
       - "python/**"
+      - "scripts/ons_pay_publishing_demo.py"
       - "data/sample/**"
       - "sql/**"
       - ".github/workflows/python.yml"
@@ -46,13 +48,13 @@ jobs:
         run: poetry install --no-interaction --extras serving
 
       - name: Ruff lint
-        run: poetry run ruff check .
+        run: poetry run ruff check --config pyproject.toml . ../scripts
 
       - name: Ruff format check
-        run: poetry run ruff format --check .
+        run: poetry run ruff format --config pyproject.toml --check . ../scripts
 
       - name: Mypy strict type-check
-        run: poetry run mypy src/
+        run: poetry run mypy src/ ../scripts
 
   test:
     name: Test & smoke
