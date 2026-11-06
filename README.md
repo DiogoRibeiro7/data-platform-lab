@@ -22,6 +22,12 @@ The important boundary is `workflow logic -> platform contracts -> adapters`. Wo
 
 ## Run the core demos
 
+Start each Python or JavaScript example from the repository root.
+
+### E-commerce demo
+
+The [e-commerce demo](docs/end-to-end-demo.md) cleans four related datasets and writes curated CSVs with a shared run manifest.
+
 ```bash
 # Python
 cd python
@@ -34,7 +40,9 @@ corepack enable && yarn install
 node src/demo.js
 ```
 
-The sensor demo exercises orchestration, validation, deduplication, hourly aggregation, dead-letter routing, and run metadata.
+### Sensor demo
+
+The [sensor demo](docs/sensor-pipeline-demo.md) exercises orchestration, validation, deduplication, hourly aggregation, dead-letter routing, and run metadata.
 
 ```bash
 # Python
@@ -43,6 +51,22 @@ cd python && poetry run python -m data_platform_lab.sensor_demo
 # JavaScript
 cd javascript && node src/sensor-demo.js
 ```
+
+### Warehouse CLI
+
+The [warehouse CLI](docs/warehouse-cli.md) loads the sample CSVs and events into a SQLite star schema, applies warehouse transforms, and writes analytical reports to `data/gold/warehouse/`. These commands use an in-memory database by default.
+
+```bash
+# Python
+cd python
+poetry run data-platform-lab warehouse
+
+# JavaScript
+cd javascript
+node src/cli/main.js warehouse
+```
+
+The streaming, warehouse, and benchmark CLIs also accept `--config` with JSON settings from [configs/](configs/). Explicit CLI flags override config values, which override built-in defaults. Paths inside the config are relative to the working directory; the bundled configs use repository-root paths. See [config-driven workflows](docs/config-driven-workflows.md) for supported keys and precedence.
 
 ## Local S3-compatible platform
 
@@ -72,19 +96,47 @@ See [S3-compatible object storage](docs/s3-object-storage.md) for architecture a
 
 ## What is implemented
 
+Nine exercises are implemented in both Python and JavaScript:
+
 | # | Exercise | Key concepts |
 | --- | --- | --- |
-| 01 | CSV ingestion | Header standardisation, deduplication, bronze writes |
-| 02 | API ingestion | Pagination, retries, raw and processed outputs |
-| 03 | Validation framework | Composable rules, severity, pass/fail gating |
-| 04 | Incremental ETL | Checkpoints, idempotent reruns, new-record processing |
-| 05 | Snapshot diff / CDC | Inserts, updates, and deletes between snapshots |
-| 06 | Orchestration runner | Sequential execution, retry logic, shared context |
-| 07 | Observability | Timing, counters, run metadata, structured reports |
-| 08 | Streaming processor | Event-time watermarks, lateness, dead-letter routing |
-| 09 | Benchmark runner | Sequential, concurrent, and asynchronous ingestion |
+| 01 | [CSV ingestion](docs/01-csv-ingestion-pipeline.md) | Header standardisation, deduplication, bronze writes |
+| 02 | [API ingestion](docs/02-api-ingestion-pipeline.md) | Pagination, retries, raw and processed outputs |
+| 03 | [Validation framework](docs/03-validation-framework.md) | Composable rules, severity, pass/fail gating |
+| 04 | [Incremental ETL](docs/04-incremental-etl-pipeline.md) | Checkpoints, idempotent reruns, new-record processing |
+| 05 | [Snapshot diff / CDC](docs/05-snapshot-diff.md) | Inserts, updates, and deletes between snapshots |
+| 06 | [Orchestration runner](docs/06-orchestration-runner.md) | Sequential execution, retry logic, shared context |
+| 07 | [Observability](docs/07-observability.md) | Timing, counters, run metadata, structured reports |
+| 08 | [Streaming processor](docs/streaming-exercise.md) | Event-time watermarks, lateness, dead-letter routing |
+| 09 | [Benchmark runner](docs/benchmark-exercise.md) | Sequential, concurrent, and asynchronous ingestion |
 
 Supporting platform capabilities include SQLite warehouse ELT, config precedence, shared manifests, a unified CLI, local and S3-compatible object-store adapters, and live S3 integration checks.
+
+## Repository layout
+
+Selected directories for running and extending the exercises:
+
+```text
+data-platform-lab/
+├── configs/                         # JSON workflow settings and ONS alert policies
+├── data/sample/                     # Shared input fixtures
+├── python/
+│   ├── src/data_platform_lab/
+│   │   ├── streaming/               # Event processing and streaming CLI
+│   │   ├── warehouse/               # SQLite loading, transforms, and CLI
+│   │   ├── benchmark/               # Ingestion strategies and benchmark CLI
+│   │   └── cli/                     # Unified command dispatcher
+│   └── tests/                       # Python tests
+├── javascript/
+│   ├── src/
+│   │   ├── streaming/               # JavaScript streaming implementation
+│   │   ├── warehouse/               # JavaScript warehouse implementation
+│   │   ├── benchmark/               # JavaScript benchmark implementation
+│   │   └── cli/                     # Unified command dispatcher
+│   └── tests/                       # Node.js tests
+├── sql/                             # Staging, warehouse, and analytics SQL
+└── docs/                            # Exercise guides and platform contracts
+```
 
 ## Canonical registry ingestion
 
