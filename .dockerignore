@@ -1,0 +1,11 @@
+**
+!python
+!python/pyproject.toml
+!python/README.md
+!python/src
+!python/src/**
+!infra
+!infra/ons-pay-demo
+!infra/ons-pay-demo/Dockerfile
+**/__pycache__/**
+**/*.pyc

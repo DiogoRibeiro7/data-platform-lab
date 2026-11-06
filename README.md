@@ -153,6 +153,19 @@ It requires no hosted database and binds to loopback by default (no auth).
 
 ## Relational and document publishing
 
+Run the complete synthetic source-to-database walkthrough with local Docker:
+
+```bash
+python scripts/ons_pay_publishing_demo.py --exercise-recovery
+```
+
+It verifies real Git-pinned source bytes, curates Silver/Gold, publishes both
+Gold tables to disposable PostgreSQL and MongoDB, checks idempotency, rejects
+controlled drift and explicitly recovers. JSON reports, plans and durable
+evidence remain in a fresh output directory after the services are removed.
+See the [complete walkthrough and architecture](docs/ons-pay-publishing-demo.md)
+for prerequisites, stage outcomes, artifact inspection and consistency limits.
+
 Before choosing hosted SQL and NoSQL suppliers, the read-only
 `ons-pay-publish-plan` command projects a verified, exact ONS pay Gold vintage
 into either flat relational rows or nested documents. Both shapes have
