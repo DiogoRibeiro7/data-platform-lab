@@ -157,11 +157,12 @@ exceptions, source/sink values, connection settings or record identifiers.
 | `2` | Invalid syntax, source pins/files/limits, missing settings or dependency | `invalid_arguments`, `source_validation_failed`, `configuration_error` |
 | `3` | Drift, unsafe/malformed sink data, or rejected acceptance evidence | `reconciliation_failed`, `acceptance_rejected` |
 | `4` | Connection, database write/read, or owned-client cleanup failed | `database_error` |
+| `5` | Explicit evidence recording or history inspection failed | `evidence_error` |
 
 A successful `--verify` has status `verified` and `acceptance: null`: it has
-no write receipt and cannot fabricate publication acceptance. The command
-does not persist evidence or activate a release. To keep its JSON, explicitly
-redirect stdout; durable evidence is a separate workflow.
+no write receipt and cannot fabricate publication acceptance. Evidence is persisted
+only with the explicit `--apply --record-evidence` option described below.
+No operation activates a release. Redirecting stdout also remains available.
 
 An error does not mean the database is unchanged. PostgreSQL commits before
 read-back; MongoDB replacements are individually atomic but the batch is not.
@@ -185,6 +186,147 @@ The PostgreSQL CI workflow exercises both Gold tables through real CLI-owned
 connections, including replay, read-only verification, controlled drift and
 explicit recovery. MongoDB CLI coverage currently uses injected collections;
 live MongoDB recovery testing is a separate follow-up.
+
+## Durable publication evidence
+
+Add `--record-evidence` to an explicit publication to record one final outcome
+under `data-root/manifests/ons_pay_publication/<SHA256>.json`. This extends the
+existing manifest contract; it has no active pointer, activation, rollback,
+scheduler or replacement for the manual ONS release lifecycle.
+
+```bash
+# Generate the UUID once and retain it with the operation request.
+ATTEMPT_ID="$(python -c 'from uuid import uuid4; print(uuid4())')"
+
+poetry run data-platform-lab ons-pay-publish \
+  --data-root ../data --model-version 1 \
+  --registry-commit "$ONS_REGISTRY_COMMIT" --source-sha256 "$ONS_SOURCE_SHA256" \
+  --table local_authority_yoy --sink postgresql \
+  --apply --record-evidence --attempt-id "$ATTEMPT_ID"
+
+# Inspect this attempt independently of source files and database credentials.
+poetry run data-platform-lab ons-pay-publication-history \
+  --data-root ../data --attempt-id "$ATTEMPT_ID"
+
+# Validate the entire archive and show the latest 20 records.
+poetry run data-platform-lab ons-pay-publication-history --data-root ../data --last 20
+```
+
+The same flags work with `--sink mongodb`. Omitting `--attempt-id` generates a
+new UUID for each invocation. The CLI adds an `evidence` object to its usual JSON:
+`attempt_id`, `record_sha256` and `replayed`. Without `--record-evidence`, output
+and filesystem behavior remain unchanged. Evidence flags with preview or
+`--verify` are rejected before any I/O. Invalid arguments or an initially
+unverifiable source cannot produce a source-backed record; recording begins
+only after the initial source plan is verified and archive preflight succeeds.
+
+### Outcomes and stored fields
+
+| Publication `outcome` | Meaning | Manifest `status` |
+| --- | --- | --- |
+| `accepted` | A complete write receipt and full read-back passed the existing acceptance gate, independently rerun when constructing the record | `success` |
+| `rejected` | The complete write and trustworthy read-back reached the gate, which rejected mismatched content | `failed` |
+| `failed` | Validation/configuration, execution, read-back processing or client cleanup failed before an accepted or rejected final gate outcome could be established | `failed` |
+
+Unsafe/malformed sink data that cannot produce a trustworthy comparison is a
+failed attempt with `reconciliation_failed` and exit `3`; it does not claim a
+completed gate rejection. A driver read error uses exit `4`. A client-close
+error withholds acceptance even if writes and reconciliation completed.
+
+The manifest reuses `pipeline_name`, `run_id`, `created_at`, `source`, `output`,
+`row_count` and `status`, plus the run-metadata conventions `started_at`,
+`ended_at` and `duration_seconds`. The run ID is the attempt UUID; timestamps
+are UTC. The source/output fields contain logical identifiers, not file paths
+or connection strings. It also stores:
+
+- Sink type, fixed Gold table and full model/registry/source vintage.
+- Source, applied and observed counts; an unknown applied count is `null` when
+  no complete write receipt exists. The base manifest's `row_count` is zero in
+  that case and must not be interpreted as proof that no writes occurred.
+- Source artifact, source plan, expected sink and observed sink fingerprints.
+- The existing compact write receipt, reconciliation summary counts, and the
+  gate's acceptance evidence only for `accepted`.
+- A fixed failure code for rejected/failed outcomes, without raw exceptions,
+  credentials, arbitrary sink field names, record IDs or dataset rows.
+
+### Retries, concurrency and interrupted writes
+
+One attempt ID has one immutable final record. Repeating the CLI with the same
+recorded UUID and matching source plan, sink and table returns the historical
+result with `replayed: true`, its original exit code and no database I/O.
+**This is not a fresh verification of the current sink.** Use `--verify` for
+that check. The attempt is bound to its original observation; connection settings
+are intentionally not read when returning it. Evidence records sink type, not an
+authenticated server identity. Operators must retain the association between
+their attempt IDs and actual database configuration; distinct targets and new
+recovery actions need distinct attempt IDs.
+
+Retrying a recorded failed UUID returns that failure. To replay partial database
+writes, request a new attempt ID with the same exact source pins. This creates
+a new record and preserves earlier failed or accepted evidence. Reusing an ID
+for a different source plan, sink or table fails before connecting.
+
+Evidence writers use a separate POSIX advisory lock to validate history and
+serialize append operations. Identical persistence retries return the same
+content hash; conflicting outcomes for one UUID fail without replacing anything.
+The archive lock does not serialize database operations. Two concurrent CLI
+calls can both perform idempotent sink writes before one detects an attempt
+conflict when recording. That call exits `5`; the archive still contains only
+one final record for that ID. Database publishing and local evidence are not a
+distributed transaction, and the workflow does not promise exactly-once execution.
+
+Recording follows the existing archive pattern: canonical JSON is written to a
+temporary file in the target directory, flushed and fsynced, then atomically
+hard-linked to its content address without replacement. Parent/record directories
+are fsynced for durability. A failure before linking exposes no partial final
+record. A failure after linking can leave a complete valid record whose directory
+sync was not acknowledged; retrying the original attempt completes that sync.
+Abandoned temporary files from a killed process are ignored by readers, not
+automatically deleted. A process killed before final recording can leave database
+writes without a manifest; absence of evidence never proves absence of writes.
+
+Exit `5` means archive preparation, persistence or inspection failed. If final
+persistence fails, CLI output withholds acceptance and sets the evidence hash
+to `null`; existing database writes are not rolled back. Inspect history using
+the original UUID before deciding to replay. No evidence error changes an older
+record or the ONS release pointer. Recording requires a trusted local POSIX
+filesystem with advisory locks, hard links and directory fsync (for example
+Linux or WSL on a suitable local filesystem); unsupported filesystems fail closed.
+
+### Read integrity and trust
+
+History inspection creates no directories, locks or files and opens no database
+connections. It works even if curated source artifacts are no longer present.
+Every existing record is checked before filtering or limiting the result:
+canonical bytes and filename hash, exact versioned schema, canonical UUID and
+UTC timestamps, provenance and receipt consistency, bounded counts,
+reconciliation relationships and acceptance fields. Symlinks, nonregular files,
+unknown entries and multiple records for one attempt are rejected.
+
+Each record is limited to 16 KiB, and one local archive to 10000 records;
+`--last` accepts 1–10000 (default 50). Readers fail on corrupted older records
+even if those records would be outside the requested window. Writers refuse a
+new attempt when the archive is full. History observes an append-only set; it is
+not a globally atomic snapshot across concurrent database writers.
+
+SHA-256 checks provide **content integrity, not cryptographic authentication**.
+They cannot detect deletion or a privileged writer replacing a record and
+recomputing its filename, prove the identity of a database/server/operator, or
+guarantee that the sink has not changed since read-back. The archive assumes
+trusted local writers and filesystem ownership. Signed attestations, remote
+anchoring, retention management and cross-host locks are outside this workflow.
+
+The Python API is `PublicationArchive(data_root).record(plan, sink=...,
+attempt_id=..., started_at=..., ended_at=..., receipt=..., report=...)`.
+It invokes the existing gate; it does not accept a caller's `accepted` flag.
+Pass a fixed `failure_code` and available receipt/report for an execution failure.
+An exact persistence retry supplies the same inputs and timestamps.
+`history(last=...)` and `get_attempt(uuid)` provide read-only inspection.
+
+```bash
+poetry run pytest -q tests/test_ons_pay_publish_evidence.py
+ONS_PAY_LIVE_POSTGRES=1 poetry run pytest -q tests/test_ons_pay_publish_postgres_live.py
+```
 
 ## Output contract
 
@@ -519,8 +661,9 @@ an externally managed MongoDB transaction: if a later replacement fails,
 earlier records can already be visible. The error explicitly instructs
 retrying the exact same pinned plan. Stable IDs and whole-document
 replacement make a replay idempotent, including after partial completion.
-Atomic batch visibility, run-ledger tracking, and tenant authorization
-remain future production-hardening work; this is a controlled DE exercise.
+Atomic batch visibility and tenant authorization remain future production-hardening
+work; this is a controlled DE exercise. The operator CLI can now persist local
+publication outcomes, but those manifests do not make document batches atomic.
 
 PyMongo is **not a dependency** of the core project: install it in the
 calling application's environment if choosing that backend. No AWS,

@@ -12,6 +12,7 @@ from test_ons_pay_serving import _curate, _pin
 
 from data_platform_lab.serving.catalog import VintageKey
 from data_platform_lab.serving.publish_cli import main as publish_main
+from data_platform_lab.serving.publish_evidence import PublicationArchive
 from data_platform_lab.serving.publish_gate import (
     PublicationAcceptanceError,
     accept_publication,
@@ -154,3 +155,41 @@ def test_live_operator_cli_apply_verify_drift_and_explicit_recovery(
     assert rejected["reconciliation"]["changed_record_count"] == rejected["counts"]["source"]
     publish_main([*args, "--apply"], environ=settings)
     assert json.loads(capsys.readouterr().out)["status"] == "accepted"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="durable recording requires POSIX locks/fsync")
+@pytest.mark.parametrize("table", ["geography_year", "local_authority_yoy"])
+def test_live_operator_records_durable_acceptance_and_reuses_attempt(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], table: TableName
+) -> None:
+    """Persist actual psycopg write/read-back evidence and retry without another connection."""
+    root, receipt = _curate(tmp_path)
+    pins = _pin(receipt)
+    args = [
+        "--data-root",
+        str(root),
+        "--model-version",
+        "1",
+        "--registry-commit",
+        pins["registry_commit"],
+        "--source-sha256",
+        pins["source_sha256"],
+        "--table",
+        table,
+        "--sink",
+        "postgresql",
+        "--apply",
+        "--record-evidence",
+    ]
+    publish_main(args, environ={"ONS_PAY_POSTGRES_DSN": os.environ["ONS_PAY_POSTGRES_DSN"]})
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "accepted"
+    evidence = PublicationArchive(root).get_attempt(result["evidence"]["attempt_id"])
+    assert evidence is not None
+    assert evidence.record_sha256 == result["evidence"]["record_sha256"]
+    assert evidence.to_dict()["acceptance"] == result["acceptance"]
+    publish_main([*args, "--attempt-id", result["evidence"]["attempt_id"]], environ={})
+    repeated = json.loads(capsys.readouterr().out)
+    assert repeated["evidence"]["replayed"]
+    assert repeated["evidence"]["record_sha256"] == evidence.record_sha256
+    assert len(PublicationArchive(root).history()) == 1

@@ -9,8 +9,10 @@ import os
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, cast
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from data_platform_lab.serving.publish_plan import PublishPlan
@@ -34,7 +36,7 @@ class _Parser(argparse.ArgumentParser):
     """Keep argument failures machine-readable without echoing secret input."""
 
     def error(self, message: str) -> NoReturn:
-        raise _ArgumentError("Invalid or missing arguments; use ons-pay-publish --help.")
+        raise _ArgumentError(f"Invalid or missing arguments; use {self.prog} --help.")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -54,6 +56,14 @@ def _parser() -> argparse.ArgumentParser:
     operation = parser.add_mutually_exclusive_group()
     operation.add_argument("--apply", action="store_true", help="Publish and require acceptance.")
     operation.add_argument("--verify", action="store_true", help="Read and reconcile; never write.")
+    parser.add_argument(
+        "--record-evidence",
+        action="store_true",
+        help="Persist an immutable outcome; requires --apply and a POSIX filesystem.",
+    )
+    parser.add_argument(
+        "--attempt-id", help="Canonical UUID for --record-evidence; generated if omitted."
+    )
     return parser
 
 
@@ -182,6 +192,10 @@ def _execute(
 ) -> int:
     """Compose existing planner, adapter, reconciler and gate with stable exit codes."""
     from data_platform_lab.serving.catalog import CatalogError, VintageNotFound
+    from data_platform_lab.serving.publish_evidence import (
+        PublicationArchive,
+        PublicationEvidenceError,
+    )
     from data_platform_lab.serving.publish_gate import (
         PublicationAcceptanceError,
         accept_publication,
@@ -200,6 +214,13 @@ def _execute(
         publish_postgres,
     )
 
+    plan = None
+    receipt = None
+    report = None
+    archive = None
+    code = 0
+    attempt_id = str(args.attempt_id or uuid4()) if args.record_evidence else ""
+    started_at = datetime.now(UTC)
     try:
         plan = _source_plan(args)
         result["vintage"] = asdict(plan.vintage)
@@ -213,6 +234,13 @@ def _execute(
             result["status"] = "previewed"
             return 0
 
+        if args.record_evidence:
+            archive = PublicationArchive(args.data_root)
+            existing = archive.prepare(plan, sink=args.sink, attempt_id=attempt_id)
+            if existing is not None:
+                result.update(existing.cli_result(replayed=True))
+                return existing.exit_code
+
         with _open_sink(
             args,
             environ,
@@ -224,7 +252,6 @@ def _execute(
             current = _source_plan(args)
             if current != plan:
                 raise PublishPlanError("source changed since the initial plan")
-            receipt = None
             if args.apply:
                 receipt = (
                     publish_postgres(current, cast("PostgresConnection", handle))
@@ -259,30 +286,65 @@ def _execute(
                     result, "reconciliation_failed", "Sink vintage differs from the source plan.", 3
                 )
     except (CatalogError, VintageNotFound, PublishPlanError, OSError):
-        return _failure(
+        code = _failure(
             result,
             "source_validation_failed",
             "Source pins, row budget or curated files are invalid.",
             2,
         )
     except _ConfigurationError as exc:
-        return _failure(result, "configuration_error", str(exc), 2)
+        code = _failure(result, "configuration_error", str(exc), 2)
     except (PublishSinkError, ReconciliationReadError, _DatabaseError):
-        return _failure(
+        code = _failure(
             result, "database_error", "Sink operation failed; writes may already be visible.", 4
         )
     except ReconciliationError:
-        return _failure(
+        code = _failure(
             result, "reconciliation_failed", "Sink data could not be safely reconciled.", 3
         )
     except PublicationAcceptanceError:
-        return _failure(
+        code = _failure(
             result,
             "acceptance_rejected",
             "Publication evidence did not pass the acceptance gate.",
             3,
         )
-    return 0
+    except PublicationEvidenceError:
+        return _failure(
+            result, "evidence_error", "Cannot prepare publication evidence; no sink I/O.", 5
+        )
+    if archive is not None and plan is not None:
+        try:
+            # Persist only after client cleanup. Execution errors, including a failed
+            # close, cannot create an accepted record even after a passing read-back.
+            failure_code = result["error"]["code"] if code else None
+            if failure_code == "acceptance_rejected":
+                failure_code = None  # The archive independently reruns the existing gate.
+            evidence = archive.record(
+                plan,
+                sink=args.sink,
+                attempt_id=attempt_id,
+                started_at=started_at,
+                ended_at=datetime.now(UTC),
+                receipt=receipt,
+                report=report,
+                failure_code=failure_code,
+            )
+            stored = evidence.cli_result(replayed=False)
+            result.update({key: stored[key] for key in ("evidence", "status", "acceptance")})
+            if code != evidence.exit_code:
+                result["error"] = stored["error"]
+                code = evidence.exit_code
+        except PublicationEvidenceError:
+            result["evidence"] = {
+                "attempt_id": attempt_id,
+                "record_sha256": None,
+                "replayed": False,
+            }
+            return _failure(
+                result, "evidence_error", "Evidence persistence failed; sink writes may exist.", 5
+            )
+    return code
 
 
 def main(
@@ -292,7 +354,7 @@ def main(
     postgres_connection: PostgresConnection | PostgresReader | None = None,
     mongo_collection: MongoCollection | MongoReader | None = None,
 ) -> None:
-    """Print one safe JSON result; exit 0/2/3/4 for success/validation/drift/database.
+    """Print safe JSON; exit 0/2/3/4/5 for success/validation/drift/database/evidence.
 
     Embedders may inject connection settings or caller-owned handles. An apply
     handle must support both the existing write and read protocols; verification
@@ -301,6 +363,20 @@ def main(
     result = _empty_result()
     try:
         args = _parser().parse_args(argv)
+        if (args.record_evidence and not args.apply) or (
+            args.attempt_id and not args.record_evidence
+        ):
+            raise _ArgumentError("Evidence options require --apply --record-evidence.")
+        if args.attempt_id is not None:
+            from data_platform_lab.serving.publish_evidence import (
+                PublicationEvidenceError,
+                validate_attempt_id,
+            )
+
+            try:
+                validate_attempt_id(args.attempt_id)
+            except PublicationEvidenceError:
+                raise _ArgumentError("--attempt-id must be a canonical UUID.") from None
     except _ArgumentError as exc:
         code = _failure(result, "invalid_arguments", str(exc), 2)
     else:

@@ -203,6 +203,15 @@ reconciliation/acceptance rejection and `4` database failure. See the
 [operator walkthrough](docs/ons-pay-portable-publishing.md#operator-publishing-cli)
 for both sinks, error semantics and recovery.
 
+To retain a publication outcome, add `--apply --record-evidence`. The command
+records an immutable, content-addressed manifest with a UUID attempt ID;
+`--attempt-id UUID` lets an operator retry the same recorded attempt without
+repeating database writes. Use a new UUID for a new publication or recovery.
+Inspect records with `data-platform-lab ons-pay-publication-history --data-root ../data`.
+Durable writes require a local POSIX filesystem; inspection is read-only.
+See [durable publication evidence](docs/ons-pay-portable-publishing.md#durable-publication-evidence)
+for outcome semantics, persistence failures, concurrency and trust limits.
+
 ## Pinned refresh and historical backfill
 
 The ONS pay pipeline now has a single machine-invokable refresh command. It
