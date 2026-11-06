@@ -8,10 +8,12 @@ Type hints are expected throughout. Each module is designed to work independentl
 
 ```bash
 cd python
-poetry install
+poetry install --extras serving
 ```
 
-This installs the package in editable mode along with all development dependencies.
+This installs the package in editable mode, development dependencies, and the
+optional analytics/serving dependencies required by the complete offline suite.
+Add the `mongodb` extra for live PyMongo tests. Core-only users can omit extras.
 
 ## Development Setup
 
@@ -34,19 +36,19 @@ poetry run pytest
 Run linter:
 
 ```bash
-poetry run ruff check src/ tests/
+poetry run ruff check --config pyproject.toml . ../scripts
 ```
 
 Run formatter:
 
 ```bash
-poetry run ruff format src/ tests/
+poetry run ruff format --config pyproject.toml . ../scripts
 ```
 
 Run type checker:
 
 ```bash
-poetry run mypy src/
+poetry run mypy src/ ../scripts
 ```
 
 ## CLI Entry Points
@@ -82,7 +84,11 @@ src/data_platform_lab/
 └── analytics.py        → SQLite analytical queries over curated output
 ```
 
-Additional module directories (`cli/`, `storage/`, `streaming/`, `warehouse/`, `utils/`) exist as placeholders for future exercises. They contain only docstrings and no implementation.
+The package also implements platform CLI, storage, streaming, warehouse,
+metadata and Iceberg modules. ONS processing lives in `curation/`; verified
+queries, sink publishing, evidence and manual release controls live in `serving/`.
+See the [publishing readiness checklist](../docs/ons-pay-publishing-readiness.md)
+and [complete local walkthrough](../docs/ons-pay-publishing-demo.md).
 
 ## Implemented Modules
 
@@ -93,6 +99,8 @@ Additional module directories (`cli/`, `storage/`, `streaming/`, `warehouse/`, `
 | `validation` | Six composable check functions (required columns, no nulls, unique, numeric range, allowed values, date format) and a runner that aggregates results. |
 | `orchestration` | Sequential pipeline runner with retry, skip, shared context, and timing. Plus a customer ETL workflow wired to real modules. |
 | `observability` | Timer, RunTracker (context manager with counters, warnings, extras), run metadata formatting. |
+| `curation` | ONS CSV quality gates, Silver/Gold SQL models and immutable verified Parquet outputs. |
+| `serving` | Pinned ONS queries, SQL/document plans, publishing, reconciliation, acceptance, durable outcomes and separate manual release controls. |
 
 ## Conventions
 

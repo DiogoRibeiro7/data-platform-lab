@@ -513,8 +513,9 @@ The root CLI delegates to the existing workflow CLIs rather than duplicating the
 cd python
 poetry install --extras serving
 poetry run pytest
-poetry run ruff check .
-poetry run mypy src/
+poetry run ruff check --config pyproject.toml . ../scripts
+poetry run ruff format --config pyproject.toml --check . ../scripts
+poetry run mypy src/ ../scripts
 
 # JavaScript
 cd javascript
@@ -534,9 +535,9 @@ Data examples still follow the medallion model: raw, bronze, silver, gold, check
 | --- | --- |
 | Python | Poetry, pytest, Ruff, mypy strict, boto3 for S3 access |
 | JavaScript | Yarn, Node.js test runner, ESLint, AWS SDK v3 for S3 access |
-| SQL | SQLite today; PostgreSQL is the next M3 metadata-store step |
+| SQL | SQLite exercises, PostgreSQL metadata/publishing, and DuckDB/Parquet analytics |
 | Object storage | Local filesystem or S3-compatible API; Garage for local integration |
-| CI | GitHub Actions, including a live S3 integration workflow |
+| CI | GitHub Actions with Python 3.11–3.14 tests, live platform integrations and the packaged ONS demo |
 
 ## Milestones
 

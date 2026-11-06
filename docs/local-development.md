@@ -180,7 +180,10 @@ If `yarn install` fails with "command not found" or a version mismatch, run `cor
 
 ### Lock files are not committed
 
-This repository gitignores `poetry.lock` and `yarn.lock`. This means `poetry install` and `yarn install` resolve the latest compatible versions rather than pinned ones. In rare cases, a new version of a dev dependency may introduce a breaking change. If this happens, pin the version in `pyproject.toml` or `package.json`.
+The Python `poetry.lock` file is gitignored, so fresh Python environments can
+resolve different compatible dependency versions. JavaScript's `yarn.lock` is
+tracked. The publishing assessment documents the remaining Python dependency
+reproducibility limit; CI success certifies the versions resolved for that run.
 
 ### `*.log` files in data/sample/
 
