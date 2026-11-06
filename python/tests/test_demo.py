@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 
 from data_platform_lab.demo import run_demo
+from data_platform_lab.manifest import validate_manifest
+from data_platform_lab.observability.tracker import metadata_to_dict
 
 SAMPLE_DIR = Path(__file__).parent.parent.parent / "data" / "sample"
 
@@ -81,6 +83,7 @@ class TestRunDemo:
 
         manifest_path = Path(result["manifest_path"])
         assert manifest_path.exists()
+        assert manifest_path == manifest_dir / f"ecommerce_demo_{result['metadata'].run_id}.json"
 
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         assert manifest["run"]["status"] == "success"
@@ -128,7 +131,7 @@ class TestRunDemo:
         assert len(p009_rows) == 0
 
     def test_manifest_json_shape(self, tmp_path: Path) -> None:
-        """Manifest JSON has the exact expected structure."""
+        """Shared fields are added without losing run metadata or table summaries."""
         result = run_demo(
             data_dir=str(SAMPLE_DIR),
             output_dir=str(tmp_path / "silver"),
@@ -137,8 +140,10 @@ class TestRunDemo:
 
         manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
 
-        # Top-level keys
-        assert set(manifest.keys()) == {"run", "tables"}
+        assert validate_manifest(manifest) == []
+        assert manifest["run"] == metadata_to_dict(result["metadata"])
+        assert manifest["tables"] == result["tables"]
+        assert manifest["warnings"] == manifest["run"]["warnings"]
 
         # Run metadata shape
         run = manifest["run"]

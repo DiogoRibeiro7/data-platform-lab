@@ -15,6 +15,7 @@ import pytest
 from conftest import SAMPLE_DIR, SQL_DIR, write_jsonl
 from dataexcept import FileWriteError
 
+from data_platform_lab.demo import run_demo
 from data_platform_lab.ingestion import api_pipeline
 from data_platform_lab.ingestion.csv_pipeline import run_pipeline
 from data_platform_lab.manifest import read_manifest, validate_manifest
@@ -29,6 +30,7 @@ PIPELINES = (
     "events_etl",
     "sensor_stream",
     "sensor_demo",
+    "ecommerce_demo",
     "warehouse",
 )
 API_URL = "https://example.invalid/posts"
@@ -63,6 +65,8 @@ def _run(name: str, root: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, An
         return asdict(process_stream(SAMPLE_DIR / "sensor_events.json", output))
     if name == "sensor_demo":
         return run_sensor_demo(SAMPLE_DIR, output)
+    if name == "ecommerce_demo":
+        return run_demo(SAMPLE_DIR, output)
     assert name == "warehouse"
     return run_warehouse_pipeline(
         data_dir=SAMPLE_DIR,
@@ -135,6 +139,19 @@ def test_pipeline_manifest_matches_persisted_output(
             assert str(output / "accepted.jsonl") in manifest["output"]
             assert all(Path(file).is_file() for file in manifest["output"])
             assert result["pipeline_result"].status == "success"
+    elif name == "ecommerce_demo":
+        table_names = ("customers", "products", "orders", "order_items")
+        assert manifest["source"] == [str(SAMPLE_DIR / f"{table}.csv") for table in table_names]
+        assert manifest["output"] == [str(output / f"{table}.csv") for table in table_names]
+        assert manifest["run_id"] == result["metadata"].run_id
+        assert manifest["status"] == manifest["run"]["status"]
+        counts = {}
+        for table, file in zip(table_names, manifest["output"], strict=True):
+            with Path(file).open(newline="", encoding="utf-8") as stream:
+                counts[table] = len(list(csv.DictReader(stream)))
+            assert manifest["tables"][table]["rows_out"] == counts[table]
+        assert counts == {"customers": 12, "products": 11, "orders": 15, "order_items": 19}
+        assert manifest["row_count"] == manifest["run"]["rows_written"] == sum(counts.values())
     else:
         assert manifest["source"] == str(SAMPLE_DIR)
         assert manifest["output"] == str(output / "reports")

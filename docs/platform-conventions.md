@@ -138,6 +138,7 @@ Modules that use the shared `write_manifest` utility:
 - Incremental ETL (`events_etl`)
 - Streaming processor (`sensor_stream`)
 - Sensor demonstration (`sensor_demo`)
+- E-commerce demonstration (`ecommerce_demo`)
 - Warehouse loader (`warehouse`)
 
 ONS sink-publication evidence preserves the required manifest fields and uses
@@ -150,12 +151,15 @@ one final publication attempt. See the
 for retries, bounded read-only history and trust assumptions. These records do
 not alter the ONS release lifecycle or replace mutable run-store snapshots.
 
-The end-to-end demo (`ecommerce_demo`) writes its own manifest with a
-different structure (`run` + `tables` fields) and does not use the shared
-utility.
+The e-commerce demo includes its complete `run` metadata and per-table `tables`
+summaries as extras alongside the shared fields. These existing nested objects
+and the manifest filename remain unchanged. Its `source` and `output` arrays
+list the four input and output CSV paths; `row_count` is the sum of rows written
+across those tables, and top-level `warnings` mirrors the run's warnings when
+present. See the [demo manifest example](end-to-end-demo.md#json-manifest).
 
 Manifest persistence errors propagate to the caller in both languages. The
-six shared-writer pipelines do not silently suppress them or return a successful
+seven shared-writer pipelines do not silently suppress them or return a successful
 result without its manifest once the manifest-writing stage is reached. Python
 wraps filesystem errors in `FileWriteError` and preserves their cause;
 JavaScript propagates the filesystem error. Early returns before that stage
@@ -171,8 +175,8 @@ inspect existing state before retrying. A persisted manifest may itself record
 in a temporary working directory. They read back the real manifests and output
 files, compare provenance and row counts, verify failed-run status, and force
 filesystem write failures. Only the API network boundary is replaced by a
-local test double. The end-to-end demo's separate manifest format remains
-covered by its demo tests.
+local test double. The e-commerce demo tests also verify that its full run
+metadata and per-table summaries are preserved.
 
 ---
 

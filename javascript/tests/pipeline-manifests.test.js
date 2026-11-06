@@ -7,7 +7,8 @@ import { join, resolve, dirname, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 
-import { runPipeline } from "../src/ingestion/csv-pipeline.js";
+import { runPipeline, readCsvFile } from "../src/ingestion/csv-pipeline.js";
+import { runDemo } from "../src/demo.js";
 import { runApiPipeline } from "../src/ingestion/api-pipeline.js";
 import { runIncrementalEtl } from "../src/transform/incremental-etl.js";
 import { processStream } from "../src/streaming/processor.js";
@@ -17,7 +18,8 @@ import { readManifest, validateManifest } from "../src/manifest.js";
 import { SAMPLE_DIR, SQL_DIR, writeJsonl } from "./helpers.js";
 
 const PIPELINES = [
-  "csv_ingestion", "api_ingestion", "events_etl", "sensor_stream", "sensor_demo", "warehouse",
+  "csv_ingestion", "api_ingestion", "events_etl", "sensor_stream", "sensor_demo",
+  "ecommerce_demo", "warehouse",
 ];
 const API_URL = "https://example.invalid/posts";
 const POSTS = [
@@ -66,6 +68,8 @@ async function run(name, root, context) {
       return processStream(join(SAMPLE_DIR, "sensor_events.json"), output);
     case "sensor_demo":
       return runSensorDemo({ dataDir: SAMPLE_DIR, outputDir: output });
+    case "ecommerce_demo":
+      return runDemo({ dataDir: SAMPLE_DIR, outputDir: output });
     case "warehouse":
       return runWarehousePipeline({
         dataDir: SAMPLE_DIR,
@@ -148,6 +152,20 @@ describe("pipeline manifest contracts", { concurrency: false }, () => {
           assert.ok(manifest.output.every((file) => statSync(file).isFile()));
           assert.equal(result.pipeline_result.status, "success");
         }
+      } else if (name === "ecommerce_demo") {
+        const tableNames = ["customers", "products", "orders", "order_items"];
+        assert.deepEqual(manifest.source, tableNames.map((table) => join(SAMPLE_DIR, `${table}.csv`)));
+        assert.deepEqual(manifest.output, tableNames.map((table) => join(output, `${table}.csv`)));
+        assert.equal(manifest.run_id, result.metadata.run_id);
+        assert.equal(manifest.status, manifest.run.status);
+        const counts = {};
+        for (const [index, table] of tableNames.entries()) {
+          counts[table] = (await readCsvFile(manifest.output[index])).rows.length;
+          assert.equal(manifest.tables[table].rows_out, counts[table]);
+        }
+        assert.deepEqual(counts, { customers: 12, products: 11, orders: 15, order_items: 19 });
+        assert.equal(manifest.row_count, Object.values(counts).reduce((a, b) => a + b, 0));
+        assert.equal(manifest.row_count, manifest.run.rows_written);
       } else {
         assert.equal(manifest.source, SAMPLE_DIR);
         assert.equal(manifest.output, join(output, "reports"));
