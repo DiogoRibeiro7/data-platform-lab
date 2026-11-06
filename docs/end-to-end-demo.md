@@ -64,7 +64,7 @@ node src/demo.js \
 | **Cross-table logic** | Foreign key validation (orders reference valid customer IDs from the cleaned customers table) |
 | **Observability** | `RunTracker` from Exercise 07 captures timing, row counts, warnings, and extras |
 | **Curated output** | Cleaned CSVs written to `data/silver/demo/` |
-| **Run manifest** | JSON file with full run metadata and per-table summaries |
+| **Run manifest** | Shared manifest writer with full run metadata and per-table summaries as extras |
 
 ---
 
@@ -117,8 +117,30 @@ data/silver/demo/
 
 ### JSON manifest
 
+The demo uses the [shared manifest format](platform-conventions.md#manifest-format).
+The existing `run` and `tables` objects are preserved alongside the standard
+fields. `source` and `output` list all four CSV paths, and `row_count` totals the
+rows written across the four tables. `status` and any top-level `warnings`
+match the run metadata. The filename remains `ecommerce_demo_{run_id}.json`.
+
+Abbreviated example (the actual `run` and `tables` retain all their details):
+
 ```json
 {
+  "pipeline_name": "ecommerce_demo",
+  "run_id": "20260316_120000",
+  "created_at": "2026-03-16T12:00:00.015000+00:00",
+  "source": [
+    "data/sample/customers.csv", "data/sample/products.csv",
+    "data/sample/orders.csv", "data/sample/order_items.csv"
+  ],
+  "output": [
+    "data/silver/demo/customers.csv", "data/silver/demo/products.csv",
+    "data/silver/demo/orders.csv", "data/silver/demo/order_items.csv"
+  ],
+  "row_count": 57,
+  "status": "success",
+  "warnings": ["..."],
   "run": {
     "pipeline_name": "ecommerce_demo",
     "run_id": "20260316_120000",
@@ -142,6 +164,11 @@ data/silver/demo/
 }
 ```
 
+Manifest persistence errors propagate to the caller. The cleaned CSVs may
+already exist when a manifest write fails; writing them and the manifest is
+not a single transaction. A data-processing error before the manifest stage
+continues to raise without writing a completed-run manifest.
+
 ---
 
 ## Pipeline flow
@@ -163,15 +190,17 @@ data/sample/order_items.csv > read + validate + deduplicate ──────�
 ## Tests
 
 ```bash
-# Python — 8 tests
-cd python && poetry run pytest tests/test_demo.py -v
+# Python
+cd python && poetry run pytest tests/test_demo.py tests/test_pipeline_manifests.py -v
 
-# JavaScript — 7 tests
-cd javascript && node --test tests/demo.test.js
+# JavaScript
+cd javascript && node --test tests/demo.test.js tests/pipeline-manifests.test.js
 ```
 
-Tests verify: row counts, output files, manifest structure, warnings, and
-country casing normalisation.
+Tests verify row counts against persisted output files, the shared manifest
+fields, preserved run and table details, warnings, country casing normalisation,
+and visible manifest-write failures. Importing the JavaScript demo also leaves
+the filesystem untouched; its CLI runs only when the module is executed directly.
 
 ---
 

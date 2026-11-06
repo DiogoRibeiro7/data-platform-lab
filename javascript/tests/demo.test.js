@@ -1,12 +1,14 @@
 import { describe, test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
 import { runDemo } from "../src/demo.js";
+import { validateManifest } from "../src/manifest.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_DIR = join(__dirname, "..", "..", "data", "sample");
@@ -87,6 +89,7 @@ describe("e-commerce demo pipeline", () => {
     });
 
     assert.ok(existsSync(result.manifest_path));
+    assert.equal(result.manifest_path, join(manifestDir, `ecommerce_demo_${result.metadata.run_id}.json`));
     const manifest = JSON.parse(readFileSync(result.manifest_path, "utf-8"));
 
     assert.equal(manifest.run.status, "success");
@@ -145,8 +148,11 @@ describe("e-commerce demo pipeline", () => {
 
     const manifest = JSON.parse(readFileSync(result.manifest_path, "utf-8"));
 
-    // Top-level keys
-    assert.deepEqual(Object.keys(manifest).sort(), ["run", "tables"]);
+    // Shared fields are added without losing run metadata or table summaries.
+    assert.deepEqual(validateManifest(manifest), []);
+    assert.deepEqual(manifest.run, result.metadata);
+    assert.deepEqual(manifest.tables, result.tables);
+    assert.deepEqual(manifest.warnings, manifest.run.warnings);
 
     // Run metadata has required keys
     const runKeys = Object.keys(manifest.run).sort();
@@ -176,5 +182,16 @@ describe("e-commerce demo pipeline", () => {
       const c2 = readFileSync(join(run2Dir, "silver", name), "utf-8");
       assert.equal(c1, c2, `${name} differs between runs`);
     }
+  });
+
+  test("import does not run the CLI or write outputs", () => {
+    const demoUrl = new URL("../src/demo.js", import.meta.url).href;
+    const result = spawnSync(process.execPath, [
+      "--input-type=module", "-e", `await import(${JSON.stringify(demoUrl)})`,
+    ], { cwd: tempDir, encoding: "utf-8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr, "");
+    assert.deepEqual(readdirSync(tempDir), []);
   });
 });

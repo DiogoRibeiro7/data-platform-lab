@@ -13,8 +13,9 @@
  */
 
 import { writeFile, mkdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
 
 import {
   readCsvFile,
@@ -33,6 +34,7 @@ import {
 } from "./validation/rules.js";
 import { runValidation } from "./validation/runner.js";
 import { RunTracker, formatRunMetadata } from "./observability/tracker.js";
+import { writeManifest } from "./manifest.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -313,11 +315,18 @@ export async function runDemo({
 
   const meta = tracker.metadata;
 
-  // Write JSON manifest
-  await mkdir(manifestDir, { recursive: true });
-  const manifestPath = join(manifestDir, `ecommerce_demo_${meta.run_id}.json`);
-  const manifest = { run: meta, tables };
-  await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+  // Preserve the detailed run and table summaries alongside the shared fields.
+  const manifestPath = writeManifest({
+    pipeline_name: meta.pipeline_name,
+    run_id: meta.run_id,
+    source: Object.keys(tables).map((name) => join(dataDir, `${name}.csv`)),
+    output: Object.keys(tables).map((name) => join(outputDir, `${name}.csv`)),
+    row_count: meta.rows_written,
+    status: meta.status,
+    warnings: meta.warnings,
+    extras: { run: meta, tables },
+    manifestDir,
+  });
 
   return {
     metadata: meta,
@@ -370,7 +379,12 @@ Options:
   console.log(`Manifest: ${result.manifest_path}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+const isMain = process.argv[1]
+  && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+
+if (isMain) {
+  main().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}

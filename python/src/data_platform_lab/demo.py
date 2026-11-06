@@ -18,7 +18,6 @@ Or with a custom data directory::
 from __future__ import annotations
 
 import csv
-import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -29,6 +28,7 @@ from data_platform_lab.ingestion.csv_pipeline import (
     standardize_headers,
     trim_fields,
 )
+from data_platform_lab.manifest import write_manifest
 from data_platform_lab.observability.tracker import (
     RunTracker,
     format_run_metadata,
@@ -309,7 +309,7 @@ def run_demo(
 ) -> dict[str, Any]:
     """Run the full e-commerce demo pipeline.
 
-    Returns a dict with ``tracker_metadata`` and per-table ``tables`` summaries.
+    Returns ``metadata``, per-table ``tables`` summaries, and ``manifest_path``.
     """
     data_dir = Path(data_dir)
     output_dir = Path(output_dir)
@@ -350,14 +350,18 @@ def run_demo(
 
     meta = tracker.metadata
 
-    # Write JSON manifest
-    manifest_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = manifest_dir / f"ecommerce_demo_{meta.run_id}.json"
-    manifest = {
-        "run": metadata_to_dict(meta),
-        "tables": tables,
-    }
-    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    # Preserve the detailed run and table summaries alongside the shared fields.
+    manifest_path = write_manifest(
+        pipeline_name=meta.pipeline_name,
+        run_id=meta.run_id,
+        source=[str(data_dir / f"{name}.csv") for name in tables],
+        output=[str(output_dir / f"{name}.csv") for name in tables],
+        row_count=meta.rows_written,
+        status=meta.status,
+        warnings=meta.warnings,
+        extras={"run": metadata_to_dict(meta), "tables": tables},
+        manifest_dir=manifest_dir,
+    )
 
     return {
         "metadata": meta,
