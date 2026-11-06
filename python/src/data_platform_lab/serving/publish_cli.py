@@ -144,6 +144,9 @@ def _open_sink(
                 serverSelectionTimeoutMS=10_000,
                 connectTimeoutMS=10_000,
                 socketTimeoutMS=30_000,
+                # Recovery is an explicit operator action, including driver retries.
+                retryReads=False,
+                retryWrites=False,
             )
         )
     except Exception:

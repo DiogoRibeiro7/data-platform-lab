@@ -1,0 +1,55 @@
+name: MongoDB Integration
+
+on:
+  push:
+    paths:
+      - "compose.yaml"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/serving/**"
+      - "python/src/data_platform_lab/curation/**"
+      - "python/src/data_platform_lab/metadata/**"
+      - "python/src/data_platform_lab/cli/main.py"
+      - "python/tests/test_ons_pay_publish_*.py"
+      - "python/tests/test_ons_pay_serving.py"
+      - ".github/workflows/mongodb-integration.yml"
+  pull_request:
+    paths:
+      - "compose.yaml"
+      - "python/pyproject.toml"
+      - "python/src/data_platform_lab/serving/**"
+      - "python/src/data_platform_lab/curation/**"
+      - "python/src/data_platform_lab/metadata/**"
+      - "python/src/data_platform_lab/cli/main.py"
+      - "python/tests/test_ons_pay_publish_*.py"
+      - "python/tests/test_ons_pay_serving.py"
+      - ".github/workflows/mongodb-integration.yml"
+
+jobs:
+  mongodb:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: ons-pay-mongodb-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start disposable MongoDB
+        run: docker compose --profile mongodb up -d --wait mongodb
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Install Python dependencies with optional MongoDB driver
+        working-directory: python
+        run: poetry install --no-interaction --extras "serving mongodb"
+      - name: Live pinned Gold publishing and recovery
+        working-directory: python
+        env:
+          ONS_PAY_LIVE_MONGODB: "1"
+          ONS_PAY_MONGODB_URI: mongodb://127.0.0.1:27017
+        run: poetry run pytest -q tests/test_ons_pay_publish_mongodb_live.py
+      - name: Diagnostics
+        if: failure()
+        run: docker compose --profile mongodb logs mongodb
+      - name: Stop disposable service
+        if: always()
+        run: docker compose --profile mongodb down -v
