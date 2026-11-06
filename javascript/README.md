@@ -2,7 +2,7 @@
 
 JavaScript / Node.js implementation of the data platform lab. This project provides structured modules for practicing data engineering patterns: ingestion, transformation, validation, storage layout, orchestration, observability, streaming, warehouse loading, and CLI tooling.
 
-The project uses ESM modules, the Node.js built-in test runner, and minimal external dependencies. It targets Node.js 22+ to take advantage of native capabilities like `node:test`, `node:fs/promises`, and stable `ReadableStream` support.
+The project uses ESM modules, the Node.js built-in test runner, and minimal external dependencies. It requires Node.js 22.13+ within the 22.x line, or Node.js 24+, for compatibility with ESLint 10. Node.js 23 is unsupported. CI runs lint, tests, and demos on the minimum supported version, 22.13.0.
 
 ## Installation
 
@@ -30,31 +30,36 @@ The generated `.yarn/install-state.gz` is ignored and recreated by installation.
 
 ```bash
 yarn install --immutable
-yarn npm audit --all --recursive --no-deprecations
+yarn npm audit --all --recursive
 yarn lint
 yarn test
 ```
 
 The [recursive audit](https://yarnpkg.com/cli/npm/audit) includes direct and
 transitive packages in both production and development dependencies. CI runs
-it without ignored advisories or package exclusions and fails on security
-findings. `--no-deprecations` separates package deprecation notices from this
-security gate; it does not ignore advisories. Omit that flag to inspect
-deprecations separately. Results depend on the registry's data at check time.
+it without ignored advisories, package exclusions, or deprecation suppression,
+and fails on security findings or deprecated versions. Results depend on the
+registry's data at check time.
 
-The seven development-tooling alerts identified on 2026-11-06 are addressed
-by these compatible transitive updates; the direct ESLint requirements remain
-unchanged:
+The dependency maintenance update replaces these deprecated versions:
 
-| Package | Previous version | Patched version | Alerts addressed |
+| Package | Previous version | Updated version | Reason |
 | --- | --- | --- | --- |
-| `brace-expansion` | 1.1.12 | 1.1.21 | 2 |
-| `js-yaml` | 4.1.1 | 4.3.2 | 4 |
-| `@humanfs/node` | 0.16.7 | 0.16.8 | 1 |
+| `eslint` | 9.39.4 | 10.14.0 | Maintained major release; paired with `@eslint/js` 10.0.1 |
+| `@smithy/core` | 3.33.3 | 3.39.0 | [Custom logger redaction bug](https://github.com/aws/aws-sdk-js-v3/issues/8393) |
+| `@smithy/node-http-handler` | 4.12.0 | 4.14.2 | [HTTP/2 session memory leak](https://github.com/smithy-lang/smithy-typescript/issues/2258) |
 
-`@humanfs/node` also requires the corresponding `@humanfs/core` 0.19.2 and
-`@humanfs/types` 0.15.0 updates. GitHub closes the default-branch alerts after
-the patched lockfile is merged and its dependency graph is refreshed.
+The Smithy updates stay within the existing AWS SDK dependency ranges.
+ESLint 10 keeps the flat configuration and enables its current recommended
+rules. Its [Node.js requirements](https://eslint.org/docs/latest/use/migrate-to-10.0.0#nodejs--v2019-v21-v23-are-no-longer-supported)
+are reflected in `package.json` and the setup instructions.
+
+ESLint 10.14.0 and `@eslint/config-array` still request minimatch 10, which is
+affected by [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249).
+Two parent-scoped Yarn resolutions pin their minimatch dependency to 11.0.5.
+Remove these overrides when the upstream packages require a fixed version.
+The overrides require checking ESLint file discovery and ignore behavior when
+updating the lint toolchain.
 
 ## Testing
 
@@ -125,7 +130,7 @@ Each implemented module directory contains an `index.js` entry point that re-exp
 
 ## Conventions
 
-- **Node.js 22+** is required.
+- **Node.js 22.13+ (22.x) or 24+** is required.
 - **ESM** (`"type": "module"`) is used throughout.
 - **Built-in modules** (`node:fs`, `node:path`, `node:stream`, `node:test`) are preferred over external packages where they suffice.
 - **ESLint** enforces code quality with the flat config format (`eslint.config.js`).

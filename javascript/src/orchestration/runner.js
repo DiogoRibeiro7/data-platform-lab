@@ -92,7 +92,7 @@ export class Pipeline {
 
       let result = undefined;
       let error = null;
-      let status = "success";
+      let status;
       let attempts = 0;
       const maxAttempts = 1 + step.retries;
 

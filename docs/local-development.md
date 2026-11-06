@@ -10,7 +10,7 @@ Everything you need to clone, set up, and work with this repository locally.
 |------|---------|---------------|-------|
 | Python | 3.11–3.14 | `python --version` | Required for the Python exercises; 3.15 is excluded |
 | Poetry | 1.8+ | `poetry --version` | Python dependency manager ([install guide](https://python-poetry.org/docs/#installation)) |
-| Node.js | 22+ | `node --version` | Required for the JavaScript exercises (22+ needed for `node:sqlite`) |
+| Node.js | 22.13+ (22.x) or 24+ | `node --version` | Required for the JavaScript exercises and ESLint 10; Node 23 is unsupported |
 | Corepack | (bundled) | `corepack --version` | Ships with Node.js; used to enable Yarn |
 | SQLite | 3.35+ | `sqlite3 --version` | Optional; only needed for SQL exercises |
 
@@ -52,7 +52,7 @@ All tests should pass with zero failures.
 ```bash
 cd javascript
 corepack enable
-yarn install
+yarn install --immutable
 ```
 
 `corepack enable` activates the Yarn version declared in `package.json` (`yarn@4.6.0`). You only need to run it once per Node.js installation.

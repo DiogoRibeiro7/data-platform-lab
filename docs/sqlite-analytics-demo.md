@@ -38,7 +38,7 @@ poetry run python -m data_platform_lab.analytics
 
 ### JavaScript
 
-Requires Node.js 22+ (uses the experimental `node:sqlite` module).
+Requires Node.js 22.13+ (22.x) or 24+ (uses the experimental `node:sqlite` module).
 
 ```bash
 cd javascript

@@ -304,9 +304,8 @@ export async function runPipeline({ inputDir, outputPath, requiredColumns }) {
     `${result.duplicates_removed} duplicates removed.`,
   );
 
-  let manifestPath = "";
   try {
-    manifestPath = writeManifest({
+    const manifestPath = writeManifest({
       pipeline_name: "csv_ingestion",
       run_id: generateRunId(),
       source: csvFiles,

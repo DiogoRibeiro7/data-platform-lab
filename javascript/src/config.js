@@ -24,13 +24,13 @@ export function loadConfig(filePath) {
   try {
     raw = readFileSync(filePath, "utf-8");
   } catch (err) {
-    throw new Error(`Cannot read config file ${filePath}: ${err.message}`);
+    throw new Error(`Cannot read config file ${filePath}: ${err.message}`, { cause: err });
   }
   let data;
   try {
     data = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`Invalid JSON in config file ${filePath}: ${err.message}`);
+    throw new Error(`Invalid JSON in config file ${filePath}: ${err.message}`, { cause: err });
   }
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
     throw new Error(`Config file must contain a JSON object, got ${typeof data}`);
