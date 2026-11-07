@@ -73,8 +73,16 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Run tests
-        run: yarn test
+      - name: Run tests with coverage
+        run: yarn test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: javascript-coverage
+          path: javascript/coverage/lcov.info
+          if-no-files-found: error
 
       - name: "Smoke: e-commerce demo"
         run: node src/demo.js --data-dir ../data/sample --output-dir /tmp/demo/silver --manifest-dir /tmp/demo/manifests

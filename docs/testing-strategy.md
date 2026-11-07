@@ -22,6 +22,43 @@ cd javascript && yarn test
 node --test tests/incremental-etl.test.js
 ```
 
+## Coverage reports
+
+CI prints coverage percentages in the **Run tests with coverage** step and
+uploads reports to the workflow run's **Artifacts** section:
+
+| Workflow | Artifact | Contents |
+| --- | --- | --- |
+| Python (3.11 test job) | `python-coverage` | `coverage.xml` and `htmlcov/` (open `htmlcov/index.html`) |
+| JavaScript | `javascript-coverage` | `lcov.info` for an LCOV-compatible viewer |
+
+Reports are uploaded even when tests fail. Coverage is informational: no minimum
+percentage is enforced, and test failures still fail CI. Python 3.12–3.14 retain
+their full test runs without producing duplicate coverage reports.
+
+To generate the same reports locally, run these commands from the repository root:
+
+```bash
+cd python
+poetry install --extras serving
+poetry run pytest --cov=src/data_platform_lab --cov-report=term-missing --cov-report=xml:coverage.xml --cov-report=html:htmlcov
+
+cd ../javascript
+yarn install --immutable
+yarn test:coverage
+```
+
+Python uses [pytest-cov](https://pytest-cov.readthedocs.io/en/latest/reporting.html)
+to measure `src/data_platform_lab`, including modules that were not imported.
+JavaScript uses [Node's built-in coverage reporters](https://nodejs.org/download/release/v22.13.0/docs/api/test.html#collecting-code-coverage)
+for loaded modules under `src/`, excluding tests and dependencies. Unloaded
+JavaScript modules are absent from the report, rather than counted as zero.
+These reports measure the offline test suites; separate smoke commands and live
+integration workflows are not included. The Python configuration does not collect
+coverage from child processes.
+The two languages' percentages have different scopes and should not be compared
+directly. Generated coverage files are ignored by Git.
+
 ---
 
 ## Test categories

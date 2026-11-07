@@ -97,7 +97,25 @@ jobs:
           git diff --exit-code -- poetry.lock
 
       - name: Run tests
+        if: matrix.python-version != '3.11'
         run: poetry run pytest
+
+      - name: Run tests with coverage
+        if: matrix.python-version == '3.11'
+        run: >-
+          poetry run pytest --cov=src/data_platform_lab
+          --cov-report=term-missing --cov-report=xml:coverage.xml
+          --cov-report=html:htmlcov
+
+      - name: Upload coverage reports
+        if: always() && matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage
+          path: |
+            python/coverage.xml
+            python/htmlcov/
+          if-no-files-found: error
 
       - name: "Smoke: e-commerce demo"
         run: poetry run python -m data_platform_lab.demo --data-dir ../data/sample --output-dir /tmp/demo/silver --manifest-dir /tmp/demo/manifests
