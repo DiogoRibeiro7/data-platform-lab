@@ -78,6 +78,12 @@ change the demo runner's pinned Python 3.11 image.
 
 ## Resource limits and trust boundaries
 
+Since the audit, the operator CLI has added opt-in PostgreSQL statement and lock
+timeouts, with live cancellation and post-commit read-back tests. The audit's
+verification table above remains a historical snapshot. See the
+[timeout controls](ons-pay-portable-publishing.md#postgresql-statement-and-lock-timeouts)
+for scope and recovery behavior.
+
 | Boundary | Current limit or assumption |
 | --- | --- |
 | Source plans | `--max-rows` is 1–100000; default 100000. Validation checks the complete selected table, rather than sampling. |
@@ -85,7 +91,7 @@ change the demo runner's pinned Python 3.11 image.
 | SQL write batch | 1–5000 rows per `executemany`, default 500; all batches share one transaction. MongoDB performs one acknowledged replacement per document. |
 | Memory and scan cost | Ingestion loads object bytes; curation uses DuckDB; planning/reconciliation materialize records, copies and JSON hashes in memory. Row caps do not bound bytes per field, total memory, scan cost or duration. Catalog lookup rehashes artifacts across discovered vintages. This is not a streaming bulk loader. |
 | Archive growth | 16 KiB per outcome, at most 10000 outcomes per archive; history validates the entire archive before `--last` filtering. New attempts fail when full. No automatic retention or compaction. |
-| Timeouts | CLI connection/selection timeouts are 10 seconds; MongoDB socket timeout is 30 seconds. SQL query/lock deadlines and whole-workflow deadlines are operator-owned. |
+| Timeouts | CLI connection/selection timeouts are 10 seconds; MongoDB socket timeout is 30 seconds. PostgreSQL `--statement-timeout-ms` and `--lock-timeout-ms` configure per-statement/per-lock limits on owned sessions, including post-commit read-back. Omitted flags preserve existing settings; whole-workflow deadlines remain operator-owned. |
 | Persistence | Trusted local POSIX filesystem with advisory locks, hard links and directory fsync. Sink writes and local evidence are not a distributed transaction; a killed process can leave writes without evidence. |
 | Concurrency | One controlled writer per source and selected sink vintage. The archive lock serializes manifest publication, not database writes. Reconciliation proves the checked observation, not a durable snapshot against later writers. |
 | Identity | Hashes establish integrity, not authenticated provenance or server/operator identity. Archive records name the logical sink/table, not its physical database. Operators must retain the attempt-to-target association. A historical UUID retry never rechecks the current sink. |

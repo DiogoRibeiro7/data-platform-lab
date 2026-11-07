@@ -34,8 +34,18 @@ class CliPostgres(FakePgConnection):
         self.reads = 0
         self.closed = False
         self.read_only = False
+        self.settings: list[tuple[tuple[object, ...], bool]] = []
+        self.setting_cursors: list[Mock] = []
 
     def execute(self, query: str, params: tuple[object, ...] | None = None) -> Any:
+        if query == "SELECT pg_catalog.set_config(%s, %s, false)":
+            assert params is not None
+            self.settings.append((params, self.read_only))
+            if self.fail_on == "configure":
+                raise OSError(SECRET)
+            cursor = Mock()
+            self.setting_cursors.append(cursor)
+            return cursor
         if params is None:
             return super().execute(query)
         self.reads += 1
@@ -380,6 +390,112 @@ def test_optional_driver_and_connection_errors_are_sanitized(
     assert result["acceptance"] is None
 
 
+@pytest.mark.parametrize("flag", ["--statement-timeout-ms", "--lock-timeout-ms"])
+@pytest.mark.parametrize("value", ["0", "-1", "2147483648", SECRET])
+def test_invalid_timeouts_fail_before_planning_or_connecting(
+    curated: Any, capsys: Any, flag: str, value: str
+) -> None:
+    with patch.object(publish_cli, "_source_plan", side_effect=AssertionError):
+        result = _invoke(capsys, [*_args(curated), "--apply", flag, value], expected_exit=2)
+    assert result["error"]["code"] == "invalid_arguments"
+    assert result["acceptance"] is None
+
+
+@pytest.mark.parametrize("flag", ["--statement-timeout-ms", "--lock-timeout-ms"])
+def test_postgres_timeout_flags_reject_mongodb(curated: Any, capsys: Any, flag: str) -> None:
+    with patch.object(publish_cli, "_source_plan", side_effect=AssertionError):
+        result = _invoke(capsys, [*_args(curated, "mongodb"), flag, "1000"], expected_exit=2)
+    assert result["error"]["code"] == "invalid_arguments"
+
+
+def test_timeout_preview_does_not_access_settings_or_borrowed_handles(
+    curated: Any, capsys: Any
+) -> None:
+    before = _snapshot(curated[0])
+    with patch.object(publish_cli, "_open_sink", side_effect=AssertionError):
+        result = _invoke(
+            capsys,
+            [*_args(curated), "--statement-timeout-ms", "30000", "--lock-timeout-ms", "5000"],
+            environ=Mock(),
+            postgres_connection=Mock(),
+        )
+    assert result["status"] == "previewed"
+    assert _snapshot(curated[0]) == before
+
+
+@pytest.mark.parametrize("operation", ["--apply", "--verify"])
+def test_timeout_flags_do_not_change_borrowed_connections(
+    curated: Any, capsys: Any, operation: str
+) -> None:
+    pg = CliPostgres("local_authority_yoy")
+    result = _invoke(
+        capsys,
+        [*_args(curated), operation, "--statement-timeout-ms", "1000"],
+        postgres_connection=pg,
+        expected_exit=2,
+    )
+    assert result["error"]["code"] == "invalid_arguments"
+    assert pg.settings == pg.queries == []
+    assert pg.commits == pg.rollbacks == pg.reads == 0
+    assert not pg.closed
+
+
+@pytest.mark.parametrize("operation", ["--apply", "--verify"])
+@pytest.mark.parametrize(
+    ("flags", "settings"),
+    [
+        (["--statement-timeout-ms", "2147483647"], [("statement_timeout", "2147483647ms")]),
+        (["--lock-timeout-ms", "1"], [("lock_timeout", "1ms")]),
+        (
+            ["--statement-timeout-ms", "30000", "--lock-timeout-ms", "5000"],
+            [("statement_timeout", "30000ms"), ("lock_timeout", "5000ms")],
+        ),
+    ],
+)
+def test_owned_postgres_timeouts_use_session_settings_and_close_cursors(
+    curated: Any, capsys: Any, operation: str, flags: list[str], settings: list[tuple[str, str]]
+) -> None:
+    pg = CliPostgres("local_authority_yoy")
+    connect = Mock(return_value=pg)
+    with patch.object(
+        publish_cli.importlib, "import_module", return_value=SimpleNamespace(connect=connect)
+    ):
+        result = _invoke(
+            capsys,
+            [*_args(curated), operation, *flags],
+            environ={"ONS_PAY_POSTGRES_DSN": SECRET},
+            expected_exit=3 if operation == "--verify" else 0,
+        )
+    connect.assert_called_once_with(SECRET, autocommit=False, connect_timeout=10)
+    assert pg.settings == [(setting, operation == "--verify") for setting in settings]
+    for cursor in pg.setting_cursors:
+        cursor.close.assert_called_once_with()
+    assert pg.closed and pg.reads == 1
+    assert pg.commits == (1 if operation == "--apply" else 0)
+    assert result["status"] == ("accepted" if operation == "--apply" else "rejected")
+
+
+@pytest.mark.parametrize("operation", ["--apply", "--verify"])
+def test_timeout_configuration_failure_closes_client_without_publication(
+    curated: Any, capsys: Any, operation: str
+) -> None:
+    pg = CliPostgres("local_authority_yoy", fail_on="configure")
+    with patch.object(
+        publish_cli.importlib,
+        "import_module",
+        return_value=SimpleNamespace(connect=Mock(return_value=pg)),
+    ):
+        result = _invoke(
+            capsys,
+            [*_args(curated), operation, "--statement-timeout-ms", "30000"],
+            environ={"ONS_PAY_POSTGRES_DSN": SECRET},
+            expected_exit=4,
+        )
+    assert result["error"]["code"] == "database_error"
+    assert result["acceptance"] is None
+    assert pg.closed and pg.queries == [] and pg.reads == pg.commits == 0
+
+
 def test_owned_postgres_verification_uses_read_only_and_closes(curated: Any, capsys: Any) -> None:
     pg = CliPostgres("local_authority_yoy")
     connect = Mock(return_value=pg)
@@ -395,6 +511,7 @@ def test_owned_postgres_verification_uses_read_only_and_closes(curated: Any, cap
     connect.assert_called_once_with(SECRET, autocommit=False, connect_timeout=10)
     assert pg.read_only and pg.closed
     assert pg.queries == [] and pg.commits == pg.rollbacks == 0
+    assert pg.settings == []
 
 
 def test_owned_mongodb_selects_fixed_collection_and_closes(curated: Any, capsys: Any) -> None:

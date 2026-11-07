@@ -7,6 +7,9 @@
   version, full registry commit, source SHA-256, table and sink.
 - Publish deterministic relational records to PostgreSQL or nested documents
   through optional PyMongo, using verified Silver/Gold source artifacts.
+- Set PostgreSQL statement and lock timeouts with `--statement-timeout-ms` and
+  `--lock-timeout-ms`. Limits cover writes and post-commit read-back; cancellation
+  withholds acceptance and supports explicit recovery.
 - Reconcile the complete selected vintage and require matching identities,
   counts, values and independently computed fingerprints before acceptance.
 - Opt into immutable local publication outcomes with `--apply --record-evidence`;

@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
 import psycopg
 import pytest
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
+from test_ons_pay_publish_cli import _args, _invoke
 from test_ons_pay_serving import _curate, _pin
 
+from data_platform_lab.serving import publish_reconcile, publish_sinks
 from data_platform_lab.serving.catalog import VintageKey
 from data_platform_lab.serving.publish_cli import main as publish_main
 from data_platform_lab.serving.publish_evidence import PublicationArchive
@@ -193,3 +200,143 @@ def test_live_operator_records_durable_acceptance_and_reuses_attempt(
     assert repeated["evidence"]["replayed"]
     assert repeated["evidence"]["record_sha256"] == evidence.record_sha256
     assert len(PublicationArchive(root).history()) == 1
+
+
+@pytest.fixture
+def timeout_target(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> Iterator[tuple[Path, list[str], dict[str, str]]]:
+    """Isolate timeout tests in a schema with fallback limits against regressions."""
+    root, receipt = _curate(tmp_path)
+    pins = _pin(receipt)
+    args = _args((root, VintageKey(1, pins["registry_commit"], pins["source_sha256"])))
+    dsn = os.environ["ONS_PAY_POSTGRES_DSN"]
+    schema = f"ons_timeout_{uuid4().hex}"
+    with psycopg.connect(dsn, autocommit=True) as admin:
+        admin.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+    settings = {
+        "ONS_PAY_POSTGRES_DSN": make_conninfo(
+            dsn,
+            options=f"-c search_path={schema} -c statement_timeout=5000 -c lock_timeout=3000",
+        )
+    }
+    try:
+        evidence_flags = ["--record-evidence"] if os.name == "posix" else []
+        seeded = _invoke(capsys, [*args, "--apply", *evidence_flags], environ=settings)
+        assert seeded["status"] == "accepted"
+        yield root, args, settings
+    finally:
+        with psycopg.connect(dsn, autocommit=True) as admin:
+            admin.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+
+
+@pytest.mark.parametrize("operation", ["--apply", "--verify"])
+@pytest.mark.parametrize(
+    ("flag", "sqlstate"),
+    [("--statement-timeout-ms", "57014"), ("--lock-timeout-ms", "55P03")],
+)
+def test_live_timeouts_cancel_blocked_operations_and_allow_explicit_recovery(
+    timeout_target: tuple[Path, list[str], dict[str, str]],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    flag: str,
+    sqlstate: str,
+) -> None:
+    """Check server cancellation codes, SQL rollback and immutable failure evidence."""
+    root, args, settings = timeout_target
+    evidence_flags = ["--record-evidence"] if os.name == "posix" else []
+    previous = PublicationArchive(root).history() if evidence_flags else []
+    module = publish_sinks if operation == "--apply" else publish_reconcile
+    name = "publish_postgres" if operation == "--apply" else "reconcile_postgres"
+    original = getattr(module, name)
+    failures = []
+
+    def capture_failure(*arguments: Any, **kwargs: Any) -> Any:
+        try:
+            return original(*arguments, **kwargs)
+        except (publish_sinks.PublishSinkError, publish_reconcile.ReconciliationReadError) as exc:
+            assert isinstance(exc.__cause__, psycopg.Error)
+            failures.append(exc.__cause__.sqlstate)
+            if operation == "--apply":
+                assert arguments[1].info.transaction_status == psycopg.pq.TransactionStatus.IDLE
+            raise
+
+    monkeypatch.setattr(module, name, capture_failure)
+    with psycopg.connect(settings["ONS_PAY_POSTGRES_DSN"]) as blocker:
+        blocker.execute("LOCK TABLE ons_pay_local_authority_yoy IN ACCESS EXCLUSIVE MODE")
+        failed = _invoke(
+            capsys,
+            [*args, operation, flag, "500", *(evidence_flags if operation == "--apply" else [])],
+            environ=settings,
+            expected_exit=4,
+        )
+    assert failures == [sqlstate]
+    assert failed["error"]["code"] == "database_error"
+    assert failed["acceptance"] is None and failed["counts"]["applied"] is None
+    assert settings["ONS_PAY_POSTGRES_DSN"] not in json.dumps(failed)
+    if evidence_flags and operation == "--apply":
+        evidence = PublicationArchive(root).get_attempt(failed["evidence"]["attempt_id"])
+        assert evidence is not None and evidence.to_dict()["outcome"] == "failed"
+        assert evidence.to_dict()["acceptance"] is None
+
+    recovered = _invoke(capsys, [*args, "--apply", *evidence_flags], environ=settings)
+    assert recovered["status"] == "accepted"
+    assert recovered["counts"]["source"] == recovered["counts"]["applied"] == 6
+    for evidence in previous:
+        stored = PublicationArchive(root).get_attempt(evidence.to_dict()["run_id"])
+        assert stored is not None and stored.payload == evidence.payload
+
+
+@pytest.mark.parametrize(
+    ("flag", "sqlstate"),
+    [("--statement-timeout-ms", "57014"), ("--lock-timeout-ms", "55P03")],
+)
+def test_live_timeout_survives_commit_and_withholds_acceptance_on_readback_failure(
+    timeout_target: tuple[Path, list[str], dict[str, str]],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    flag: str,
+    sqlstate: str,
+) -> None:
+    """A committed write still requires successful read-back under the same timeout."""
+    root, args, settings = timeout_target
+    evidence_flags = ["--record-evidence"] if os.name == "posix" else []
+    original_publish = publish_sinks.publish_postgres
+    original_reconcile = publish_reconcile.reconcile_postgres
+    failures = []
+
+    def capture_read_failure(*arguments: Any, **kwargs: Any) -> Any:
+        try:
+            return original_reconcile(*arguments, **kwargs)
+        except publish_reconcile.ReconciliationReadError as exc:
+            assert isinstance(exc.__cause__, psycopg.Error)
+            failures.append(exc.__cause__.sqlstate)
+            raise
+
+    monkeypatch.setattr(publish_reconcile, "reconcile_postgres", capture_read_failure)
+    with psycopg.connect(settings["ONS_PAY_POSTGRES_DSN"]) as blocker:
+
+        def publish_then_block(*arguments: Any, **kwargs: Any) -> Any:
+            receipt = original_publish(*arguments, **kwargs)
+            blocker.execute("LOCK TABLE ons_pay_local_authority_yoy IN ACCESS EXCLUSIVE MODE")
+            return receipt
+
+        monkeypatch.setattr(publish_sinks, "publish_postgres", publish_then_block)
+        failed = _invoke(
+            capsys,
+            [*args, "--apply", flag, "500", *evidence_flags],
+            environ=settings,
+            expected_exit=4,
+        )
+    assert failures == [sqlstate]
+    assert failed["counts"]["applied"] == 6
+    assert failed["counts"]["observed"] is None and failed["acceptance"] is None
+    if evidence_flags:
+        evidence = PublicationArchive(root).get_attempt(failed["evidence"]["attempt_id"])
+        assert evidence is not None and evidence.to_dict()["outcome"] == "failed"
+        assert evidence.to_dict()["acceptance"] is None
+
+    # Read-only verification sees the committed rows but cannot fabricate acceptance.
+    verified = _invoke(capsys, [*args, "--verify"], environ=settings)
+    assert verified["status"] == "verified" and verified["acceptance"] is None

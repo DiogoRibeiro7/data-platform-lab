@@ -128,14 +128,47 @@ are 10 seconds and its socket timeout is 30 seconds. These are not whole-workflo
 deadlines. CLI-owned MongoDB clients explicitly disable `retryReads` and
 `retryWrites`, overriding URI retry options, so failures require an operator action.
 No indexes, background retry loops or automatic repairs are added.
-MongoDB read concern and PostgreSQL query/lock timeouts can be configured
-through the connection settings as appropriate for the deployment.
+MongoDB read concern can be configured through the connection settings as
+appropriate for the deployment.
 
 Python callers and offline tests can call `publish_cli.main(argv, environ=...)`
 with an injected settings mapping, or pass `postgres_connection=...` or
 `mongo_collection=...`. Supplied handles bypass credential loading and remain
 caller-owned, including transaction cleanup. Apply requires a handle supporting
 both existing writer and reader protocols; verify only requires the reader.
+
+### PostgreSQL statement and lock timeouts
+
+Use `--statement-timeout-ms` and `--lock-timeout-ms` to bound SQL execution and
+lock waits on a CLI-owned PostgreSQL connection. Both accept integer milliseconds
+from **1 to 2147483647**. Omitted flags preserve the server/DSN settings; explicit
+values override only the selected setting and preserve other options such as
+`search_path`.
+
+```bash
+# From python/, using the same exact source pins as the reviewed preview.
+poetry run data-platform-lab ons-pay-publish \
+  --data-root ../data --model-version 1 \
+  --registry-commit COMMIT_SHA40 --source-sha256 SOURCE_SHA256 \
+  --table geography_year --sink postgresql --apply --record-evidence \
+  --statement-timeout-ms 30000 --lock-timeout-ms 5000
+```
+
+The same timeout flags work with `--verify`. Preview validates the values without
+opening a connection. The flags are rejected for MongoDB and for apply/verify
+with a borrowed `postgres_connection`; callers configure their own handles.
+
+[PostgreSQL applies the statement limit to each SQL statement and the lock limit
+to each lock acquisition](https://www.postgresql.org/docs/18/runtime-config-client.html#GUC-STATEMENT-TIMEOUT).
+Choose a shorter lock timeout when both are set. Limits remain active after the
+publication commit, including during read-back. They do not bound local planning,
+total workflow duration, or network waits.
+
+A timeout returns the existing sanitized `database_error` JSON and exit **4**.
+Write failures attempt rollback; a timeout during read-back can occur after rows
+have committed. Neither case grants acceptance. With `--record-evidence`, the
+outcome is recorded as failed. Inspect the sink and resolve contention before an
+explicit replay with the same pins and a new attempt UUID.
 
 ### Revalidation, JSON and exit codes
 
