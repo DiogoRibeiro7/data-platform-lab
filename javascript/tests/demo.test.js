@@ -9,6 +9,7 @@ import { dirname } from "node:path";
 
 import { runDemo } from "../src/demo.js";
 import { validateManifest } from "../src/manifest.js";
+import { readCsvFile } from "../src/ingestion/csv-pipeline.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_DIR = join(__dirname, "..", "..", "data", "sample");
@@ -137,6 +138,27 @@ describe("e-commerce demo pipeline", () => {
       .split("\n");
     const p009 = productLines.filter((l) => l.startsWith("P009,"));
     assert.equal(p009.length, 0);
+  });
+
+  test("customer countries are normalized to title case", async () => {
+    const outputDir = join(tempDir, "silver");
+    await runDemo({
+      dataDir: SAMPLE_DIR,
+      outputDir,
+      manifestDir: join(tempDir, "mf"),
+    });
+
+    const { headers, rows } = await readCsvFile(join(outputDir, "customers.csv"));
+    const countryIndex = headers.indexOf("country");
+    const idIndex = headers.indexOf("customer_id");
+    assert.ok(countryIndex >= 0);
+    assert.ok(idIndex >= 0);
+    const countries = Object.fromEntries(rows.map((row) => [row[idIndex], row[countryIndex]]));
+    assert.equal(countries.C010, "Portugal"); // lowercase in the input
+    assert.equal(countries.C012, "Italy"); // uppercase in the input
+    assert.deepEqual([...new Set(Object.values(countries))].sort(), [
+      "France", "Germany", "Italy", "Netherlands", "Portugal", "Spain",
+    ]);
   });
 
   test("manifest JSON has expected structure", async () => {
