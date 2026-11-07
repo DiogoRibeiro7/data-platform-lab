@@ -53,6 +53,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--table", choices=("geography_year", "local_authority_yoy"), required=True)
     parser.add_argument("--sink", choices=("postgresql", "mongodb"), required=True)
     parser.add_argument("--max-rows", type=int, default=100_000, help="Source row cap (1-100000).")
+    parser.add_argument(
+        "--statement-timeout-ms",
+        type=int,
+        help="PostgreSQL per-statement timeout in milliseconds (1-2147483647).",
+    )
+    parser.add_argument(
+        "--lock-timeout-ms",
+        type=int,
+        help="PostgreSQL per-lock-wait timeout in milliseconds (1-2147483647).",
+    )
     operation = parser.add_mutually_exclusive_group()
     operation.add_argument("--apply", action="store_true", help="Publish and require acceptance.")
     operation.add_argument("--verify", action="store_true", help="Read and reconcile; never write.")
@@ -156,6 +166,17 @@ def _open_sink(
             if args.sink == "postgresql":
                 if args.verify:
                     client.read_only = True
+                for setting, value in (
+                    ("statement_timeout", args.statement_timeout_ms),
+                    ("lock_timeout", args.lock_timeout_ms),
+                ):
+                    if value is not None:
+                        # Session scope survives the publication commit so read-back
+                        # has the same limits. Other DSN settings are left intact.
+                        client.execute(
+                            "SELECT pg_catalog.set_config(%s, %s, false)",
+                            (setting, f"{value}ms"),
+                        ).close()
                 handle = client
             else:
                 handle = client[database][f"ons_pay_{args.table}"]
@@ -362,10 +383,22 @@ def main(
     Embedders may inject connection settings or caller-owned handles. An apply
     handle must support both the existing write and read protocols; verification
     only needs the reader protocol. Preview never accesses any injected handle.
+    Timeout flags configure CLI-owned PostgreSQL sessions only; borrowed handles
+    retain caller-managed settings and reject these flags for apply/verify.
     """
     result = _empty_result()
     try:
         args = _parser().parse_args(argv)
+        timeouts = (args.statement_timeout_ms, args.lock_timeout_ms)
+        if any(value is not None for value in timeouts):
+            if args.sink != "postgresql" or any(
+                value is not None and not 1 <= value <= 2_147_483_647 for value in timeouts
+            ):
+                raise _ArgumentError(
+                    "Timeouts require PostgreSQL and integer milliseconds from 1 to 2147483647."
+                )
+            if postgres_connection is not None and (args.apply or args.verify):
+                raise _ArgumentError("Timeout flags require a CLI-owned PostgreSQL connection.")
         if (args.record_evidence and not args.apply) or (
             args.attempt_id and not args.record_evidence
         ):
