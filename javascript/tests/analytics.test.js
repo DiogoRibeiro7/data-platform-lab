@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { runDemo } from "../src/demo.js";
 import { createDatabase, runAnalytics } from "../src/analytics.js";
+import { readCsvFile } from "../src/ingestion/csv-pipeline.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SAMPLE_DIR = join(__dirname, "..", "..", "data", "sample");
@@ -74,6 +75,77 @@ describe("SQLite analytics", () => {
     assert.ok(existsSync(result.summary_path));
     const summary = JSON.parse(readFileSync(result.summary_path, "utf-8"));
     assert.equal(summary.queries.length, 5);
+    assert.deepEqual(summary.tables_loaded, ["customers", "products", "orders", "order_items"]);
+  });
+
+  test("daily revenue includes only completed orders with positive revenue", async () => {
+    const silverDir = await produceSilver(tempDir);
+    const result = runAnalytics({ silverDir, reportDir: join(tempDir, "gold") });
+    const { rows } = result.queries.find((q) => q.name === "daily_revenue");
+
+    assert.equal(rows.length, 11);
+    assert.ok(rows.every((row) => typeof row.order_date === "string" && row.daily_revenue > 0));
+    assert.deepEqual(rows[0], {
+      order_date: "2024-06-01", order_count: 1, daily_revenue: 59.98, avg_order_value: 59.98,
+    });
+    for (const date of ["2024-06-15", "2024-06-20", "2024-07-05", "2024-08-01"]) {
+      assert.ok(!rows.some((row) => row.order_date === date), `${date} is not completed`);
+    }
+  });
+
+  test("top products are ranked by revenue descending", async () => {
+    const silverDir = await produceSilver(tempDir);
+    const result = runAnalytics({ silverDir, reportDir: join(tempDir, "gold") });
+    const { rows } = result.queries.find((q) => q.name === "top_products");
+
+    assert.equal(rows[0].product_name, "Mechanical Keyboard");
+    const revenues = rows.map((row) => row.total_revenue);
+    assert.deepEqual(revenues, [...revenues].sort((a, b) => b - a));
+  });
+
+  test("customer orders retains customers without orders and reports zero spend", async () => {
+    const silverDir = await produceSilver(tempDir);
+    const result = runAnalytics({ silverDir, reportDir: join(tempDir, "gold") });
+    const { rows } = result.queries.find((q) => q.name === "customer_orders");
+
+    assert.equal(rows.length, 12);
+    const customer = rows.find((row) => row.customer_id === "C012");
+    assert.ok(customer, "customer without orders must be retained by the LEFT JOIN");
+    assert.equal(customer.order_count, 0);
+    assert.equal(customer.total_spend, 0);
+  });
+
+  test("revenue totals match the sample orders and product line items", async () => {
+    const silverDir = await produceSilver(tempDir);
+    const result = runAnalytics({ silverDir, reportDir: join(tempDir, "gold") });
+    const daily = result.queries.find((q) => q.name === "daily_revenue");
+    // The 11 completed orders total 628.35; compare integer cents.
+    assert.equal(daily.rows.reduce((sum, row) => sum + Math.round(row.daily_revenue * 100), 0), 62835);
+
+    const top = result.queries.find((q) => q.name === "top_products");
+    // Four keyboard line items at 89.50 each.
+    const keyboard = top.rows.find((row) => row.product_id === "P002");
+    assert.equal(keyboard.units_sold, 4);
+    assert.equal(keyboard.total_revenue, 358);
+  });
+
+  test("report CSV headers and values match query results, including empty reports", async () => {
+    const silverDir = await produceSilver(tempDir);
+    const reportDir = join(tempDir, "gold");
+    const result = runAnalytics({ silverDir, reportDir });
+
+    for (const query of result.queries) {
+      const csvPath = join(reportDir, `${query.name}.csv`);
+      if (query.row_count === 0) {
+        assert.equal(readFileSync(csvPath, "utf-8"), "", query.name);
+        continue;
+      }
+      const { headers, rows } = await readCsvFile(csvPath);
+      assert.deepEqual(headers, Object.keys(query.rows[0]), query.name);
+      assert.equal(rows.length, query.row_count, query.name);
+      assert.deepEqual(rows, query.rows.map((row) =>
+        headers.map((header) => String(row[header] ?? ""))), query.name);
+    }
   });
 
   test("query row counts match expected values", async () => {
