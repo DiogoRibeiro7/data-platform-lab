@@ -16,6 +16,20 @@ Quick reference for every exercise in the repository. See the
 | 05 | [Snapshot Diff](05-snapshot-diff.md) | Transform | Intermediate | Done | Done | `warehouse/07` | — |
 | 06 | [Orchestration Runner](06-orchestration-runner.md) | Orchestration | Advanced | Done | Done | — | 04 |
 | 07 | [Observability](07-observability.md) | Observability | Advanced | Done | Done | — | 06 |
+| 08 | [Streaming Event Processor](streaming-exercise.md) | Streaming | Advanced | Done | Done | — | 03, 07 |
+| 09 | [Benchmark Runner](benchmark-exercise.md) | Performance | Advanced | Done | Done | — | 01, 07 |
+
+### Supporting workflows
+
+These implemented workflows complement the nine numbered exercises:
+
+| Workflow | Guide | What it covers | Python | JavaScript |
+| --- | --- | --- | --- | --- |
+| Warehouse loading CLI | [Warehouse CLI](warehouse-cli.md) | Load raw CSV/JSONL into SQLite, apply star-schema SQL transforms, and write analytical reports | Done | Done |
+| Config-driven execution | [Config-driven workflows](config-driven-workflows.md) | JSON configuration for streaming, warehouse, and benchmark runs; CLI flags override config values | Done | Done |
+
+Example configurations: [streaming](../configs/streaming.json),
+[warehouse](../configs/warehouse.json), and [benchmark](../configs/benchmark.json).
 
 ### Canonical data platform integration
 
@@ -24,8 +38,8 @@ Quick reference for every exercise in the repository. See the
 - [ONS pay analytics](ons-pay-analytics.md) consumes those receipts, gates
   source quality, and writes typed DuckDB/Parquet Silver/Gold datasets.
 
-These Python-only integrations are kept distinct from the cross-language
-educational exercises and their legacy counts below.
+These Python-only integrations are separate from the numbered cross-language
+exercises counted below.
 
 ### SQL-only exercises
 
@@ -55,9 +69,7 @@ JavaScript implementations. They can be worked independently using SQLite.
 |----------|------------|------------|-------|
 | ZIP extraction | Ingestion | Beginner | Archive handling, file routing |
 | Log parsing | Ingestion | Beginner | `data/sample/logs.log` exists as sample input |
-| Event processing | Streaming | Advanced | Windowed aggregation, simulated real-time |
-| Warehouse loading CLI | Warehouse | Intermediate | Python/JS wrapper around the SQL assets |
-| Ingestion benchmark | Performance | Advanced | Sequential vs parallel vs async throughput |
+| Windowed event aggregation | Streaming | Advanced | Time-window aggregation beyond the per-event processing in exercise 08 |
 
 ---
 
@@ -65,13 +77,17 @@ JavaScript implementations. They can be worked independently using SQLite.
 
 | Metric | Count |
 |--------|-------|
-| Implemented exercises (Python + JS) | 7 |
+| Implemented numbered exercises (Python + JS) | 9 |
+| Supporting workflows (Python + JS) | 2 |
 | SQL exercise areas | 12 |
-| Python test files | 10 |
-| JavaScript test files | 10 |
-| SQL scripts | 27 |
-| Exercise guides in `docs/` | 7 |
-| Planned exercises (not started) | 5 |
+| Primary test files for numbered exercises, per language | 9 |
+| SQL exercise scripts (`ddl/`, `dml/`, `analytics/`, `warehouse/`) | 27 |
+| Numbered exercise guides in `docs/` | 9 |
+| Planned exercises (not started) | 3 |
+
+Test-file counts refer to the primary suites listed below, not the repository's
+full platform and integration test suites. SQL counts exclude platform metadata
+migrations and packaged ONS analytics models.
 
 ---
 
@@ -81,10 +97,19 @@ Quick lookup for where each exercise lives in the repository.
 
 | # | Guide | Python source | Python tests | JS source | JS tests |
 |---|-------|---------------|--------------|-----------|----------|
-| 01 | `docs/01-csv-ingestion-pipeline.md` | `python/src/.../ingestion/csv_pipeline.py` | `python/tests/test_csv_pipeline.py` | `javascript/src/ingestion/csv-pipeline.js` | `javascript/tests/csv-pipeline.test.js` |
-| 02 | `docs/02-api-ingestion-pipeline.md` | `python/src/.../ingestion/api_pipeline.py` | `python/tests/test_api_pipeline.py` | `javascript/src/ingestion/api-pipeline.js` | `javascript/tests/api-pipeline.test.js` |
-| 03 | `docs/03-validation-framework.md` | `python/src/.../validation/rules.py` | `python/tests/test_validation.py` | `javascript/src/validation/rules.js` | `javascript/tests/validation.test.js` |
-| 04 | `docs/04-incremental-etl-pipeline.md` | `python/src/.../transform/incremental_etl.py` | `python/tests/test_incremental_etl.py` | `javascript/src/transform/incremental-etl.js` | `javascript/tests/incremental-etl.test.js` |
-| 05 | `docs/05-snapshot-diff.md` | `python/src/.../transform/snapshot_diff.py` | `python/tests/test_snapshot_diff.py` | `javascript/src/transform/snapshot-diff.js` | `javascript/tests/snapshot-diff.test.js` |
-| 06 | `docs/06-orchestration-runner.md` | `python/src/.../orchestration/runner.py` | `python/tests/test_runner.py` | `javascript/src/orchestration/runner.js` | `javascript/tests/runner.test.js` |
-| 07 | `docs/07-observability.md` | `python/src/.../observability/tracker.py` | `python/tests/test_observability.py` | `javascript/src/observability/tracker.js` | `javascript/tests/observability.test.js` |
+| 01 | `docs/01-csv-ingestion-pipeline.md` | `python/src/data_platform_lab/ingestion/csv_pipeline.py` | `python/tests/test_csv_pipeline.py` | `javascript/src/ingestion/csv-pipeline.js` | `javascript/tests/csv-pipeline.test.js` |
+| 02 | `docs/02-api-ingestion-pipeline.md` | `python/src/data_platform_lab/ingestion/api_pipeline.py` | `python/tests/test_api_pipeline.py` | `javascript/src/ingestion/api-pipeline.js` | `javascript/tests/api-pipeline.test.js` |
+| 03 | `docs/03-validation-framework.md` | `python/src/data_platform_lab/validation/rules.py` | `python/tests/test_validation.py` | `javascript/src/validation/rules.js` | `javascript/tests/validation.test.js` |
+| 04 | `docs/04-incremental-etl-pipeline.md` | `python/src/data_platform_lab/transform/incremental_etl.py` | `python/tests/test_incremental_etl.py` | `javascript/src/transform/incremental-etl.js` | `javascript/tests/incremental-etl.test.js` |
+| 05 | `docs/05-snapshot-diff.md` | `python/src/data_platform_lab/transform/snapshot_diff.py` | `python/tests/test_snapshot_diff.py` | `javascript/src/transform/snapshot-diff.js` | `javascript/tests/snapshot-diff.test.js` |
+| 06 | `docs/06-orchestration-runner.md` | `python/src/data_platform_lab/orchestration/runner.py` | `python/tests/test_runner.py` | `javascript/src/orchestration/runner.js` | `javascript/tests/runner.test.js` |
+| 07 | `docs/07-observability.md` | `python/src/data_platform_lab/observability/tracker.py` | `python/tests/test_observability.py` | `javascript/src/observability/tracker.js` | `javascript/tests/observability.test.js` |
+| 08 | `docs/streaming-exercise.md` | `python/src/data_platform_lab/streaming/processor.py` | `python/tests/test_streaming.py` | `javascript/src/streaming/processor.js` | `javascript/tests/streaming.test.js` |
+| 09 | `docs/benchmark-exercise.md` | `python/src/data_platform_lab/benchmark/runner.py` | `python/tests/test_benchmark.py` | `javascript/src/benchmark/runner.js` | `javascript/tests/benchmark.test.js` |
+
+Supporting workflow locations:
+
+| Workflow | Python source | Python tests | JS source | JS tests |
+| --- | --- | --- | --- | --- |
+| Warehouse CLI | `python/src/data_platform_lab/warehouse/cli.py`, `python/src/data_platform_lab/warehouse/loader.py` | `python/tests/test_warehouse.py` | `javascript/src/warehouse/cli.js`, `javascript/src/warehouse/loader.js` | `javascript/tests/warehouse.test.js` |
+| Config-driven execution | `python/src/data_platform_lab/config.py` | `python/tests/test_config.py` | `javascript/src/config.js` | `javascript/tests/config.test.js` |
