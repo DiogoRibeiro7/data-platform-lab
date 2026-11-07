@@ -7,12 +7,14 @@ on:
       - "data/sample/**"
       - "sql/**"
       - ".github/workflows/javascript.yml"
+      - ".pre-commit-config.yaml"
   pull_request:
     paths:
       - "javascript/**"
       - "data/sample/**"
       - "sql/**"
       - ".github/workflows/javascript.yml"
+      - ".pre-commit-config.yaml"
 
 defaults:
   run:
