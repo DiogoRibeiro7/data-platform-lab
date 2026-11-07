@@ -127,6 +127,47 @@ All commands run from the repository root.
 
 ---
 
+## Commit hooks (opt-in)
+
+The root `.pre-commit-config.yaml` runs the same Ruff lint, Ruff format check,
+and ESLint commands as CI. Install [pre-commit](https://pre-commit.com/#install)
+4.7.0 or newer as an isolated tool, for example with
+`pipx install pre-commit==4.7.0` or `uv tool install pre-commit==4.7.0`.
+Then enable it from the repository root:
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+Set up the Python and/or JavaScript dependencies above first. Python checks
+need Poetry on `PATH`; JavaScript checks need Node.js and Yarn. The JavaScript
+hook uses Node to launch Yarn from `javascript/`, including its Windows command
+shim, so Corepack selects the project's pinned Yarn version.
+
+- Python source/test changes, Python files under `scripts/`, and Python
+  dependency/config changes trigger both Ruff checks across `python/` and
+  `scripts/`.
+- JavaScript `.js`, `.mjs`, and `.cjs` files and dependency/config changes trigger `yarn lint`
+  across `javascript/src/` and `javascript/tests/`.
+- Hook configuration changes trigger all three checks. Other documentation-only
+  commits skip them. `--all-files` runs all three, so it needs both toolchains;
+  use `pre-commit run python-lint --all-files`, `python-format`, or
+  `javascript-lint` to check one hook.
+
+Once installed, `git commit` stops if a selected check fails or its tools are
+missing. The hooks do not auto-format or stage files. Fix the reported issues,
+stage the corrections, and commit again. For partially staged files,
+[pre-commit temporarily hides unstaged changes](https://pre-commit.com/#pre-commit)
+and restores them after checking the staged contents.
+
+Installation is local to the clone. Linked worktrees share Git's hook directory,
+so install once for those worktrees. To remove the hook, run
+`pre-commit uninstall` from the repository root. CI remains the independent
+lint, format, type-check, and test safety net even when hooks are not installed.
+
+---
+
 ## Project structure at a glance
 
 ```
@@ -225,3 +266,5 @@ GitHub Actions runs on every push and pull request that touches `python/` or `ja
 - **JavaScript workflow** (`.github/workflows/javascript.yml`): eslint, node --test
 
 Both workflows use the same commands documented above.
+
+Changes to `.pre-commit-config.yaml` also trigger both language workflows.

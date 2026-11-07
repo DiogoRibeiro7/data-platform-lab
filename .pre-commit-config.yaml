@@ -1,0 +1,31 @@
+minimum_pre_commit_version: "4.7.0"
+default_stages: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: python-lint
+        name: Python Ruff lint
+        language: unsupported
+        entry: poetry -C python run ruff check --config pyproject.toml . ../scripts
+        files: ^(python/.*\.py|scripts/.*\.py|python/(pyproject\.toml|poetry\.lock)|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        require_serial: true
+      - id: python-format
+        name: Python Ruff format check
+        language: unsupported
+        entry: poetry -C python run ruff format --config pyproject.toml --check . ../scripts
+        files: ^(python/.*\.py|scripts/.*\.py|python/(pyproject\.toml|poetry\.lock)|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        require_serial: true
+      - id: javascript-lint
+        name: JavaScript ESLint
+        language: unsupported
+        # Use Node's shell launcher for Yarn's Windows .cmd shim as well as POSIX.
+        entry: >-
+          node -e "const r = require('node:child_process').spawnSync('yarn lint',
+          {cwd: 'javascript', shell: true, stdio: 'inherit'});
+          if (r.error) console.error(r.error.message); process.exit(r.status ?? 1);"
+        files: ^(javascript/.*\.[cm]?js|javascript/(package\.json|yarn\.lock|\.yarnrc\.yml)|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        require_serial: true
