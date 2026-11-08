@@ -84,6 +84,11 @@ verification table above remains a historical snapshot. See the
 [timeout controls](ons-pay-portable-publishing.md#postgresql-statement-and-lock-timeouts)
 for scope and recovery behavior.
 
+Optional [target labels](ons-pay-portable-publishing.md#target-labels) now associate
+durable outcomes with operator-managed database configurations. Retry checks and
+history filtering use the label; physical server identity is still not verified.
+Labeled version `2` manifests coexist with unchanged version `1` records.
+
 | Boundary | Current limit or assumption |
 | --- | --- |
 | Source plans | `--max-rows` is 1–100000; default 100000. Validation checks the complete selected table, rather than sampling. |
@@ -94,7 +99,7 @@ for scope and recovery behavior.
 | Timeouts | CLI connection/selection timeouts are 10 seconds; MongoDB socket timeout is 30 seconds. PostgreSQL `--statement-timeout-ms` and `--lock-timeout-ms` configure per-statement/per-lock limits on owned sessions, including post-commit read-back. Omitted flags preserve existing settings; whole-workflow deadlines remain operator-owned. |
 | Persistence | Trusted local POSIX filesystem with advisory locks, hard links and directory fsync. Sink writes and local evidence are not a distributed transaction; a killed process can leave writes without evidence. |
 | Concurrency | One controlled writer per source and selected sink vintage. The archive lock serializes manifest publication, not database writes. Reconciliation proves the checked observation, not a durable snapshot against later writers. |
-| Identity | Hashes establish integrity, not authenticated provenance or server/operator identity. Archive records name the logical sink/table, not its physical database. Operators must retain the attempt-to-target association. A historical UUID retry never rechecks the current sink. |
+| Identity | Hashes establish integrity, not authenticated provenance or server/operator identity. Optional `--target-id` labels bind attempt reuse and filter history; operators maintain the label-to-database association. Labels are not checked against connection settings or a physical server. Unlabeled records remain supported. A historical UUID retry never rechecks the current sink. |
 | Dependencies | Python runtime/development dependencies and optional extras are pinned in `python/poetry.lock`, with artifact hashes and markers for Python 3.11–3.14. CI and the packaged demo validate and consume the lock. Server image tags, OS packages and Poetry bootstrap dependencies are not pinned to immutable digests by this lock. |
 
 ## Outside the verified scope

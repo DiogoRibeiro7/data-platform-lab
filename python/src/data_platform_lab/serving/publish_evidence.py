@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 _SHA = re.compile(r"[0-9a-f]{64}")
 _COMMIT = re.compile(r"[0-9a-f]{40}")
+_TARGET_ID = re.compile(r"[a-z][a-z0-9_-]{0,63}")
 _PIPELINE = "ons_pay_publication"
 _MAX_BYTES = 16_384
 _MAX_RECORDS = 10_000
@@ -43,6 +44,16 @@ _FAILURES = {
 
 class PublicationEvidenceError(ValueError):
     """Publication evidence is invalid, conflicting, or could not be persisted."""
+
+
+def validate_target_id(value: str) -> str:
+    """Validate the syntax of a public operator label; never echo invalid input."""
+    if type(value) is not str or _TARGET_ID.fullmatch(value) is None:
+        raise PublicationEvidenceError(
+            "target ID must be 1-64 lowercase letters, digits, underscores or hyphens, "
+            "starting with a letter"
+        )
+    return value
 
 
 def validate_attempt_id(value: str) -> str:
@@ -101,6 +112,13 @@ def _utc(value: object) -> datetime:
 
 def _validate(raw: object) -> dict[str, Any]:
     """Check exact schema, provenance, counts and all cross-evidence relationships."""
+    if (
+        type(raw) is not dict
+        or type(raw.get("schema_version")) is not int
+        or raw["schema_version"] not in (1, 2)
+    ):
+        raise PublicationEvidenceError("unknown publication manifest schema")
+    version = raw["schema_version"]
     record = _object(
         raw,
         {
@@ -125,15 +143,13 @@ def _validate(raw: object) -> dict[str, Any]:
             "reconciliation",
             "acceptance",
             "failure_code",
-        },
+        }
+        | ({"target_id"} if version == 2 else set()),
     )
-    if (
-        validate_manifest(record)
-        or type(record["schema_version"]) is not int
-        or record["schema_version"] != 1
-        or record["pipeline_name"] != _PIPELINE
-    ):
+    if validate_manifest(record) or record["pipeline_name"] != _PIPELINE:
         raise PublicationEvidenceError("unknown publication manifest schema")
+    if version == 2:
+        validate_target_id(record["target_id"])
     validate_attempt_id(record["run_id"])
     started, ended = _utc(record["started_at"]), _utc(record["ended_at"])
     if (
@@ -298,6 +314,7 @@ class PublicationEvidence:
             "schema_version": 1,
             "operation": "apply",
             "status": record["outcome"],
+            **({"target_id": record["target_id"]} if "target_id" in record else {}),
             **{
                 key: record[key]
                 for key in (
@@ -337,6 +354,7 @@ def _build(
     receipt: PublishReceipt | None,
     report: ReconciliationReport | None,
     failure_code: str | None,
+    target_id: str | None,
 ) -> PublicationEvidence:
     """Derive the outcome from existing gate inputs, never from a caller's status claim."""
     from data_platform_lab.serving.publish_gate import (
@@ -345,6 +363,8 @@ def _build(
     )
     from data_platform_lab.serving.publish_reconcile import expected_sink_fingerprint
 
+    if target_id is not None:
+        validate_target_id(target_id)
     expected = expected_sink_fingerprint(plan, sink=sink)
     acceptance = None
     outcome = "failed"
@@ -370,7 +390,8 @@ def _build(
     ):
         raise PublicationEvidenceError("reconciliation report contradicts the source plan")
     raw = {
-        "schema_version": 1,
+        "schema_version": 1 if target_id is None else 2,
+        **({"target_id": target_id} if target_id is not None else {}),
         "pipeline_name": _PIPELINE,
         "run_id": attempt_id,
         "created_at": ended_at.isoformat(),
@@ -468,10 +489,14 @@ class PublicationArchive:
             raise PublicationEvidenceError("cannot read valid publication evidence") from exc
         return PublicationEvidence(payload)
 
-    def history(self, *, last: int = 50) -> tuple[PublicationEvidence, ...]:
-        """Validate all records before selecting recent ones; never create files or locks."""
+    def history(
+        self, *, last: int = 50, target_id: str | None = None
+    ) -> tuple[PublicationEvidence, ...]:
+        """Validate all records, then filter by label before limiting; never create files."""
         if type(last) is not int or not 1 <= last <= _MAX_RECORDS:
             raise PublicationEvidenceError("history limit must be an integer from 1 to 10000")
+        if target_id is not None:
+            validate_target_id(target_id)
         try:
             self._check_paths()
             if not self.root.exists():
@@ -496,6 +521,8 @@ class PublicationArchive:
                 seen.add(attempt_id)
                 records.append(evidence)
             records.sort(key=lambda item: (item.to_dict()["ended_at"], item.record_sha256))
+            if target_id is not None:
+                records = [item for item in records if item.to_dict().get("target_id") == target_id]
             return tuple(records[-last:])
         except OSError as exc:
             raise PublicationEvidenceError("cannot inspect publication archive") from exc
@@ -543,10 +570,17 @@ class PublicationArchive:
             raise PublicationEvidenceError("cannot lock or persist publication evidence") from exc
 
     def prepare(
-        self, plan: PublishPlan, *, sink: SinkName, attempt_id: str
+        self,
+        plan: PublishPlan,
+        *,
+        sink: SinkName,
+        attempt_id: str,
+        target_id: str | None = None,
     ) -> PublicationEvidence | None:
         """Check storage and attempt reuse before sink I/O; only used for explicit writes."""
         validate_attempt_id(attempt_id)
+        if target_id is not None:
+            validate_target_id(target_id)
         with self._locked():
             records = self.history(last=_MAX_RECORDS)
             existing = next(
@@ -558,6 +592,7 @@ class PublicationArchive:
                 record = existing.to_dict()
                 if (
                     record["sink"] != sink
+                    or record.get("target_id") != target_id
                     or record["table"] != plan.table
                     or record["vintage"] != asdict(plan.vintage)
                     or record["fingerprints"]["source_artifact_sha256"]
@@ -601,11 +636,13 @@ class PublicationArchive:
         receipt: PublishReceipt | None = None,
         report: ReconciliationReport | None = None,
         failure_code: str | None = None,
+        target_id: str | None = None,
     ) -> PublicationEvidence:
         """Explicitly record an outcome, evaluating the acceptance gate for completed attempts.
 
         Retry persistence with identical inputs and timestamps. A new sink attempt
         needs a new UUID. Conflicts never replace an earlier accepted or failed record.
+        Optional target labels describe operator configuration, not verified server identity.
         """
         try:
             evidence = _build(
@@ -617,6 +654,7 @@ class PublicationArchive:
                 receipt=receipt,
                 report=report,
                 failure_code=failure_code,
+                target_id=target_id,
             )
         except (TypeError, ValueError, RuntimeError) as exc:
             raise PublicationEvidenceError("cannot build consistent publication evidence") from exc

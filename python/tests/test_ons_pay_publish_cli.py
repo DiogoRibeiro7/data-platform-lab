@@ -18,11 +18,39 @@ from test_ons_pay_publish_sinks import FakeMongoCollection, FakePgConnection
 from test_ons_pay_serving import _curate, _pin
 
 from data_platform_lab.cli.main import main as platform_main
-from data_platform_lab.serving import publish_cli
+from data_platform_lab.serving import publish_cli, publish_evidence_cli
 from data_platform_lab.serving.catalog import CuratedCatalog, VintageKey
 from data_platform_lab.serving.publish_plan import PublishPlan, TableName
 
 SECRET = "postgresql://private-user:do-not-print@private-host/private-db"
+
+
+@pytest.mark.parametrize("target_id", ["", "A", "a" * 65, "1abc", "a b", "../db", "a\nb", SECRET])
+@pytest.mark.parametrize("command", ["publish", "history"])
+def test_invalid_target_id_is_rejected_before_io_without_echoing_input(
+    tmp_path: Path, capsys: Any, target_id: str, command: str
+) -> None:
+    arguments = (
+        _args((tmp_path, VintageKey(1, "a" * 40, "b" * 64)))
+        if command == "publish"
+        else ["--data-root", str(tmp_path)]
+    )
+    with (
+        patch.object(publish_cli, "_source_plan", side_effect=AssertionError),
+        patch.object(
+            publish_evidence_cli.PublicationArchive, "history", side_effect=AssertionError
+        ),
+        pytest.raises(SystemExit) as error,
+    ):
+        main = publish_cli.main if command == "publish" else publish_evidence_cli.main
+        main([*arguments, "--target-id", target_id])
+    assert error.value.code == 2
+    captured = capsys.readouterr()
+    assert not captured.err and SECRET not in captured.out
+    result = json.loads(captured.out)
+    assert result["error"]["code"] == "invalid_arguments"
+    assert "target_id" not in result
+    assert not list(tmp_path.iterdir())
 
 
 class CliPostgres(FakePgConnection):
@@ -141,14 +169,21 @@ def _snapshot(root: Path) -> dict[str, tuple[bytes, int]]:
 
 
 @pytest.mark.parametrize("sink", ["postgresql", "mongodb"])
+@pytest.mark.parametrize("target_id", [None, "local-target"])
 def test_preview_is_read_only_and_never_loads_credentials_or_drivers(
-    curated: tuple[Path, VintageKey], capsys: pytest.CaptureFixture[str], sink: str
+    curated: tuple[Path, VintageKey],
+    capsys: pytest.CaptureFixture[str],
+    sink: str,
+    target_id: str | None,
 ) -> None:
     before = _snapshot(curated[0])
     environ = Mock()
     environ.get.side_effect = AssertionError("preview read connection settings")
     with patch.object(publish_cli.importlib, "import_module", side_effect=AssertionError):
-        result = _invoke(capsys, _args(curated, sink), environ=environ)
+        flags = ["--target-id", target_id] if target_id is not None else []
+        result = _invoke(capsys, [*_args(curated, sink), *flags], environ=environ)
+    assert result.get("target_id") == target_id
+    assert ("target_id" in result) == (target_id is not None)
     assert result["operation"] == "preview"
     assert result["status"] == "previewed"
     assert result["counts"] == {"source": 6, "applied": None, "observed": None}
@@ -216,17 +251,25 @@ def test_missing_configuration_never_imports_drivers(
 
 @pytest.mark.parametrize("table", ["geography_year", "local_authority_yoy"])
 @pytest.mark.parametrize("sink", ["postgresql", "mongodb"])
+@pytest.mark.parametrize("target_id", [None, "local-target"])
 def test_apply_replays_and_verify_never_writes_or_fabricates_acceptance(
-    curated: tuple[Path, VintageKey], capsys: Any, table: TableName, sink: str
+    curated: tuple[Path, VintageKey],
+    capsys: Any,
+    table: TableName,
+    sink: str,
+    target_id: str | None,
 ) -> None:
     pg = CliPostgres(table)
     mongo = CliMongo()
     kwargs = {"postgres_connection": pg} if sink == "postgresql" else {"mongo_collection": mongo}
     args = _args(curated, sink, table)
+    if target_id is not None:
+        args.extend(["--target-id", target_id])
     before = _snapshot(curated[0])
     first = _invoke(capsys, [*args, "--apply"], environ={}, **kwargs)
     second = _invoke(capsys, [*args, "--apply"], environ={}, **kwargs)
     assert first == second
+    assert first.get("target_id") == target_id
     assert first["status"] == "accepted"
     assert first["acceptance"]["status"] == "accepted"
     assert first["counts"]["source"] == first["counts"]["applied"] == first["counts"]["observed"]
@@ -243,6 +286,7 @@ def test_apply_replays_and_verify_never_writes_or_fabricates_acceptance(
     ):
         verified = _invoke(capsys, [*args, "--verify"], environ={}, **kwargs)
     assert verified["status"] == "verified"
+    assert verified.get("target_id") == target_id
     assert verified["acceptance"] is None
     assert verified["counts"]["applied"] is None
     assert (pg.persisted, pg.queries, pg.commits, pg.rollbacks) == pg_state

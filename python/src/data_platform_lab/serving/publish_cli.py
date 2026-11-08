@@ -52,6 +52,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-sha256", required=True)
     parser.add_argument("--table", choices=("geography_year", "local_authority_yoy"), required=True)
     parser.add_argument("--sink", choices=("postgresql", "mongodb"), required=True)
+    parser.add_argument(
+        "--target-id",
+        help="Non-secret target label (1-64 lowercase letters/digits/_/-, starting with a letter).",
+    )
     parser.add_argument("--max-rows", type=int, default=100_000, help="Source row cap (1-100000).")
     parser.add_argument(
         "--statement-timeout-ms",
@@ -260,7 +264,9 @@ def _execute(
 
         if args.record_evidence:
             archive = PublicationArchive(args.data_root)
-            existing = archive.prepare(plan, sink=args.sink, attempt_id=attempt_id)
+            existing = archive.prepare(
+                plan, sink=args.sink, attempt_id=attempt_id, target_id=args.target_id
+            )
             if existing is not None:
                 result.update(existing.cli_result(replayed=True))
                 return existing.exit_code
@@ -353,6 +359,7 @@ def _execute(
                 receipt=receipt,
                 report=report,
                 failure_code=failure_code,
+                target_id=args.target_id,
             )
             stored = evidence.cli_result(replayed=False)
             result.update({key: stored[key] for key in ("evidence", "status", "acceptance")})
@@ -389,6 +396,16 @@ def main(
     result = _empty_result()
     try:
         args = _parser().parse_args(argv)
+        if args.target_id is not None:
+            from data_platform_lab.serving.publish_evidence import (
+                PublicationEvidenceError,
+                validate_target_id,
+            )
+
+            try:
+                validate_target_id(args.target_id)
+            except PublicationEvidenceError as exc:
+                raise _ArgumentError(str(exc)) from None
         timeouts = (args.statement_timeout_ms, args.lock_timeout_ms)
         if any(value is not None for value in timeouts):
             if args.sink != "postgresql" or any(
@@ -421,6 +438,8 @@ def main(
             sink=args.sink,
             table=args.table,
         )
+        if args.target_id is not None:
+            result["target_id"] = args.target_id
         try:
             code = _execute(
                 args,
