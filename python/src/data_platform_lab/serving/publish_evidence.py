@@ -159,20 +159,9 @@ def _validate(raw: object) -> dict[str, Any]:
         or record["duration_seconds"] != (ended - started).total_seconds()
     ):
         raise PublicationEvidenceError("inconsistent publication timestamps")
-    if record["sink"] not in ("postgresql", "mongodb") or record["table"] not in (
-        "geography_year",
-        "local_authority_yoy",
-    ):
-        raise PublicationEvidenceError("unknown publication target")
-    vintage = _object(record["vintage"], {"model_version", "registry_commit", "source_sha256"})
-    if (
-        type(vintage["model_version"]) is not int
-        or vintage["model_version"] != 1
-        or type(vintage["registry_commit"]) is not str
-        or _COMMIT.fullmatch(vintage["registry_commit"]) is None
-    ):
-        raise PublicationEvidenceError("invalid publication vintage")
-    _sha(vintage["source_sha256"])
+    vintage = validate_publication_selection(
+        sink=record["sink"], table=record["table"], vintage=record["vintage"]
+    )
     if (
         record["source"] != f"sha256:{vintage['source_sha256']}"
         or record["output"] != f"{record['sink']}:ons_pay_{record['table']}"
@@ -289,6 +278,29 @@ def _validate(raw: object) -> dict[str, Any]:
     elif record["failure_code"] == "acceptance_rejected":
         raise PublicationEvidenceError("failed publication cannot claim a completed gate rejection")
     return record
+
+
+def validate_publication_selection(
+    *, sink: str, table: str, vintage: object, target_id: str | None = None
+) -> dict[str, Any]:
+    """Validate exact archive pins and target without importing analytical clients."""
+    if sink not in ("postgresql", "mongodb") or table not in (
+        "geography_year",
+        "local_authority_yoy",
+    ):
+        raise PublicationEvidenceError("unknown publication target")
+    selected = _object(vintage, {"model_version", "registry_commit", "source_sha256"})
+    if (
+        type(selected["model_version"]) is not int
+        or selected["model_version"] != 1
+        or type(selected["registry_commit"]) is not str
+        or _COMMIT.fullmatch(selected["registry_commit"]) is None
+    ):
+        raise PublicationEvidenceError("invalid publication vintage")
+    _sha(selected["source_sha256"])
+    if target_id is not None:
+        validate_target_id(target_id)
+    return dict(selected)
 
 
 @dataclass(frozen=True, slots=True)
@@ -552,6 +564,29 @@ class PublicationArchive:
             ),
             None,
         )
+
+    def matching_history(
+        self, *, sink: str, table: str, vintage: object, target_id: str | None = None
+    ) -> tuple[PublicationEvidence, ...]:
+        """Validate the full archive before selecting one exact publication identity.
+
+        Unlike the optional history label filter, target_id=None selects only
+        unlabeled records. The archive limit still applies before selection.
+        """
+        selected = validate_publication_selection(
+            sink=sink, table=table, vintage=vintage, target_id=target_id
+        )
+        matches = []
+        for evidence in self.history(last=_MAX_RECORDS):
+            record = evidence.to_dict()
+            if (
+                record["sink"] == sink
+                and record["table"] == table
+                and record["vintage"] == selected
+                and record.get("target_id") == target_id
+            ):
+                matches.append(evidence)
+        return tuple(matches)
 
     def accepted_baseline(
         self,

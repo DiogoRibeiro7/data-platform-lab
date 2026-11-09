@@ -95,6 +95,12 @@ the exact source and target, then performs a fresh sink reconciliation. This
 supports explicit drift checks without replacing historical acceptance or
 introducing a scheduler, automatic repair or new release controls.
 
+The [publication status command](ons-pay-portable-publishing.md#publication-status-and-freshness)
+adds outcome and optional age checks for an exact archived source/target. Missing,
+failed, rejected, stale, future-dated or ambiguous latest attempts produce a
+nonzero exit. This is historical evidence monitoring; checking the live sink and
+operating a scheduler remain separate actions.
+
 | Boundary | Current limit or assumption |
 | --- | --- |
 | Source plans | `--max-rows` is 1–100000; default 100000. Validation checks the complete selected table, rather than sampling. |

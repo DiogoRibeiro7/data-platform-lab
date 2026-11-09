@@ -22,6 +22,9 @@
 - Recheck a saved accepted publication with `--verify --baseline-attempt-id`.
   Source and target mismatches fail before connecting; a fresh reconciliation
   detects drift without writing rows or changing the historical outcome.
+- Check saved outcomes with `ons-pay-publication-status` and an optional
+  `--max-age-hours` threshold. Exact source/target selection prevents unrelated
+  successes from hiding failures; missing or uncertain evidence requires attention.
 - Run the complete synthetic workflow with
   `python scripts/ons_pay_publishing_demo.py --exercise-recovery`, retaining
   readable reports, source artifacts, plans and durable outcomes.

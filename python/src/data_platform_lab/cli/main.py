@@ -12,6 +12,9 @@ from data_platform_lab.iceberg.cli import main as iceberg_main
 from data_platform_lab.ingestion.registry_cli import main as registry_ingest_main
 from data_platform_lab.metadata.cli import main as metadata_main
 from data_platform_lab.observability.ons_pay_monitor_cli import main as ons_pay_monitor_main
+from data_platform_lab.observability.ons_pay_publication_status_cli import (
+    main as ons_pay_publication_status_main,
+)
 from data_platform_lab.orchestration.ons_pay_refresh_cli import main as ons_pay_refresh_main
 from data_platform_lab.recovery.cli import main as recovery_main
 from data_platform_lab.serving.cli import main as ons_pay_serve_main
@@ -36,6 +39,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "ons-pay-monitor": ons_pay_monitor_main,
     "ons-pay-publish": ons_pay_publish_main,
     "ons-pay-publication-history": ons_pay_publication_history_main,
+    "ons-pay-publication-status": ons_pay_publication_status_main,
     "ons-pay-publish-plan": ons_pay_publish_plan_main,
     "ons-pay-refresh": ons_pay_refresh_main,
     "ons-pay-release": ons_pay_release_main,

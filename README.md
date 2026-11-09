@@ -283,6 +283,12 @@ Durable writes require a local POSIX filesystem; inspection is read-only.
 See [durable publication evidence](docs/ons-pay-portable-publishing.md#durable-publication-evidence)
 for outcome semantics, persistence failures, concurrency and trust limits.
 
+For scheduled outcome and freshness checks, use `ons-pay-publication-status`
+with the exact source pins, sink, table, target label and optional `--max-age-hours`.
+It inspects saved evidence without source files or database access and returns a
+nonzero exit for missing, failed, rejected, stale or uncertain outcomes. See
+[publication status and freshness](docs/ons-pay-portable-publishing.md#publication-status-and-freshness).
+
 Real PyMongo integration is available through the optional `mongodb` Compose
 profile, using MongoDB 9.0.4 with disposable storage and a loopback-only port.
 The [local test commands](docs/ons-pay-portable-publishing.md#disposable-local-mongodb-integration)
