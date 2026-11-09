@@ -101,6 +101,11 @@ failed, rejected, stale, future-dated or ambiguous latest attempts produce a
 nonzero exit. This is historical evidence monitoring; checking the live sink and
 operating a scheduler remain separate actions.
 
+Optional [Prometheus publication metrics](ons-pay-portable-publishing.md#publication-status-metrics)
+expose the same archive checks and support an explicitly requested atomic textfile
+export. Check timestamps allow stale-job alerts; operators still configure
+scheduling, scraping, missing-series detection and live drift verification.
+
 | Boundary | Current limit or assumption |
 | --- | --- |
 | Source plans | `--max-rows` is 1–100000; default 100000. Validation checks the complete selected table, rather than sampling. |

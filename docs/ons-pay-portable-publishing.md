@@ -477,6 +477,75 @@ accepts the same selection and optional age threshold, plus an optional aware
 `PublicationStatusReport` with `to_dict()`. `PublicationArchive.matching_history`
 provides the underlying read-only exact-selection query without an age policy.
 
+### Publication status metrics
+
+`ons-pay-publication-status --format prometheus` renders the same evaluation as
+Prometheus gauges on stdout. JSON remains the default. To publish a complete
+report atomically for a local textfile collector, explicitly supply `--textfile`:
+
+```bash
+poetry run data-platform-lab ons-pay-publication-status \
+  --data-root ../data --model-version 1 \
+  --registry-commit "$ONS_REGISTRY_COMMIT" --source-sha256 "$ONS_SOURCE_SHA256" \
+  --table local_authority_yoy --sink postgresql --target-id local-postgres \
+  --max-age-hours 24 --format prometheus \
+  --textfile /var/lib/node_exporter/textfile_collector/ons-pay-publication.prom
+```
+
+The destination directory must already exist and be writable. This uses the
+existing [atomic textfile writer](ons-pay-alerting.md#publish-a-complete-metrics-snapshot-when-requested)
+and the [Node Exporter textfile collector](https://github.com/prometheus/node_exporter#textfile-collector).
+It emits [Prometheus text format](https://prometheus.io/docs/instrumenting/exposition_formats/)
+without sample timestamps; check and attempt times are gauge values.
+The command starts no exporter or scheduler. Without `--textfile`, both output
+formats remain read-only and create no directories or locks.
+
+Every metric below has the prefix `dpl_ons_pay_publication_` and exact
+`model_version`, `registry_commit`, `source_sha256`, `sink`, `table` and `target_id`
+labels. An empty target label represents unlabeled legacy records. Labels contain
+no attempt UUIDs, record hashes, paths or connection settings. Select a bounded
+set of sources/targets and retire obsolete collector files to control series growth.
+
+| Metric suffix | Meaning |
+| --- | --- |
+| `healthy` | `1` only for an `ok` archived outcome; otherwise `0`. It does not claim live sink health. |
+| `checked_at_seconds` | UTC Unix time of this completed archive evaluation, including alert/unavailable results. |
+| `status{state="..."}` | One gauge for each of `ok`, `alert`, `unavailable`; the current state is `1`, others `0`. |
+| `reason{reason="..."}` | The current documented status reason, with value `1`. |
+| `attempts{outcome="..."}` | Counts of selected `accepted`, `rejected` and `failed` attempts. These are archive gauges, not cumulative counters or row counts. |
+| `latest_attempts` | Number of selected records sharing the latest end time; `0` when none match. |
+| `latest_attempt_ended_at_seconds` | UTC Unix end time of a unique latest attempt; omitted if missing or ambiguous. |
+| `latest_attempt_age_seconds` | Age at check time of a unique latest attempt; omitted if missing or ambiguous. Negative ages identify future-dated evidence. |
+| `max_age_seconds` | The configured age threshold converted to seconds; omitted when no age policy is set. |
+
+CLI and JSON age values remain in hours. An extremely large finite hours threshold
+that overflows the seconds representation exports as Prometheus `+Inf`.
+
+An alert or unavailable result **replaces the textfile before exiting `1`**.
+An argument error exits `2`, archive validation failure exits `5`, and export
+failure returns the fixed `textfile_error` diagnostic with exit `2`. These errors
+emit JSON even when Prometheus was requested and preserve the previous complete
+file. A `.prom` extension is required; hidden names, symlinks, symlinked parent
+directories, missing parents and directory destinations are rejected. Failed
+writes clean up their temporary files. Use `--textfile` rather than redirecting
+stdout over a collector file, which could replace valid metrics with error JSON.
+
+Schedule one writer per destination, with a distinct file for each exact
+selection. These gauges use the same trusted-clock and local-filesystem assumptions
+as the other monitoring commands. A preserved file can continue to report an
+earlier success after a failed or stopped job. For example, if checks are scheduled
+every minute, alert on both:
+
+```promql
+dpl_ons_pay_publication_healthy == 0
+time() - dpl_ons_pay_publication_checked_at_seconds > 300
+```
+
+Also monitor missing expected series, failed scheduler jobs and collector scrape
+errors: a timestamp alert cannot detect a file that has never existed. The five
+minute value above is an example monitoring interval, separate from the publication
+age policy. Sink drift still requires `ons-pay-publish --verify`.
+
 ### Outcomes and stored fields
 
 | Publication `outcome` | Meaning | Manifest `status` |

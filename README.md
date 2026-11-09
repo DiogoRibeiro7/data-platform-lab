@@ -288,6 +288,9 @@ with the exact source pins, sink, table, target label and optional `--max-age-ho
 It inspects saved evidence without source files or database access and returns a
 nonzero exit for missing, failed, rejected, stale or uncertain outcomes. See
 [publication status and freshness](docs/ons-pay-portable-publishing.md#publication-status-and-freshness).
+Add `--format prometheus` for gauges or `--format prometheus --textfile PATH.prom`
+for an atomic export to a local collector. Monitor the check timestamp as well as
+publication health; see [publication metrics](docs/ons-pay-portable-publishing.md#publication-status-metrics).
 
 Real PyMongo integration is available through the optional `mongodb` Compose
 profile, using MongoDB 9.0.4 with disposable storage and a loopback-only port.

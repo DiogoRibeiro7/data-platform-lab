@@ -141,3 +141,88 @@ def publication_status(
         latest_count,
         attempt,
     )
+
+
+def format_publication_prometheus(report: PublicationStatusReport) -> str:
+    """Render archive status gauges without record IDs or database observations.
+
+    Consume a validated status report. Unknown attempt ages/timestamps and an
+    unconfigured age limit are omitted. All counts are archive gauges, not
+    cumulative process counters. Labels retain the exact publication selection.
+    """
+    labels = (
+        f'model_version="{report.vintage["model_version"]}",'
+        f'registry_commit="{report.vintage["registry_commit"]}",'
+        f'source_sha256="{report.vintage["source_sha256"]}",'
+        f'sink="{report.sink}",table="{report.table}",target_id="{report.target_id or ""}"'
+    )
+    attempt = report.latest_attempt
+    values: tuple[tuple[str, str, int | float | None], ...] = (
+        (
+            "healthy",
+            "Latest archived outcome passes the configured checks (1=yes).",
+            int(report.status == "ok"),
+        ),
+        (
+            "checked_at_seconds",
+            "UTC Unix time of the completed archive status check.",
+            datetime.fromisoformat(report.checked_at_utc).timestamp(),
+        ),
+        (
+            "latest_attempts",
+            "Number of selected attempts sharing the latest end time.",
+            report.latest_attempt_count,
+        ),
+        (
+            "latest_attempt_ended_at_seconds",
+            "UTC Unix end time of the unique latest selected attempt, when known.",
+            datetime.fromisoformat(attempt.ended_at_utc).timestamp() if attempt else None,
+        ),
+        (
+            "latest_attempt_age_seconds",
+            "Seconds since the unique latest attempt ended; negative means future-dated.",
+            attempt.age_hours * 3600 if attempt else None,
+        ),
+        (
+            "max_age_seconds",
+            "Configured maximum accepted attempt age in seconds, when set.",
+            report.max_age_hours * 3600 if report.max_age_hours is not None else None,
+        ),
+    )
+    lines: list[str] = []
+    for name, help_text, value in values:
+        if value is None:
+            continue
+        metric = f"dpl_ons_pay_publication_{name}"
+        # A valid finite hours threshold can overflow when converted to seconds.
+        # Prometheus supports +Inf; Python's lowercase spelling is not portable.
+        sample = "+Inf" if value == math.inf else str(value)
+        lines.extend(
+            (
+                f"# HELP {metric} {help_text}",
+                f"# TYPE {metric} gauge",
+                f"{metric}{{{labels}}} {sample}",
+            )
+        )
+    for name, help_text, label_name, samples in (
+        (
+            "status",
+            "Current archive status (1=selected, 0=other state).",
+            "state",
+            {state: int(report.status == state) for state in ("ok", "alert", "unavailable")},
+        ),
+        (
+            "reason",
+            "Reason for the current archive status (1=selected).",
+            "reason",
+            {report.reason: 1},
+        ),
+        ("attempts", "Number of selected archived attempts by outcome.", "outcome", report.counts),
+    ):
+        metric = f"dpl_ons_pay_publication_{name}"
+        lines.extend((f"# HELP {metric} {help_text}", f"# TYPE {metric} gauge"))
+        lines.extend(
+            f'{metric}{{{labels},{label_name}="{label_value}"}} {value}'
+            for label_value, value in samples.items()
+        )
+    return "\n".join(lines) + "\n"
