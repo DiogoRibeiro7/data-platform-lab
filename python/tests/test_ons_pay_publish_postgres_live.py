@@ -205,6 +205,29 @@ def test_live_operator_records_durable_acceptance_and_reuses_attempt(
     assert repeated["evidence"]["record_sha256"] == evidence.record_sha256
     assert len(PublicationArchive(root).history()) == 1
 
+    verify_args = [
+        argument for argument in args if argument not in ("--apply", "--record-evidence")
+    ]
+    verify_args.extend(["--verify", "--baseline-attempt-id", result["evidence"]["attempt_id"]])
+    settings = {"ONS_PAY_POSTGRES_DSN": os.environ["ONS_PAY_POSTGRES_DSN"]}
+    verified = _invoke(capsys, verify_args, environ=settings)
+    assert verified["status"] == "verified" and verified["acceptance"] is None
+    assert verified["baseline"]["record_sha256"] == evidence.record_sha256
+    # Delete only this test's exact vintage, then prove the historical acceptance
+    # cannot hide current drift or cause verification to republish missing rows.
+    with psycopg.connect(settings["ONS_PAY_POSTGRES_DSN"]) as connection:
+        connection.execute(
+            sql.SQL("DELETE FROM {} WHERE registry_commit = %s AND source_sha256 = %s").format(
+                sql.Identifier(f"ons_pay_{table}")
+            ),
+            (pins["registry_commit"], pins["source_sha256"]),
+        )
+    drifted = _invoke(capsys, verify_args, environ=settings, expected_exit=3)
+    assert drifted["reconciliation"]["missing_count"] == result["counts"]["source"]
+    assert drifted["counts"]["observed"] == 0 and drifted["acceptance"] is None
+    assert drifted["baseline"] == verified["baseline"]
+    assert PublicationArchive(root).history() == (evidence,)
+
 
 @pytest.fixture
 def timeout_target(

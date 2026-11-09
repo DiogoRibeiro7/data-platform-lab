@@ -89,6 +89,12 @@ durable outcomes with operator-managed database configurations. Retry checks and
 history filtering use the label; physical server identity is still not verified.
 Labeled version `2` manifests coexist with unchanged version `1` records.
 
+Operators can also [verify a recorded publication](ons-pay-portable-publishing.md#verify-a-recorded-publication)
+with `--verify --baseline-attempt-id`. The CLI validates the accepted record against
+the exact source and target, then performs a fresh sink reconciliation. This
+supports explicit drift checks without replacing historical acceptance or
+introducing a scheduler, automatic repair or new release controls.
+
 | Boundary | Current limit or assumption |
 | --- | --- |
 | Source plans | `--max-rows` is 1–100000; default 100000. Validation checks the complete selected table, rather than sampling. |

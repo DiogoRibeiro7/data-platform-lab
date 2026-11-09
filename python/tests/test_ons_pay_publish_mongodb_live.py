@@ -329,11 +329,25 @@ def test_live_cli_failed_rejected_and_accepted_evidence_are_immutable(
     accepted_record = archive.get_attempt(accepted["evidence"]["attempt_id"])
     assert accepted_record is not None
     assert accepted_record.to_dict()["acceptance"] == accepted["acceptance"]
-    verified = _invoke(capsys, mongo_database, [*_args(root, plan), "--verify"])
+    verify_args = [
+        *_args(root, plan),
+        "--verify",
+        "--target-id",
+        "local-mongo",
+        "--baseline-attempt-id",
+        accepted["evidence"]["attempt_id"],
+    ]
+    verified = _invoke(capsys, mongo_database, verify_args)
     assert verified["status"] == "verified" and verified["acceptance"] is None
+    assert verified["baseline"]["record_sha256"] == accepted_record.record_sha256
     extra = copy.deepcopy(plan.records[0])
     extra["_id"] = "f" * 64
     collection.insert_one(extra)
+    before = _snapshot(collection)
+    drifted = _invoke(capsys, mongo_database, verify_args, exit_code=3)
+    assert drifted["reconciliation"]["unexpected_count"] == 1
+    assert drifted["acceptance"] is None and drifted["baseline"] == verified["baseline"]
+    assert _snapshot(collection) == before and len(archive.history()) == 2
     rejected = _invoke(capsys, mongo_database, args, exit_code=3)
     assert rejected["status"] == "rejected" and rejected["acceptance"] is None
     rejected_record = archive.get_attempt(rejected["evidence"]["attempt_id"])
