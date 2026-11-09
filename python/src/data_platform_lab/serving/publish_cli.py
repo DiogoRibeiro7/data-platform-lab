@@ -71,6 +71,10 @@ def _parser() -> argparse.ArgumentParser:
     operation.add_argument("--apply", action="store_true", help="Publish and require acceptance.")
     operation.add_argument("--verify", action="store_true", help="Read and reconcile; never write.")
     parser.add_argument(
+        "--baseline-attempt-id",
+        help="With --verify, require a matching accepted archive UUID before reading the sink.",
+    )
+    parser.add_argument(
         "--record-evidence",
         action="store_true",
         help="Persist an immutable outcome; requires --apply and a POSIX filesystem.",
@@ -262,6 +266,19 @@ def _execute(
             result["status"] = "previewed"
             return 0
 
+        if args.baseline_attempt_id is not None:
+            baseline = PublicationArchive(args.data_root).accepted_baseline(
+                plan,
+                sink=args.sink,
+                attempt_id=args.baseline_attempt_id,
+                target_id=args.target_id,
+            )
+            result["baseline"] = {
+                "attempt_id": args.baseline_attempt_id,
+                "record_sha256": baseline.record_sha256,
+                "accepted_at": baseline.to_dict()["ended_at"],
+            }
+
         if args.record_evidence:
             archive = PublicationArchive(args.data_root)
             existing = archive.prepare(
@@ -341,7 +358,12 @@ def _execute(
         )
     except PublicationEvidenceError:
         return _failure(
-            result, "evidence_error", "Cannot prepare publication evidence; no sink I/O.", 5
+            result,
+            "evidence_error",
+            "Cannot validate accepted baseline; no sink I/O."
+            if args.baseline_attempt_id is not None
+            else "Cannot prepare publication evidence; no sink I/O.",
+            5,
         )
     if archive is not None and plan is not None:
         try:
@@ -420,16 +442,23 @@ def main(
             args.attempt_id and not args.record_evidence
         ):
             raise _ArgumentError("Evidence options require --apply --record-evidence.")
-        if args.attempt_id is not None:
+        if args.baseline_attempt_id is not None and not args.verify:
+            raise _ArgumentError("--baseline-attempt-id requires --verify.")
+        for flag, value in (
+            ("--attempt-id", args.attempt_id),
+            ("--baseline-attempt-id", args.baseline_attempt_id),
+        ):
+            if value is None:
+                continue
             from data_platform_lab.serving.publish_evidence import (
                 PublicationEvidenceError,
                 validate_attempt_id,
             )
 
             try:
-                validate_attempt_id(args.attempt_id)
+                validate_attempt_id(value)
             except PublicationEvidenceError:
-                raise _ArgumentError("--attempt-id must be a canonical UUID.") from None
+                raise _ArgumentError(f"{flag} must be a canonical UUID.") from None
     except _ArgumentError as exc:
         code = _failure(result, "invalid_arguments", str(exc), 2)
     else:

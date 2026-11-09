@@ -187,6 +187,7 @@ exceptions, source/sink values, connection settings or record identifiers.
 | `schema_version` | Operator result schema, currently `1` |
 | `operation`, `sink`, `table`, `vintage` | Selected operation and validated source pins; unavailable information is `null` |
 | `target_id` | Optional non-secret operator label, included only when `--target-id` is supplied; not a verified server identity |
+| `baseline` | With `--verify --baseline-attempt-id`, the validated historical `attempt_id`, `record_sha256` and `accepted_at`; current status and reconciliation describe the fresh read |
 | `status` | `previewed`, `accepted`, `verified`, `rejected`, or `failed` |
 | `counts` | Source, successfully applied and observed row counts; unknown/not applicable is `null` |
 | `fingerprints` | Source artifact, source plan, expected sink and observed sink SHA-256; unobserved hashes are `null` |
@@ -200,7 +201,7 @@ exceptions, source/sink values, connection settings or record identifiers.
 | `2` | Invalid syntax, source pins/files/limits, missing settings or dependency | `invalid_arguments`, `source_validation_failed`, `configuration_error` |
 | `3` | Drift, unsafe/malformed sink data, or rejected acceptance evidence | `reconciliation_failed`, `acceptance_rejected` |
 | `4` | Connection, database write/read, or owned-client cleanup failed | `database_error` |
-| `5` | Explicit evidence recording or history inspection failed | `evidence_error` |
+| `5` | Evidence recording, history inspection, or accepted-baseline validation failed | `evidence_error` |
 
 A successful `--verify` has status `verified` and `acceptance: null`: it has
 no write receipt and cannot fabricate publication acceptance. Evidence is persisted
@@ -369,6 +370,51 @@ record. Unlabeled records do not match a target filter. Combining `--attempt-id`
 with `--target-id` returns the attempt only if its label matches; otherwise the
 result is empty. History still opens no source files or database connections.
 
+### Verify a recorded publication
+
+Add `--baseline-attempt-id` to `--verify` to check the current sink against a
+specific accepted publication. Keep the original source pins, sink, table and
+target label explicit:
+
+```bash
+poetry run data-platform-lab ons-pay-publish \
+  --data-root ../data --model-version 1 \
+  --registry-commit "$ONS_REGISTRY_COMMIT" --source-sha256 "$ONS_SOURCE_SHA256" \
+  --table local_authority_yoy --sink postgresql --target-id local-postgres \
+  --verify --baseline-attempt-id "$ATTEMPT_ID" \
+  --statement-timeout-ms 30000 --lock-timeout-ms 5000
+```
+
+The command validates the entire archive and requires the selected attempt to
+be `accepted`. Its sink, table, full vintage, target label, source artifact hash,
+source plan hash, row count and independently recomputed expected sink hash must
+match the current verified plan. A missing, corrupt, failed, rejected or mismatched
+baseline exits `5` before opening a database connection. Invalid option combinations
+or a malformed UUID exit `2` before source or archive I/O. This option requires
+`--verify` and cannot be combined with publication or evidence-writing options.
+
+Both version `1` and version `2` manifests are supported. For an unlabeled baseline,
+omit `--target-id`; for a labeled one, supply the exact stored label. The label
+still relies on the operator's database configuration and does not authenticate
+the connected server. The source artifacts must remain available and valid;
+missing or altered source files exit `2` rather than using the archive as a dataset.
+
+After baseline validation, the existing reconciler reads the current sink. A
+matching observation exits `0` with `status: verified`; drift exits `3`; database
+or connection-cleanup failures exit `4`. `acceptance` is always `null`, and
+`counts.applied` is `null`. The optional `baseline` object links the result to the
+historical record; its `accepted_at` is the original attempt's end time, not the
+time of this verification. Presence of this reference alone does not mean the
+fresh check passed: inspect `status`, `error` and `reconciliation`.
+
+Verification creates no archive directories, locks, records or sink writes and
+does not change the release pointer. Drift leaves the earlier accepted record
+unchanged and never triggers automatic repair. A historical apply retry still
+returns its saved outcome without sink I/O; use this verification option when a
+fresh check tied to that outcome is required. Results describe the current read,
+not a guarantee against subsequent database changes. Scheduling and retaining
+verification JSON remain operator-managed.
+
 ### Outcomes and stored fields
 
 | Publication `outcome` | Meaning | Manifest `status` |
@@ -475,6 +521,8 @@ An exact persistence retry supplies the same inputs and timestamps.
 Omit `target_id` (or use `None`) for legacy unlabeled evidence. Supply the same
 optional label to `prepare` when checking an attempt before sink I/O.
 `history(last=..., target_id=...)` and `get_attempt(uuid)` provide read-only inspection.
+`accepted_baseline(plan, sink=..., attempt_id=..., target_id=...)` validates a matching
+accepted record without locks or writes; it does not itself inspect the live sink.
 
 ```bash
 poetry run pytest -q tests/test_ons_pay_publish_evidence.py

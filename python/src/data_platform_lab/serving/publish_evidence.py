@@ -448,6 +448,20 @@ def _sync_directory(path: Path) -> None:
         os.close(fd)
 
 
+def _matches_publication(
+    record: dict[str, Any], plan: PublishPlan, *, sink: SinkName, target_id: str | None
+) -> bool:
+    """Use the same exact source and target identity for retries and baseline checks."""
+    return (
+        record["sink"] == sink
+        and record.get("target_id") == target_id
+        and record["table"] == plan.table
+        and record["vintage"] == asdict(plan.vintage)
+        and record["fingerprints"]["source_artifact_sha256"] == plan.source_artifact_sha256
+        and record["fingerprints"]["source_plan_sha256"] == plan.records_sha256
+    )
+
+
 class PublicationArchive:
     """Append-only manifests with one terminal record per attempt, never a release pointer."""
 
@@ -539,6 +553,39 @@ class PublicationArchive:
             None,
         )
 
+    def accepted_baseline(
+        self,
+        plan: PublishPlan,
+        *,
+        sink: SinkName,
+        attempt_id: str,
+        target_id: str | None = None,
+    ) -> PublicationEvidence:
+        """Read an accepted record matching the current plan, without locks or writes.
+
+        This validates historical evidence only. The caller must separately read
+        the current sink to detect drift; the returned acceptance is not refreshed.
+        """
+        from data_platform_lab.serving.publish_reconcile import expected_sink_fingerprint
+
+        if target_id is not None:
+            validate_target_id(target_id)
+        evidence = self.get_attempt(attempt_id)
+        if evidence is None:
+            raise PublicationEvidenceError("accepted baseline was not found")
+        record = evidence.to_dict()
+        if (
+            record["outcome"] != "accepted"
+            or not _matches_publication(record, plan, sink=sink, target_id=target_id)
+            or record["counts"]["source"] != plan.source_rows
+            or record["fingerprints"]["expected_sink_sha256"]
+            != expected_sink_fingerprint(plan, sink=sink)
+        ):
+            raise PublicationEvidenceError(
+                "baseline does not establish acceptance of this publication"
+            )
+        return evidence
+
     @contextmanager
     def _locked(self) -> Iterator[None]:
         """Serialize local evidence writers using an independent POSIX lock."""
@@ -590,15 +637,7 @@ class PublicationArchive:
                 raise PublicationEvidenceError("publication archive limit exceeded")
             if existing is not None:
                 record = existing.to_dict()
-                if (
-                    record["sink"] != sink
-                    or record.get("target_id") != target_id
-                    or record["table"] != plan.table
-                    or record["vintage"] != asdict(plan.vintage)
-                    or record["fingerprints"]["source_artifact_sha256"]
-                    != plan.source_artifact_sha256
-                    or record["fingerprints"]["source_plan_sha256"] != plan.records_sha256
-                ):
+                if not _matches_publication(record, plan, sink=sink, target_id=target_id):
                     raise PublicationEvidenceError(
                         "attempt ID already belongs to a different publication"
                     )

@@ -19,6 +19,9 @@
   history by target. Historical retries reject a changed or omitted label before
   connecting. Labeled manifests use version `2`; existing version `1` records
   remain readable and unchanged.
+- Recheck a saved accepted publication with `--verify --baseline-attempt-id`.
+  Source and target mismatches fail before connecting; a fresh reconciliation
+  detects drift without writing rows or changing the historical outcome.
 - Run the complete synthetic workflow with
   `python scripts/ons_pay_publishing_demo.py --exercise-recovery`, retaining
   readable reports, source artifacts, plans and durable outcomes.
