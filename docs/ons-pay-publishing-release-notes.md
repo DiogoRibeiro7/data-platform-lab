@@ -25,6 +25,9 @@
 - Check saved outcomes with `ons-pay-publication-status` and an optional
   `--max-age-hours` threshold. Exact source/target selection prevents unrelated
   successes from hiding failures; missing or uncertain evidence requires attention.
+- Export publication status with `--format prometheus`, optionally using
+  `--textfile PATH.prom` for atomic collector updates. Gauges include exact source
+  and target labels, outcome counts, freshness and a check timestamp for stale-job alerts.
 - Run the complete synthetic workflow with
   `python scripts/ons_pay_publishing_demo.py --exercise-recovery`, retaining
   readable reports, source artifacts, plans and durable outcomes.
