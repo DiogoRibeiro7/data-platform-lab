@@ -415,6 +415,68 @@ fresh check tied to that outcome is required. Results describe the current read,
 not a guarantee against subsequent database changes. Scheduling and retaining
 verification JSON remain operator-managed.
 
+### Publication status and freshness
+
+Use `ons-pay-publication-status` for scheduled checks of saved outcomes. It needs
+only the local evidence archive, so it also works after curated artifacts have
+been removed and without optional analytical or database clients:
+
+```bash
+poetry run data-platform-lab ons-pay-publication-status \
+  --data-root ../data --model-version 1 \
+  --registry-commit "$ONS_REGISTRY_COMMIT" --source-sha256 "$ONS_SOURCE_SHA256" \
+  --table local_authority_yoy --sink postgresql --target-id local-postgres \
+  --max-age-hours 24
+```
+
+The selection is exact: model version, registry commit, source hash, sink, table
+and target label must match. Omitting `--target-id` selects only unlabeled version
+`1` records; it does not combine all targets as an unfiltered history listing does.
+The entire archive is validated before selection, without a recent-record cutoff.
+Corruption or duplicate attempt IDs on another target still fail the check.
+
+The latest attempt is selected by its recorded end time. An older accepted
+attempt cannot hide a newer failed or rejected one. A new accepted attempt can
+restore an OK status while preserving the older outcomes. `--max-age-hours` must
+be positive and finite; an accepted attempt exactly at the threshold passes.
+Omitting it disables the age check.
+
+| Status | Reason | Exit |
+| --- | --- | --- |
+| `ok` | `latest_attempt_accepted`: one latest accepted attempt, within the configured age limit | `0` |
+| `alert` | `latest_attempt_failed` or `latest_attempt_rejected` | `1` |
+| `alert` | `stale`: latest accepted attempt exceeds the age limit | `1` |
+| `unavailable` | `no_attempts`: no saved outcome matches the exact selection | `1` |
+| `unavailable` | `future_timestamp`: the latest end time is later than the check time | `1` |
+| `unavailable` | `ambiguous_latest_attempt`: multiple attempts share the latest end time | `1` |
+
+Invalid arguments exit `2`; an unreadable, corrupt, unsafe or over-capacity archive
+exits `5`. These errors contain fixed diagnostics and do not emit a status report.
+A missing archive produces `no_attempts` without creating directories. Configure
+your scheduler to treat every nonzero exit as requiring attention.
+
+JSON reports include `schema_version: 1`, `operation: publication_status`, UTC
+check time, exact selection, age policy and counts of accepted/rejected/failed
+attempts. `latest_attempt_count` reports how many attempts share the latest end
+time. A unique latest attempt includes its UUID, content hash, outcome, end time,
+age in hours and fixed failure code; otherwise `latest_attempt` is `null`.
+These are attempt counts, not dataset row counts.
+
+This command observes historical evidence. It does not access source artifacts,
+connect to a database, verify present sink contents, or create acceptance.
+Use `--verify --baseline-attempt-id` for a fresh drift check. It creates no locks,
+records, release changes or schedules. Concurrent appends may change the next
+observation; trusted clocks, archive ownership, target mapping and scheduling
+remain operator responsibilities. Existing archive size and integrity limits apply.
+In-progress attempts and database writes without saved outcomes are not observable
+from this archive.
+
+The library function `observability.ons_pay_publication_status.publication_status`
+accepts the same selection and optional age threshold, plus an optional aware
+`checked_at` datetime for deterministic checks. It returns a
+`PublicationStatusReport` with `to_dict()`. `PublicationArchive.matching_history`
+provides the underlying read-only exact-selection query without an age policy.
+
 ### Outcomes and stored fields
 
 | Publication `outcome` | Meaning | Manifest `status` |
