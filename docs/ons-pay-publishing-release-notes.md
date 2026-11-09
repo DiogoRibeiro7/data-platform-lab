@@ -15,6 +15,10 @@
 - Opt into immutable local publication outcomes with `--apply --record-evidence`;
   inspect accepted, rejected and failed attempts using
   `data-platform-lab ons-pay-publication-history`.
+- Associate outcomes with a non-secret `--target-id` label and filter publication
+  history by target. Historical retries reject a changed or omitted label before
+  connecting. Labeled manifests use version `2`; existing version `1` records
+  remain readable and unchanged.
 - Run the complete synthetic workflow with
   `python scripts/ons_pay_publishing_demo.py --exercise-recovery`, retaining
   readable reports, source artifacts, plans and durable outcomes.

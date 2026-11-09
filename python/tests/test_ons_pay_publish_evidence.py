@@ -365,10 +365,13 @@ def test_history_remains_read_only_after_source_artifact_is_removed(
 
 
 @pytest.mark.parametrize("sink", ["postgresql", "mongodb"])
+@pytest.mark.parametrize("target_id", [None, "local-target"])
 def test_cli_recording_and_historical_retry_do_not_repeat_sink_io(
-    curated: Any, capsys: Any, sink: str
+    curated: Any, capsys: Any, sink: str, target_id: str | None
 ) -> None:
     args = [*_args(curated, sink), "--apply", "--record-evidence", "--attempt-id", ATTEMPT]
+    if target_id is not None:
+        args.extend(["--target-id", target_id])
     kwargs = (
         {"postgres_connection": CliPostgres("local_authority_yoy")}
         if sink == "postgresql"
@@ -381,16 +384,23 @@ def test_cli_recording_and_historical_retry_do_not_repeat_sink_io(
     assert repeated["evidence"]["replayed"]
     assert repeated["evidence"]["record_sha256"] == first["evidence"]["record_sha256"]
     assert repeated["acceptance"] == first["acceptance"]
+    assert first.get("target_id") == repeated.get("target_id") == target_id
+    record = PublicationArchive(curated[0]).get_attempt(ATTEMPT).to_dict()
+    assert record["schema_version"] == (1 if target_id is None else 2)
+    assert record.get("target_id") == target_id
 
 
 @pytest.mark.parametrize("failure", ["partial", "drift", "read", "malformed", "configuration"])
+@pytest.mark.parametrize("target_id", [None, "local-target"])
 def test_cli_records_failure_or_rejection_without_acceptance(
-    curated: Any, capsys: Any, failure: str
+    curated: Any, capsys: Any, failure: str, target_id: str | None
 ) -> None:
     mongo = CliMongo(fail_at=2 if failure == "partial" else 0, fail_read=failure == "read")
     mongo.drift = failure == "drift"
     mongo.malformed = failure == "malformed"
     args = [*_args(curated, "mongodb"), "--apply", "--record-evidence", "--attempt-id", ATTEMPT]
+    if target_id is not None:
+        args.extend(["--target-id", target_id])
     kwargs = {} if failure == "configuration" else {"mongo_collection": mongo}
     exit_code = 2 if failure == "configuration" else 3 if failure in ("drift", "malformed") else 4
     result = _invoke(capsys, args, expected_exit=exit_code, environ={}, **kwargs)
@@ -398,9 +408,11 @@ def test_cli_records_failure_or_rejection_without_acceptance(
     record = PublicationArchive(curated[0]).get_attempt(ATTEMPT).to_dict()
     assert record["outcome"] == ("rejected" if failure == "drift" else "failed")
     assert record["acceptance"] is None
+    assert record.get("target_id") == result.get("target_id") == target_id
     with patch.object(publish_cli, "_open_sink", side_effect=AssertionError):
         repeated = _invoke(capsys, args, expected_exit=exit_code, environ={})
     assert repeated["evidence"]["record_sha256"] == result["evidence"]["record_sha256"]
+    assert repeated.get("target_id") == target_id
 
 
 def test_lost_postgres_commit_ack_records_failure_before_explicit_recovery(
@@ -506,3 +518,144 @@ def test_inconsistent_input_evidence_never_creates_an_accepted_record(prepared: 
     with pytest.raises(PublicationEvidenceError):
         _record(prepared, report=replace(kwargs["report"], expected_sink_sha256="f" * 64))
     assert not archive.root.exists()
+
+
+@pytest.mark.parametrize(
+    "original, requested", [(None, "local-a"), ("local-a", None), ("local-a", "local-b")]
+)
+@pytest.mark.parametrize("sink", ["postgresql", "mongodb"])
+def test_target_conflict_cannot_reuse_an_attempt_or_open_a_sink(
+    curated: Any, capsys: Any, original: str | None, requested: str | None, sink: str
+) -> None:
+    args = [*_args(curated, sink), "--apply", "--record-evidence", "--attempt-id", ATTEMPT]
+    original_flags = ["--target-id", original] if original else []
+    requested_flags = ["--target-id", requested] if requested else []
+    kwargs = (
+        {"postgres_connection": CliPostgres("local_authority_yoy")}
+        if sink == "postgresql"
+        else {"mongo_collection": CliMongo()}
+    )
+    _invoke(capsys, [*args, *original_flags], **kwargs)
+    before = _snapshot(curated[0])
+    with patch.object(publish_cli, "_open_sink", side_effect=AssertionError):
+        result = _invoke(capsys, [*args, *requested_flags], expected_exit=5, environ={})
+    assert result["error"]["code"] == "evidence_error"
+    assert result["acceptance"] is None
+    assert _snapshot(curated[0]) == before
+
+
+def test_mixed_schema_history_filters_targets_before_last_and_preserves_old_bytes(
+    prepared: Any, capsys: Any
+) -> None:
+    archive, plan, _ = prepared
+    legacy = _record(prepared)
+    target_a = _record(
+        prepared,
+        target_id="local-a",
+        attempt_id=str(uuid4()),
+        ended_at=START + timedelta(seconds=3),
+    )
+    target_b = _record(
+        prepared,
+        target_id="local-b",
+        attempt_id=str(uuid4()),
+        ended_at=START + timedelta(seconds=4),
+    )
+    assert legacy.to_dict()["schema_version"] == 1
+    assert "target_id" not in legacy.to_dict()
+    assert archive.prepare(plan, sink="mongodb", attempt_id=ATTEMPT) == legacy
+    assert archive.history() == (legacy, target_a, target_b)
+    assert archive.history(last=1, target_id="local-a") == (target_a,)
+    assert archive.history(target_id="unknown") == ()
+    before = _snapshot(archive.data_root)
+    args = [
+        "ons-pay-publication-history",
+        "--data-root",
+        str(archive.data_root),
+        "--target-id",
+        "local-a",
+        "--last",
+        "1",
+    ]
+    platform_main(args)
+    records = json.loads(capsys.readouterr().out)["records"]
+    assert [item["record_sha256"] for item in records] == [target_a.record_sha256]
+    for attempt, expected in [
+        (ATTEMPT, []),
+        (target_b.to_dict()["run_id"], []),
+        (target_a.to_dict()["run_id"], records),
+    ]:
+        platform_main([*args, "--attempt-id", attempt])
+        assert json.loads(capsys.readouterr().out)["records"] == expected
+    assert _snapshot(archive.data_root) == before
+    assert (archive.root / f"{legacy.record_sha256}.json").read_bytes() == legacy.payload
+
+
+def test_target_filter_still_rejects_corruption_on_another_target(prepared: Any) -> None:
+    archive, _, _ = prepared
+    evidence = _record(prepared, target_id="local-b")
+    _tamper_record(archive, evidence, "bad_status")
+    with pytest.raises(PublicationEvidenceError):
+        archive.history(last=1, target_id="local-a")
+
+
+@pytest.mark.parametrize(
+    "mutation", ["missing", "null", "invalid", "legacy_extra", "unknown_schema"]
+)
+def test_rehashed_target_schema_inconsistencies_fail_closed(prepared: Any, mutation: str) -> None:
+    archive, _, _ = prepared
+    evidence = _record(prepared, target_id="local-a")
+    raw = evidence.to_dict()
+    if mutation == "missing":
+        del raw["target_id"]
+    elif mutation in ("null", "invalid"):
+        raw["target_id"] = None if mutation == "null" else "mongodb://secret@host/db"
+    else:
+        raw["schema_version"] = 1 if mutation == "legacy_extra" else 3
+    payload = publish_evidence._canonical(raw)
+    (archive.root / f"{evidence.record_sha256}.json").unlink()
+    (archive.root / f"{hashlib.sha256(payload).hexdigest()}.json").write_bytes(payload)
+    with pytest.raises(PublicationEvidenceError):
+        archive.history()
+
+
+@pytest.mark.parametrize("target_id", ["a", "a" * 64, "local_pg-2"])
+def test_target_persistence_is_idempotent_and_immutable(prepared: Any, target_id: str) -> None:
+    archive, plan, _ = prepared
+    evidence = _record(prepared, target_id=target_id)
+    assert _record(prepared, target_id=target_id) == evidence
+    assert (
+        archive.prepare(plan, sink="mongodb", attempt_id=ATTEMPT, target_id=target_id) == evidence
+    )
+    before = _snapshot(archive.data_root)
+    with pytest.raises(PublicationEvidenceError, match="immutable outcome"):
+        _record(prepared, target_id="other-target")
+    assert _snapshot(archive.data_root) == before
+
+
+@pytest.mark.parametrize("target_id", ["", "a" * 65, "postgresql://secret@host/db", True, 1])
+def test_invalid_library_target_does_not_create_an_archive(prepared: Any, target_id: Any) -> None:
+    archive, plan, _ = prepared
+    with pytest.raises(PublicationEvidenceError):
+        archive.prepare(plan, sink="mongodb", attempt_id=ATTEMPT, target_id=target_id)
+    with pytest.raises(PublicationEvidenceError):
+        _record(prepared, target_id=target_id)
+    with pytest.raises(PublicationEvidenceError):
+        archive.history(target_id=target_id)
+    assert not archive.root.exists()
+
+
+def test_concurrent_targets_cannot_claim_the_same_attempt(prepared: Any) -> None:
+    archive, plan, kwargs = prepared
+
+    def record(target_id: str) -> str:
+        try:
+            PublicationArchive(archive.data_root).record(plan, **kwargs, target_id=target_id)
+            return "written"
+        except PublicationEvidenceError:
+            return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(record, ["local-a", "local-b"]))
+    assert sorted(results) == ["conflict", "written"]
+    assert len(archive.history()) == 1

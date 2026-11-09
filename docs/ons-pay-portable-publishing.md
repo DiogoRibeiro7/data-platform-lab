@@ -186,6 +186,7 @@ exceptions, source/sink values, connection settings or record identifiers.
 | --- | --- |
 | `schema_version` | Operator result schema, currently `1` |
 | `operation`, `sink`, `table`, `vintage` | Selected operation and validated source pins; unavailable information is `null` |
+| `target_id` | Optional non-secret operator label, included only when `--target-id` is supplied; not a verified server identity |
 | `status` | `previewed`, `accepted`, `verified`, `rejected`, or `failed` |
 | `counts` | Source, successfully applied and observed row counts; unknown/not applicable is `null` |
 | `fingerprints` | Source artifact, source plan, expected sink and observed sink SHA-256; unobserved hashes are `null` |
@@ -311,7 +312,7 @@ poetry run data-platform-lab ons-pay-publish \
   --data-root ../data --model-version 1 \
   --registry-commit "$ONS_REGISTRY_COMMIT" --source-sha256 "$ONS_SOURCE_SHA256" \
   --table local_authority_yoy --sink postgresql \
-  --apply --record-evidence --attempt-id "$ATTEMPT_ID"
+  --apply --record-evidence --attempt-id "$ATTEMPT_ID" --target-id local-postgres
 
 # Inspect this attempt independently of source files and database credentials.
 poetry run data-platform-lab ons-pay-publication-history \
@@ -319,15 +320,54 @@ poetry run data-platform-lab ons-pay-publication-history \
 
 # Validate the entire archive and show the latest 20 records.
 poetry run data-platform-lab ons-pay-publication-history --data-root ../data --last 20
+
+# Show the latest 20 outcomes for one configured target.
+poetry run data-platform-lab ons-pay-publication-history \
+  --data-root ../data --target-id local-postgres --last 20
 ```
 
 The same flags work with `--sink mongodb`. Omitting `--attempt-id` generates a
 new UUID for each invocation. The CLI adds an `evidence` object to its usual JSON:
-`attempt_id`, `record_sha256` and `replayed`. Without `--record-evidence`, output
-and filesystem behavior remain unchanged. Evidence flags with preview or
+`attempt_id`, `record_sha256` and `replayed`. Without `--record-evidence` or
+`--target-id`, output and filesystem behavior remain unchanged. Evidence flags with preview or
 `--verify` are rejected before any I/O. Invalid arguments or an initially
 unverifiable source cannot produce a source-backed record; recording begins
 only after the initial source plan is verified and archive preflight succeeds.
+
+### Target labels
+
+Use `--target-id` to associate a publication with a configured target, for example
+`local-postgres` or `local-mongo`. Labels have 1–64 lowercase ASCII letters,
+digits, underscores or hyphens and start with a letter. Invalid labels fail with
+exit `2` before source, archive or database I/O, without echoing the supplied value.
+Choose a non-secret label: it is printed in JSON and stored verbatim in evidence.
+Do not supply credentials, connection strings or sensitive names.
+
+The label is operator-supplied metadata. It does not choose a connection, verify
+its configuration, or authenticate a physical database. Keep a stable association
+between each label and its database/schema configuration, and use a different
+label when that target changes. PostgreSQL and MongoDB use their existing
+connection settings; caller-owned handles remain supported. Preview and `--verify`
+also accept the label, without creating evidence or changing their I/O behavior.
+
+Labeled evidence uses manifest `schema_version: 2`, which requires `target_id`.
+Unlabeled publications continue to write the original version `1` format. Both
+versions can coexist in an archive; reading does not migrate or rewrite records.
+The CLI result envelope remains version `1`, with `target_id` as an optional field.
+Older software that understands only version `1` manifests rejects archives
+containing version `2`; upgrade archive readers before recording labeled attempts.
+
+An attempt UUID is unique across the entire archive. A historical retry must
+match its original target ID, including its presence or absence. Adding a label
+to an unlabeled attempt, omitting one from a labeled attempt, or changing it exits
+`5` before connecting. Use a new UUID for a different target or a fresh execution.
+The target ID participates in the manifest content hash and immutable retry checks;
+it does not change dataset IDs, source/sink fingerprints or acceptance-gate inputs.
+
+History's `--target-id` filter applies before `--last`, after validating every
+record. Unlabeled records do not match a target filter. Combining `--attempt-id`
+with `--target-id` returns the attempt only if its label matches; otherwise the
+result is empty. History still opens no source files or database connections.
 
 ### Outcomes and stored fields
 
@@ -365,15 +405,17 @@ recorded UUID and matching source plan, sink and table returns the historical
 result with `replayed: true`, its original exit code and no database I/O.
 **This is not a fresh verification of the current sink.** Use `--verify` for
 that check. The attempt is bound to its original observation; connection settings
-are intentionally not read when returning it. Evidence records sink type, not an
-authenticated server identity. Operators must retain the association between
-their attempt IDs and actual database configuration; distinct targets and new
-recovery actions need distinct attempt IDs.
+are intentionally not read when returning it. Evidence records sink type and an
+optional operator target label, without authenticating server identity. Operators
+must retain the association between labels (or unlabeled attempt IDs) and actual
+database configuration; distinct targets and new recovery actions need distinct
+attempt IDs. Reusing a label with different connection settings cannot be detected
+by a historical retry.
 
 Retrying a recorded failed UUID returns that failure. To replay partial database
 writes, request a new attempt ID with the same exact source pins. This creates
 a new record and preserves earlier failed or accepted evidence. Reusing an ID
-for a different source plan, sink or table fails before connecting.
+for a different source plan, sink, table or target label fails before connecting.
 
 Evidence writers use a separate POSIX advisory lock to validate history and
 serialize append operations. Identical persistence retries return the same
@@ -426,11 +468,13 @@ trusted local writers and filesystem ownership. Signed attestations, remote
 anchoring, retention management and cross-host locks are outside this workflow.
 
 The Python API is `PublicationArchive(data_root).record(plan, sink=...,
-attempt_id=..., started_at=..., ended_at=..., receipt=..., report=...)`.
+attempt_id=..., started_at=..., ended_at=..., receipt=..., report=..., target_id=...)`.
 It invokes the existing gate; it does not accept a caller's `accepted` flag.
 Pass a fixed `failure_code` and available receipt/report for an execution failure.
 An exact persistence retry supplies the same inputs and timestamps.
-`history(last=...)` and `get_attempt(uuid)` provide read-only inspection.
+Omit `target_id` (or use `None`) for legacy unlabeled evidence. Supply the same
+optional label to `prepare` when checking an attempt before sink I/O.
+`history(last=..., target_id=...)` and `get_attempt(uuid)` provide read-only inspection.
 
 ```bash
 poetry run pytest -q tests/test_ons_pay_publish_evidence.py

@@ -303,7 +303,7 @@ def test_live_cli_failed_rejected_and_accepted_evidence_are_immutable(
     collection = mongo_database.create_collection(
         f"ons_pay_{plan.table}", validator={"_id": {"$ne": plan.records[1]["_id"]}}
     )
-    args = [*_args(root, plan), "--apply", "--record-evidence"]
+    args = [*_args(root, plan), "--apply", "--record-evidence", "--target-id", "local-mongo"]
     failed = _invoke(capsys, mongo_database, args, exit_code=4)
     assert failed["status"] == "failed" and failed["acceptance"] is None
     assert failed["counts"]["applied"] is None
@@ -349,4 +349,6 @@ def test_live_cli_failed_rejected_and_accepted_evidence_are_immutable(
     assert archive.get_attempt(accepted["evidence"]["attempt_id"]) == accepted_record
     assert archive.get_attempt(rejected["evidence"]["attempt_id"]) == rejected_record
     assert len(archive.history()) == 4
+    assert all(record.to_dict()["target_id"] == "local-mongo" for record in archive.history())
+    assert all(record.to_dict()["schema_version"] == 2 for record in archive.history())
     assert _snapshot(collection) == {str(record["_id"]): record for record in plan.records}

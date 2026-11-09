@@ -6,7 +6,11 @@ import json
 from pathlib import Path
 
 from data_platform_lab.serving.publish_cli import _ArgumentError, _Parser
-from data_platform_lab.serving.publish_evidence import PublicationArchive, PublicationEvidenceError
+from data_platform_lab.serving.publish_evidence import (
+    PublicationArchive,
+    PublicationEvidenceError,
+    validate_target_id,
+)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -14,16 +18,29 @@ def main(argv: list[str] | None = None) -> None:
     parser = _Parser(prog="data-platform-lab ons-pay-publication-history", allow_abbrev=False)
     parser.add_argument("--data-root", type=Path, default=Path("../data"))
     parser.add_argument("--last", type=int, default=50, help="Latest records (1-10000).")
+    parser.add_argument("--target-id", help="Show only records with this non-secret target label.")
     parser.add_argument(
         "--attempt-id", help="Inspect one canonical UUID, after validating all history."
     )
     try:
         args = parser.parse_args(argv)
+        if args.target_id is not None:
+            try:
+                validate_target_id(args.target_id)
+            except PublicationEvidenceError as exc:
+                raise _ArgumentError(str(exc)) from None
         archive = PublicationArchive(args.data_root)
-        records = archive.history(last=args.last)
+        records = archive.history(last=args.last, target_id=args.target_id)
         if args.attempt_id is not None:
             selected = archive.get_attempt(args.attempt_id)
-            records = (selected,) if selected is not None else ()
+            records = (
+                (selected,)
+                if selected is not None
+                and (
+                    args.target_id is None or selected.to_dict().get("target_id") == args.target_id
+                )
+                else ()
+            )
     except _ArgumentError as exc:
         print(json.dumps({"error": {"code": "invalid_arguments", "message": str(exc)}}))
         raise SystemExit(2) from None

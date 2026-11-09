@@ -187,6 +187,8 @@ def test_live_operator_records_durable_acceptance_and_reuses_attempt(
         "postgresql",
         "--apply",
         "--record-evidence",
+        "--target-id",
+        "local-postgres",
     ]
     publish_main(args, environ={"ONS_PAY_POSTGRES_DSN": os.environ["ONS_PAY_POSTGRES_DSN"]})
     result = json.loads(capsys.readouterr().out)
@@ -195,6 +197,8 @@ def test_live_operator_records_durable_acceptance_and_reuses_attempt(
     assert evidence is not None
     assert evidence.record_sha256 == result["evidence"]["record_sha256"]
     assert evidence.to_dict()["acceptance"] == result["acceptance"]
+    assert evidence.to_dict()["target_id"] == result["target_id"] == "local-postgres"
+    assert evidence.to_dict()["schema_version"] == 2
     publish_main([*args, "--attempt-id", result["evidence"]["attempt_id"]], environ={})
     repeated = json.loads(capsys.readouterr().out)
     assert repeated["evidence"]["replayed"]
