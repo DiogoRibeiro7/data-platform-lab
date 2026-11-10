@@ -12,6 +12,7 @@ import json
 import re
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -308,14 +309,8 @@ def ingest_handoff(
         raise HandoffError("receipt directory must be outside the canonical registry")
     if isinstance(store, LocalBlobStore) and store.root.is_relative_to(root):
         raise HandoffError("destination store must be outside the canonical registry")
-    started_at = datetime.now(UTC)
-    run_id = uuid4().hex
-    published = 0
-    reused = 0
-    verified_bytes = 0
-    records: list[dict[str, Any]] = []
 
-    for item in plan.objects:
+    def read_source(item: CanonicalObject) -> bytes:
         try:
             source = (root / item.source_path).resolve(strict=True)
         except OSError as exc:
@@ -323,11 +318,45 @@ def ingest_handoff(
         if not source.is_relative_to(root) or not source.is_file():
             raise HandoffError(f"unsafe or missing source: {item.source_path}")
         payload = source.read_bytes()
-        if hashlib.sha256(payload).hexdigest() != item.sha256:
-            raise HandoffError(f"source checksum mismatch: {item.source_path}")
-        if item.size_bytes is not None and item.size_bytes != len(payload):
-            raise HandoffError(f"source byte count mismatch: {item.source_path}")
+        _verify_source_bytes(item, payload)
         _verify_committed_blob(root, item.source_path, source)
+        return payload
+
+    return _ingest_verified_handoff(
+        plan=plan,
+        raw_manifest=raw_manifest,
+        read_source=read_source,
+        store=store,
+        receipt_dir=receipt_dir,
+    )
+
+
+def _verify_source_bytes(item: CanonicalObject, payload: bytes) -> None:
+    """Require the content identity and optional size before any object writes."""
+    if hashlib.sha256(payload).hexdigest() != item.sha256:
+        raise HandoffError(f"source checksum mismatch: {item.source_path}")
+    if item.size_bytes is not None and item.size_bytes != len(payload):
+        raise HandoffError(f"source byte count mismatch: {item.source_path}")
+
+
+def _ingest_verified_handoff(
+    *,
+    plan: HandoffPlan,
+    raw_manifest: bytes,
+    read_source: Callable[[CanonicalObject], bytes],
+    store: BlobStore,
+    receipt_dir: Path,
+    source_transport: str | None = None,
+) -> IngestionResult:
+    """Share promotion and receipt handling; the reader verifies source identity."""
+    started_at = datetime.now(UTC)
+    run_id = uuid4().hex
+    published = 0
+    reused = 0
+    verified_bytes = 0
+    records: list[dict[str, Any]] = []
+    for item in plan.objects:
+        payload = read_source(item)
         verified_bytes += len(payload)
 
         if store.exists(item.storage_key):
@@ -387,6 +416,8 @@ def ingest_handoff(
         "bytes_verified": verified_bytes,
         "objects": records,
     }
+    if source_transport is not None:
+        receipt["source_transport"] = source_transport
     receipt_dir.mkdir(parents=True, exist_ok=True)
     receipt_path = receipt_dir / f"registry_handoff_ingestion_{run_id}.json"
     temporary_path: Path | None = None

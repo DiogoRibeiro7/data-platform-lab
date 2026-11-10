@@ -162,6 +162,12 @@ adapter via `--backend s3` when a supplier is chosen. See
 [canonical ingestion guide](docs/registry-handoff-ingestion.md) for a complete
 handoff generation example, limitations, and tests.
 
+For explicit extraction without a local registry checkout, use `registry-ingest
+--fetch` with a trusted handoff and independently selected repository, commit and
+dataset ID. `--dry-run` validates that selection without network access or writes.
+The [ONS extraction and loading guide](docs/registry-handoff-ingestion.md#extract-and-load-pinned-ons-data)
+covers verified raw loading, optional transformation and later database publication.
+
 ## DuckDB/Parquet analytical layer
 
 The first curated consumer uses the approved ONS gross median weekly pay
