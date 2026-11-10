@@ -103,7 +103,9 @@ the existing ONS model, schema and quality checks; other provider formats will n
 their own adapters. Subsequent [database publishing](ons-pay-portable-publishing.md)
 remains an explicit action. `--fetch` never creates tables, transforms data,
 activates releases, discovers newer upstream versions or updates the registry.
-The batch `ons-pay-refresh` command continues to require local registry checkouts.
+For a combined extraction, loading and transformation batch, use
+[`ons-pay-refresh --fetch-source`](ons-pay-refresh.md#extract-load-and-transform-over-https).
+It supports ordered historical sources, freshness gates and audited partial recovery.
 
 ### Fetch integrity and operational limits
 
@@ -213,9 +215,10 @@ demo. The receipt preserves the `s3://` destination address and source lineage.
 
 ## Scope and operational limits
 
-- **Local checkout only:** The consumer never downloads arbitrary URLs; obtain
-  the pinned source Git checkout separately. Source fetch retries and remote
-  backfills can be added later behind an explicit source interface.
+- **Explicit source selection:** Use an exact local checkout or explicitly select
+  HTTPS extraction with independently chosen pins. Arbitrary URLs, automatic
+  source discovery and automatic fetch retries are not supported. ONS historical
+  batches use the [refresh workflow](ons-pay-refresh.md).
 - **In-memory blob contract:** The current platform's `put_bytes`/`get_bytes`
   reads one object into memory. Large objects should use a future streaming
   `BlobStore` extension with multipart upload and a bounded checksum buffer.

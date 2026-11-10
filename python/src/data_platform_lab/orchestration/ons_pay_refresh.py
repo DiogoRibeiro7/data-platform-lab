@@ -1,13 +1,14 @@
 """Resumable, provider-neutral ONS pay ingestion and curation refresh batches.
 
-Each source is a *pinned* canonical handoff paired with its exact Git checkout.
-There is no implicit latest snapshot, external fetch, or mutable output key.
+Each source is a *pinned* canonical handoff paired with its exact Git checkout
+or an explicit HTTPS fetch selection. There is no implicit latest snapshot.
 Earlier successful vintages remain published if a later backfill item fails;
 an atomic batch audit makes the partial outcome visible before a safe retry.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 from collections.abc import Sequence
@@ -18,6 +19,11 @@ from typing import Any
 from uuid import uuid4
 
 from data_platform_lab.curation.ons_pay import DATASET_ID, MODEL_VERSION, curate_ons_pay
+from data_platform_lab.ingestion.registry_fetch import (
+    RegistryFetchOptions,
+    _prepare_fetch,
+    ingest_registry_fetch,
+)
 from data_platform_lab.ingestion.registry_handoff import ingest_handoff, parse_handoff
 from data_platform_lab.storage import BlobStore
 
@@ -49,14 +55,26 @@ class RefreshSource:
 
 
 @dataclass(frozen=True, slots=True)
+class RemoteRefreshSource:
+    """One handoff and independently chosen HTTPS source identity and limits."""
+
+    manifest_path: Path
+    fetch_options: RegistryFetchOptions
+
+
+RefreshInput = RefreshSource | RemoteRefreshSource
+
+
+@dataclass(frozen=True, slots=True)
 class PlannedSource:
     """Validated source identity and age before any ingestion writes."""
 
-    source: RefreshSource
+    source: RefreshInput
     registry_commit: str
     source_sha256: str
     retrieved_at: str
     age_days: int
+    manifest_sha256: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,15 +124,15 @@ def parse_retrieved_date(value: str) -> date:
 
 
 def plan_ons_pay_refresh(
-    sources: Sequence[RefreshSource],
+    sources: Sequence[RefreshInput],
     *,
     max_source_age_days: int | None = None,
     as_of: date | None = None,
 ) -> tuple[PlannedSource, ...]:
     """Validate a batch's manifests, identity, duplicate pins and freshness SLA.
 
-    Planning is read-only. In particular, it does not verify Git source bytes;
-    the ingestion step always re-verifies committed blobs before publishing.
+    Planning is read-only and opens no network connection. Ingestion rechecks
+    source bytes and the exact manifest snapshot captured by this preflight.
     """
     if not sources:
         raise RefreshError("at least one pinned ONS pay handoff is required")
@@ -130,7 +148,12 @@ def plan_ons_pay_refresh(
     seen: set[tuple[str, str]] = set()
     for index, source in enumerate(sources):
         try:
-            plan = parse_handoff(json.loads(source.manifest_path.read_text(encoding="utf-8")))
+            if isinstance(source, RemoteRefreshSource):
+                # Keep the bounded manifest bytes and parsed plan from one read.
+                manifest_bytes, plan = _prepare_fetch(source.manifest_path, source.fetch_options)
+            else:
+                manifest_bytes = source.manifest_path.read_bytes()
+                plan = parse_handoff(json.loads(manifest_bytes))
             if plan.dataset_id != DATASET_ID or plan.repository != _REGISTRY:
                 raise RefreshError("handoff is not the approved ONS pay registry source")
             raw = [item for item in plan.objects if item.role == "raw"]
@@ -149,9 +172,16 @@ def plan_ons_pay_refresh(
                 )
             seen.add(pin)
             inspected.append(
-                PlannedSource(source, plan.commit, raw[0].sha256, plan.retrieved_at, age_days)
+                PlannedSource(
+                    source,
+                    plan.commit,
+                    raw[0].sha256,
+                    plan.retrieved_at,
+                    age_days,
+                    hashlib.sha256(manifest_bytes).hexdigest(),
+                )
             )
-        except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
+        except (OSError, UnicodeError, ValueError, TypeError, RuntimeError) as exc:
             raise RefreshError(
                 f"invalid handoff at source {index + 1}: {exc}", source_index=index
             ) from exc
@@ -216,7 +246,7 @@ def _metrics(sources: list[RefreshedSource]) -> dict[str, int]:
 
 def refresh_ons_pay(
     *,
-    sources: Sequence[RefreshSource],
+    sources: Sequence[RefreshInput],
     store: BlobStore,
     output_root: Path,
     max_source_age_days: int | None = None,
@@ -232,7 +262,11 @@ def refresh_ons_pay(
     run_id = uuid4().hex
     reference_date = as_of if as_of is not None else started.date()
     output_root = output_root.resolve()
-    if any(output_root.is_relative_to(source.registry_root.resolve()) for source in sources):
+    if any(
+        output_root.is_relative_to(source.registry_root.resolve())
+        for source in sources
+        if isinstance(source, RefreshSource)
+    ):
         # Do not write even a *failure* audit into the canonical source checkout.
         raise RefreshError("output_root must be outside each canonical registry checkout")
     receipt_path = output_root / "manifests" / f"ons_pay_refresh_{run_id}.json"
@@ -248,12 +282,22 @@ def refresh_ons_pay(
             source_index = index
             phase = "ingestion"
             active_ingestion_receipt = None
-            ingested = ingest_handoff(
-                manifest_path=item.source.manifest_path,
-                registry_root=item.source.registry_root,
-                store=store,
-                receipt_dir=output_root / "manifests",
-            )
+            if isinstance(item.source, RemoteRefreshSource):
+                ingested = ingest_registry_fetch(
+                    manifest_path=item.source.manifest_path,
+                    options=item.source.fetch_options,
+                    store=store,
+                    receipt_dir=output_root / "manifests",
+                    expected_manifest_sha256=item.manifest_sha256,
+                )
+            else:
+                ingested = ingest_handoff(
+                    manifest_path=item.source.manifest_path,
+                    registry_root=item.source.registry_root,
+                    store=store,
+                    receipt_dir=output_root / "manifests",
+                    expected_manifest_sha256=item.manifest_sha256,
+                )
             active_ingestion_receipt = ingested.receipt_path
             phase = "curation"
             curated = curate_ons_pay(
@@ -289,7 +333,8 @@ def refresh_ons_pay(
             "phase": phase,
             "source_index": source_index,
             "error_type": type(exc).__name__,
-            "message": str(exc),
+            # Driver and transformation exceptions may contain credentials or rows.
+            "message": f"Source {phase} failed.",
         }
         if active_ingestion_receipt is not None and phase == "curation":
             failure["ingestion_receipt_path"] = str(active_ingestion_receipt)

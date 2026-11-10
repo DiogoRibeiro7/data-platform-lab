@@ -3,13 +3,13 @@
 This workflow connects the existing [SHA-pinned canonical ingestion](registry-handoff-ingestion.md),
 [DuckDB Silver/Gold curation](ons-pay-analytics.md), and
 [read-only analytical API](ons-pay-serving.md) behind one repeatable command.
-No Supabase, cloud bucket, database supplier, or network fetch is required.
+Outputs use local storage; no hosted database or cloud account is required.
 
 The refresh process runs **explicitly pinned handoffs**, not a floating
 `main` branch or an implicit latest ONS download. Each handoff is paired with
-a checkout of [`DiogoRibeiro7/data`](https://github.com/DiogoRibeiro7/data)
-at the *exact full commit* recorded in the handoff. Prepare the handoff using
-the [registry guide](registry-handoff-ingestion.md) first.
+an exact checkout of [`DiogoRibeiro7/data`](https://github.com/DiogoRibeiro7/data)
+or an independently selected full commit for HTTPS extraction. Prepare the
+handoff using the [registry guide](registry-handoff-ingestion.md) first.
 
 ## One snapshot: validate, ingest, curate and audit
 
@@ -42,6 +42,53 @@ object, and curated output hashes again; matching object and Parquet bytes are
 **reused without changing their timestamps**. A second audit records the
 replay. The serving catalog still presents only one logical vintage.
 
+## Extract, load and transform over HTTPS
+
+Use `--fetch-source HANDOFF_JSON REGISTRY_COMMIT` for the complete workflow
+without a local registry checkout. This command accepts only the approved
+`DiogoRibeiro7/data` repository and `ons-gross-median-weekly-pay` dataset.
+Choose the full commit independently of the handoff, following the
+[source trust requirements](registry-handoff-ingestion.md#extract-and-load-pinned-ons-data).
+
+```bash
+export ONS_REGISTRY_COMMIT="<trusted-full-40-character-commit>"
+
+# Validate every manifest, pin, budget and freshness policy without network or writes.
+poetry run data-platform-lab ons-pay-refresh \
+  --fetch-source ../data/manifests/ons-handoff.json "$ONS_REGISTRY_COMMIT" \
+  --dry-run
+
+# Download verified raw bytes, load them, curate Silver/Gold and record the batch audit.
+poetry run data-platform-lab ons-pay-refresh \
+  --fetch-source ../data/manifests/ons-handoff.json "$ONS_REGISTRY_COMMIT" \
+  --timeout-seconds 30 --max-object-bytes 16777216 --max-source-bytes 67108864 \
+  --object-root ../data/object-store --output-root ../data
+```
+
+Repeat `--fetch-source` for historical handoffs, each with its own trusted commit;
+the batch processes them in argument order. The CLI accepts either checkout
+sources or HTTPS sources per invocation. The Python API also accepts an ordered
+mixture of `RefreshSource` and `RemoteRefreshSource` values.
+
+All manifests pass preflight before the first download. Each execution binds
+ingestion to the SHA-256 of the manifest bytes read by its preflight; changing
+even metadata between those stages fails that source. A separate `--dry-run`
+prints this digest and the source transport but does not lock a later execution.
+
+The existing [fetch integrity controls](registry-handoff-ingestion.md#fetch-integrity-and-operational-limits)
+apply: exact HTTPS URLs, no redirects, bounded reads, checksum and size validation,
+and verification of destination bytes. `--timeout-seconds` limits each blocking
+socket operation, not total batch duration. `--max-object-bytes` caps each object;
+`--max-source-bytes` caps the sum downloaded for **each handoff**, resetting for
+the next source. These fetch flags require `--fetch-source`. There are no automatic
+retries; explicit reruns fetch and verify source bytes again before reusing outputs.
+
+Remote refresh uses the existing batch audit, linked ingestion and curation
+receipts, and monitoring command. The ingestion receipt records
+`source_transport: "https"`; source retrieval dates retain their upstream meaning.
+For raw loading without transformation, use `registry-ingest --fetch` instead.
+[Database publication](ons-pay-portable-publishing.md) remains a separate command.
+
 ## Historical backfill
 
 Provide one `--source HANDOFF_JSON PINNED_CHECKOUT` pair per historical
@@ -59,7 +106,8 @@ Those checkouts must already exist at their respective exact commits.
 No source file, handoff, or receipt is committed to this repository. The
 batch rejects a repeated commit/source-SHA pair, invalid ONS source identity,
 or malformed manifests before ingesting anything. The later ingestion step
-additionally checks each real Git blob, its checksum, storage key and output.
+additionally checks each real Git blob, its checksum, storage key and output
+for checkout sources. HTTPS backfills verify downloaded bytes as described above.
 
 A failed second source does **not** roll back a successfully published first
 source: the objects are immutable, and there is no cross-store transaction.
@@ -69,6 +117,10 @@ and zero-based `source_index`. If ingestion had succeeded but curation failed,
 the failure includes its successful ingestion receipt path. Fix the cause and
 rerun the full batch; previously valid objects and Parquet outputs are checked
 and reused. Corrupted immutable files are never silently overwritten.
+Failure audits retain the exception type and stage with a fixed diagnostic,
+so raw transport or transformation exception text is not stored in the audit.
+Successful runs exit `0`, invalid arguments or dry-run preflight exit `2`, and
+execution failures (including execution preflight) exit `1` with an audit path.
 
 ## Freshness SLA and quality semantics
 
@@ -97,8 +149,8 @@ reuse counts per vintage. Top-level metrics **sum across vintages**, so a
 two-snapshot backfill can count the same area's year twice; these are run
 metrics, not an estimate of distinct people or areas.
 
-`--dry-run` checks handoff structure, duplicate identity and the selected
-freshness policy only. It deliberately does **not** claim to have validated
+`--dry-run` checks handoff structure, duplicate identity, the selected freshness
+policy and, for HTTPS sources, explicit pins and fetch budgets. It does **not** validate
 Git checkouts, source file bytes, storage integrity, or downstream SQL quality;
 those are rechecked during the actual run.
 
@@ -106,9 +158,9 @@ those are rechecked during the actual run.
 
 The CLI is deterministic and exits nonzero on failure, so a local scheduler,
 CI job, Dagster asset or later managed orchestrator can run it with the
-*explicit handoff and checkout paths*. Freshness breaches and partial failures
+*explicit handoff and checkout paths or HTTPS commits*. Freshness breaches and partial failures
 produce machine-readable audits for monitoring. No unattended schedule or
-data-provider polling is configured in this PR, because silently promoting
+data-provider polling is configured, because silently promoting
 a floating upstream version would break the explicit pin contract.
 Use the [read-only monitoring command](ons-pay-monitoring.md) to check the
 published table contracts and refresh audit history, obtain numeric health
@@ -119,7 +171,7 @@ distributed locking, rollback across multiple sources, concurrent publication,
 automatic registry-version discovery, or signed attestations against a local
 actor who can rewrite both receipts and files. Core orchestration accepts a
 `BlobStore` implementation, but the current CLI chooses `LocalBlobStore` for
-offline use; an S3-compatible backend can be added without changing the
+local output; an S3-compatible backend can be added without changing the
 ingestion/curation contracts or selecting a database supplier.
 
 ## Offline verification
@@ -127,7 +179,7 @@ ingestion/curation contracts or selecting a database supplier.
 ```bash
 cd python
 poetry install --extras serving
-poetry run pytest tests/test_ons_pay_refresh.py -q
+poetry run pytest tests/test_ons_pay_refresh.py tests/test_ons_pay_remote_refresh.py -q
 poetry run ruff check src/ tests/
 poetry run ruff format --check src/ tests/
 poetry run mypy src/
@@ -137,6 +189,8 @@ Tests create actual pinned Git checkouts and handoffs, run ingestion plus
 DuckDB curation, exercise the existing serving catalog, and verify freshness,
 multi-source backfills, no-write planning, retry/reuse, provenance, failure
 audits, source tampering, SQL quality gates, and conflicting Parquet bytes.
+HTTPS tests use synthetic responses to cover ordered backfills, preflight before
+network access, manifest changes, partial failure recovery and audit compatibility.
 They require neither network access nor a hosted database account.
 
 After backfilling at least two vintages, use the

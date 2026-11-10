@@ -1,33 +1,54 @@
-"""Local, machine-invokable ONS pay refresh/backfill and SLA preflight CLI."""
+"""Pinned checkout or HTTPS ONS pay refresh/backfill and SLA preflight CLI."""
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 
+from data_platform_lab.curation.ons_pay import DATASET_ID
+from data_platform_lab.ingestion.registry_fetch import RegistryFetchOptions
 from data_platform_lab.orchestration.ons_pay_refresh import (
     RefreshError,
+    RefreshInput,
     RefreshSource,
+    RemoteRefreshSource,
     plan_ons_pay_refresh,
     refresh_ons_pay,
 )
+from data_platform_lab.serving.publish_cli import _ArgumentError, _Parser
 from data_platform_lab.storage import LocalBlobStore
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="data-platform-lab ons-pay-refresh",
         description="Verify, ingest and curate one or more explicitly pinned ONS pay vintages.",
+        allow_abbrev=False,
     )
-    parser.add_argument(
+    source_mode = parser.add_mutually_exclusive_group(required=True)
+    source_mode.add_argument(
         "--source",
         nargs=2,
         metavar=("HANDOFF_JSON", "PINNED_CHECKOUT"),
         type=Path,
         action="append",
-        required=True,
         help="Repeat for historical snapshots, in intended backfill order.",
+    )
+    source_mode.add_argument(
+        "--fetch-source",
+        nargs=2,
+        metavar=("HANDOFF_JSON", "REGISTRY_COMMIT"),
+        action="append",
+        help="Explicitly fetch a pinned ONS registry snapshot; repeat in backfill order.",
+    )
+    parser.add_argument(
+        "--timeout-seconds", type=float, help="Fetch socket timeout, at most 300 (default: 30)"
+    )
+    parser.add_argument(
+        "--max-object-bytes", type=int, help="Fetch budget per object (default: 16777216)"
+    )
+    parser.add_argument(
+        "--max-source-bytes", type=int, help="Fetch budget per handoff (default: 67108864)"
     )
     parser.add_argument("--object-root", type=Path, default=Path("../data/object-store"))
     parser.add_argument("--output-root", type=Path, default=Path("../data"))
@@ -40,16 +61,48 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Read-only manifest/freshness preflight; does not verify Git blobs.",
+        help="Read-only manifest/freshness preflight; no source reads, network access or writes.",
     )
-    args = parser.parse_args(argv)
-    sources = [RefreshSource(manifest, checkout) for manifest, checkout in args.source]
-    for destination in (args.object_root, args.output_root):
-        if any(
-            destination.resolve().is_relative_to(source.registry_root.resolve())
-            for source in sources
-        ):
-            parser.error("object and output roots must remain outside canonical Git checkouts")
+    try:
+        args = parser.parse_args(argv)
+        sources: list[RefreshInput]
+        if args.fetch_source:
+            sources = [
+                RemoteRefreshSource(
+                    Path(manifest),
+                    RegistryFetchOptions(
+                        repository="DiogoRibeiro7/data",
+                        commit=commit,
+                        dataset_id=DATASET_ID,
+                        timeout_seconds=args.timeout_seconds
+                        if args.timeout_seconds is not None
+                        else 30,
+                        max_object_bytes=args.max_object_bytes
+                        if args.max_object_bytes is not None
+                        else 16 * 1024 * 1024,
+                        max_total_bytes=args.max_source_bytes
+                        if args.max_source_bytes is not None
+                        else 64 * 1024 * 1024,
+                    ),
+                )
+                for manifest, commit in args.fetch_source
+            ]
+        else:
+            if any(
+                value is not None
+                for value in (args.timeout_seconds, args.max_object_bytes, args.max_source_bytes)
+            ):
+                raise _ArgumentError("Fetch limits require --fetch-source.")
+            sources = [RefreshSource(manifest, checkout) for manifest, checkout in args.source]
+        for destination in (args.object_root, args.output_root):
+            if any(
+                destination.resolve().is_relative_to(source.registry_root.resolve())
+                for source in sources
+                if isinstance(source, RefreshSource)
+            ):
+                parser.error("object and output roots must remain outside canonical Git checkouts")
+    except _ArgumentError as exc:
+        parser.exit(2, f"{exc}\n")
 
     if args.dry_run:
         try:
@@ -69,6 +122,10 @@ def main(argv: list[str] | None = None) -> None:
                             "retrieved_at": item.retrieved_at,
                             "source_age_days": item.age_days,
                             "manifest_path": str(item.source.manifest_path),
+                            "manifest_sha256": item.manifest_sha256,
+                            "source_transport": "https"
+                            if isinstance(item.source, RemoteRefreshSource)
+                            else "checkout",
                         }
                         for item in plan
                     ],

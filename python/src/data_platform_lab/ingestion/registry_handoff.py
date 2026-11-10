@@ -291,6 +291,7 @@ def ingest_handoff(
     registry_root: Path,
     store: BlobStore,
     receipt_dir: Path,
+    expected_manifest_sha256: str | None = None,
 ) -> IngestionResult:
     """Ingest and verify approved objects, then atomically write a success receipt.
 
@@ -298,8 +299,10 @@ def ingest_handoff(
     destinations are never silently overwritten. A failed multi-file run may
     leave already verified objects, but never an erroneous success receipt;
     rerunning reconciles the previous successful writes.
+    An optional expected manifest digest binds execution to a prior preflight.
     """
     raw_manifest = manifest_path.read_bytes()
+    _verify_manifest_bytes(raw_manifest, expected_manifest_sha256)
     try:
         plan = parse_handoff(json.loads(raw_manifest))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -329,6 +332,16 @@ def ingest_handoff(
         store=store,
         receipt_dir=receipt_dir,
     )
+
+
+def _verify_manifest_bytes(payload: bytes, expected_sha256: str | None) -> None:
+    """Bind execution to an optional preflight snapshot before source I/O."""
+    if expected_sha256 is not None and (
+        not isinstance(expected_sha256, str)
+        or not _SHA256.fullmatch(expected_sha256)
+        or hashlib.sha256(payload).hexdigest() != expected_sha256
+    ):
+        raise HandoffError("handoff differs from the planned manifest SHA-256")
 
 
 def _verify_source_bytes(item: CanonicalObject, payload: bytes) -> None:

@@ -19,6 +19,7 @@ from data_platform_lab.ingestion.registry_handoff import (
     HandoffPlan,
     IngestionResult,
     _ingest_verified_handoff,
+    _verify_manifest_bytes,
     _verify_source_bytes,
     parse_handoff,
 )
@@ -178,14 +179,17 @@ def ingest_registry_fetch(
     options: RegistryFetchOptions,
     store: BlobStore,
     receipt_dir: Path,
+    expected_manifest_sha256: str | None = None,
 ) -> IngestionResult:
     """Fetch declared HTTPS objects, verify them, and load through the existing contract.
 
     Only immutable raw.githubusercontent.com URLs accepted by parse_handoff are
     fetched. Operators must trust their manifest and independent source pins.
+    An optional expected manifest digest binds execution to a prior preflight.
     No checkout verification or authenticity of upstream attribution is claimed.
     """
     raw, plan = _prepare_fetch(manifest_path, options)
+    _verify_manifest_bytes(raw, expected_manifest_sha256)
     return _ingest_verified_handoff(
         plan=plan,
         raw_manifest=raw,
