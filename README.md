@@ -310,9 +310,9 @@ CLI-owned clients disable automatic driver retries.
 
 The ONS pay pipeline now has a single machine-invokable refresh command. It
 checks upstream retrieval age against an optional SLA, verifies a canonical
-handoff against its exact Git checkout, ingests the immutable raw object,
+handoff against its exact Git checkout or explicit HTTPS commit, loads the immutable raw object,
 curates the Silver/Gold Parquet tables, and writes a success/failure audit.
-Repeat `--source` pairs to backfill historical snapshots; reruns check and
+Repeat `--source` or `--fetch-source` pairs to backfill historical snapshots; reruns check and
 reuse previously published outputs without changing the serving API's pins.
 
 ```bash
@@ -327,6 +327,11 @@ See [the refresh and backfill guide](docs/ons-pay-refresh.md) for the read-only
 dry run, freshness SLA, batch recovery, audit schema, and limits. Source
 discovery and scheduling remain explicit rather than silently switching to
 a floating dataset version.
+
+To extract, load and transform without a registry checkout, replace `--source`
+with `--fetch-source ../data/manifests/ons-handoff.json "$ONS_REGISTRY_COMMIT"`,
+using an independently selected full commit. See the
+[HTTPS refresh example](docs/ons-pay-refresh.md#extract-load-and-transform-over-https).
 
 ## Operational health and freshness alerts
 
