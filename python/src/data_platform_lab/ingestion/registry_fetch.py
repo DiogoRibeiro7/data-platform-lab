@@ -5,10 +5,14 @@ from __future__ import annotations
 import json
 import math
 import re
+import socket
 import tempfile
 from dataclasses import dataclass
-from http.client import HTTPException
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from http.client import HTTPException, IncompleteRead, RemoteDisconnected
 from pathlib import Path
+from time import sleep
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -28,6 +32,8 @@ from data_platform_lab.storage import BlobStore
 _MANIFEST_BYTES = 1024 * 1024
 _MAX_OBJECTS = 256
 _CHUNK_BYTES = 64 * 1024
+_RETRY_STATUS = {408, 429, 500, 502, 503, 504}
+_MAX_RETRY_DELAY = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +46,8 @@ class RegistryFetchOptions:
     timeout_seconds: float = 30
     max_object_bytes: int = 16 * 1024 * 1024
     max_total_bytes: int = 64 * 1024 * 1024
+    max_attempts: int = 1
+    retry_delay_seconds: float = 1
 
 
 def _prepare_fetch(manifest_path: Path, options: RegistryFetchOptions) -> tuple[bytes, HandoffPlan]:
@@ -65,6 +73,14 @@ def _prepare_fetch(manifest_path: Path, options: RegistryFetchOptions) -> tuple[
         for value in (options.max_object_bytes, options.max_total_bytes)
     ):
         raise HandoffError("Fetch byte limits must be positive integers.")
+    if type(options.max_attempts) is not int or not 1 <= options.max_attempts <= 5:
+        raise HandoffError("Fetch max attempts must be an integer from 1 to 5.")
+    if (
+        type(options.retry_delay_seconds) not in (int, float)
+        or not 0 < options.retry_delay_seconds <= _MAX_RETRY_DELAY
+        or not math.isfinite(options.retry_delay_seconds)
+    ):
+        raise HandoffError("Fetch retry delay must be positive finite seconds, at most 30.")
     try:
         with manifest_path.open("rb") as handle:
             raw = handle.read(_MANIFEST_BYTES + 1)
@@ -103,18 +119,83 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def _transient_transfer_error(exc: object) -> bool:
+    """Retry known temporary transport failures, never TLS or local file errors."""
+    reason = exc.reason if isinstance(exc, URLError) else exc
+    return isinstance(
+        reason, (TimeoutError, ConnectionError, IncompleteRead, RemoteDisconnected)
+    ) or (isinstance(reason, socket.gaierror) and reason.errno == socket.EAI_AGAIN)
+
+
+def _retry_delay(header: str | None, base: float, attempt: int) -> float:
+    """Respect a server's minimum delay without exceeding the local wait cap."""
+    delay = min(base * (1 << attempt), _MAX_RETRY_DELAY)
+    if header is None:
+        return delay
+    value = header.strip()
+    if re.fullmatch(r"[0-9]+", value):
+        # Bound conversion as well as sleep, including excessively long headers.
+        digits = value.lstrip("0") or "0"
+        if len(digits) > 2 or int(digits) > _MAX_RETRY_DELAY:
+            raise HandoffError("Server retry delay exceeds the 30 second wait limit.")
+        server_delay = float(digits)
+    else:
+        try:
+            when = parsedate_to_datetime(value)
+            if when.tzinfo is None:
+                return delay
+            server_delay = max(0, (when - datetime.now(UTC)).total_seconds())
+        except (ValueError, TypeError, OverflowError):
+            return delay
+    if server_delay > _MAX_RETRY_DELAY:
+        raise HandoffError("Server retry delay exceeds the 30 second wait limit.")
+    return max(delay, server_delay)
+
+
 class _HttpReader:
     """One run's bounded downloader; partial responses never reach the BlobStore."""
 
     def __init__(self, options: RegistryFetchOptions) -> None:
         self.options = options
-        self.downloaded = 0
+        self.statistics = {"attempts": 0, "retries": 0, "downloaded_bytes": 0}
         self.opener = build_opener(_NoRedirect())
 
     def __call__(self, item: CanonicalObject) -> bytes:
-        limit = min(self.options.max_object_bytes, self.options.max_total_bytes - self.downloaded)
+        for attempt in range(self.options.max_attempts):
+            # A retry never replenishes bytes consumed by a failed attempt.
+            limit = self._remaining_limit(item)
+            self.statistics["attempts"] += 1
+            self.statistics["retries"] += int(attempt > 0)
+            retry_after = None
+            try:
+                return self._read_once(item, limit)
+            except HTTPError as exc:
+                retryable = exc.code in _RETRY_STATUS and exc.geturl() == item.source_uri
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                exc.close()
+                message = "Registry HTTP fetch failed."
+            except (OSError, HTTPException, ValueError) as exc:
+                if isinstance(exc, HandoffError):
+                    raise
+                retryable = _transient_transfer_error(exc)
+                message = "Registry source transfer failed."
+            if not retryable or attempt + 1 == self.options.max_attempts:
+                raise HandoffError(message) from None
+            self._remaining_limit(item)
+            sleep(_retry_delay(retry_after, self.options.retry_delay_seconds, attempt))
+        raise AssertionError("validated fetch attempts must be positive")
+
+    def _remaining_limit(self, item: CanonicalObject) -> int:
+        remaining = self.options.max_total_bytes - self.statistics["downloaded_bytes"]
+        limit = min(self.options.max_object_bytes, remaining)
+        if remaining <= 0 and item.size_bytes != 0:
+            raise HandoffError("Source exceeds the remaining fetch byte budget.")
         if item.size_bytes is not None and item.size_bytes > limit:
             raise HandoffError("Source exceeds the remaining fetch byte budget.")
+        return limit
+
+    def _read_once(self, item: CanonicalObject, limit: int) -> bytes:
+        """Discard partial bodies; only a complete verified attempt reaches storage."""
         request = Request(
             item.source_uri,
             headers={
@@ -123,52 +204,52 @@ class _HttpReader:
             },
             method="GET",
         )
-        try:
-            with self.opener.open(request, timeout=self.options.timeout_seconds) as response:
-                if response.status != 200 or response.geturl() != item.source_uri:
+        with self.opener.open(request, timeout=self.options.timeout_seconds) as response:
+            if response.status != 200 or response.geturl() != item.source_uri:
+                raise HandoffError(
+                    "Fetch requires an unchanged URL and a complete HTTP 200 response."
+                )
+            if response.headers.get("Content-Encoding", "identity").lower() != "identity":
+                raise HandoffError(
+                    "Encoded HTTP responses are not accepted for pinned source bytes."
+                )
+            length = response.headers.get("Content-Length")
+            declared = None
+            if length is not None:
+                if not re.fullmatch(r"[0-9]+", length):
+                    raise HandoffError("Invalid HTTP response byte count.")
+                declared = int(length)
+                if declared > limit or (
+                    item.size_bytes is not None and declared != item.size_bytes
+                ):
                     raise HandoffError(
-                        "Fetch requires an unchanged URL and a complete HTTP 200 response."
+                        "HTTP response byte count differs from the source or budget."
                     )
-                if response.headers.get("Content-Encoding", "identity").lower() != "identity":
-                    raise HandoffError(
-                        "Encoded HTTP responses are not accepted for pinned source bytes."
-                    )
-                length = response.headers.get("Content-Length")
-                declared = None
-                if length is not None:
-                    if not re.fullmatch(r"[0-9]+", length):
-                        raise HandoffError("Invalid HTTP response byte count.")
-                    declared = int(length)
-                    if declared > limit or (
-                        item.size_bytes is not None and declared != item.size_bytes
-                    ):
-                        raise HandoffError(
-                            "HTTP response byte count differs from the source or budget."
-                        )
-                size = 0
-                with tempfile.TemporaryFile(mode="w+b") as temporary:
-                    while True:
+            size = 0
+            with tempfile.TemporaryFile(mode="w+b") as temporary:
+                while True:
+                    try:
                         chunk = response.read(min(_CHUNK_BYTES, limit - size + 1))
-                        if not chunk:
-                            break
-                        size += len(chunk)
-                        self.downloaded += len(chunk)
-                        if size > limit:
-                            raise HandoffError("Downloaded source exceeds the fetch byte limits.")
-                        temporary.write(chunk)
-                    if declared is not None and size != declared:
-                        raise HandoffError("HTTP response ended before its declared byte count.")
-                    temporary.seek(0)
-                    payload = temporary.read()
-        except HTTPError as exc:
-            exc.close()
-            raise HandoffError(
-                "Registry HTTP fetch failed; no redirects or automatic retries are allowed."
-            ) from None
-        except (OSError, URLError, HTTPException, ValueError) as exc:
-            if isinstance(exc, HandoffError):
-                raise
-            raise HandoffError("Registry source transfer failed.") from None
+                    except IncompleteRead as exc:
+                        self.statistics["downloaded_bytes"] += len(exc.partial)
+                        if size + len(exc.partial) > limit:
+                            raise HandoffError(
+                                "Downloaded source exceeds the fetch byte limits."
+                            ) from None
+                        raise
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    self.statistics["downloaded_bytes"] += len(chunk)
+                    if size > limit:
+                        raise HandoffError("Downloaded source exceeds the fetch byte limits.")
+                    temporary.write(chunk)
+                if declared is not None and size > declared:
+                    raise HandoffError("HTTP body exceeds its declared byte count.")
+                if declared is not None and size < declared:
+                    raise IncompleteRead(b"", declared - size)
+                temporary.seek(0)
+                payload = temporary.read()
         _verify_source_bytes(item, payload)
         return payload
 
@@ -190,11 +271,13 @@ def ingest_registry_fetch(
     """
     raw, plan = _prepare_fetch(manifest_path, options)
     _verify_manifest_bytes(raw, expected_manifest_sha256)
+    reader = _HttpReader(options)
     return _ingest_verified_handoff(
         plan=plan,
         raw_manifest=raw,
-        read_source=_HttpReader(options),
+        read_source=reader,
         store=store,
         receipt_dir=receipt_dir,
         source_transport="https",
+        fetch_statistics=reader.statistics,
     )

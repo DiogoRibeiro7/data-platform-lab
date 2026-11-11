@@ -39,6 +39,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--timeout-seconds", type=float, help="Fetch socket timeout, at most 300 (default: 30)"
     )
     parser.add_argument(
+        "--max-attempts", type=int, help="Fetch attempts per object, 1-5 (default: 1; no retries)"
+    )
+    parser.add_argument(
+        "--retry-delay-seconds",
+        type=float,
+        help="Initial fetch retry delay, at most 30 (default: 1)",
+    )
+    parser.add_argument(
         "--max-object-bytes", type=int, help="Fetch limit per object (default: 16777216)"
     )
     parser.add_argument(
@@ -83,6 +91,10 @@ def main(argv: list[str] | None = None) -> None:
                 commit=args.registry_commit,
                 dataset_id=args.dataset_id,
                 timeout_seconds=args.timeout_seconds if args.timeout_seconds is not None else 30,
+                max_attempts=args.max_attempts if args.max_attempts is not None else 1,
+                retry_delay_seconds=args.retry_delay_seconds
+                if args.retry_delay_seconds is not None
+                else 1,
                 max_object_bytes=args.max_object_bytes
                 if args.max_object_bytes is not None
                 else 16 * 1024 * 1024,
@@ -105,6 +117,8 @@ def main(argv: list[str] | None = None) -> None:
                             ),
                             "unknown_sizes": sum(item.size_bytes is None for item in plan.objects),
                             "timeout_seconds": options.timeout_seconds,
+                            "max_attempts": options.max_attempts,
+                            "retry_delay_seconds": options.retry_delay_seconds,
                             "max_object_bytes": options.max_object_bytes,
                             "max_total_bytes": options.max_total_bytes,
                         },
@@ -119,6 +133,8 @@ def main(argv: list[str] | None = None) -> None:
                 args.registry_commit,
                 args.dataset_id,
                 args.timeout_seconds,
+                args.max_attempts,
+                args.retry_delay_seconds,
                 args.max_object_bytes,
                 args.max_total_bytes,
             )

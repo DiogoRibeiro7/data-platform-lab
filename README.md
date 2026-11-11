@@ -167,6 +167,9 @@ For explicit extraction without a local registry checkout, use `registry-ingest
 dataset ID. `--dry-run` validates that selection without network access or writes.
 The [ONS extraction and loading guide](docs/registry-handoff-ingestion.md#extract-and-load-pinned-ons-data)
 covers verified raw loading, optional transformation and later database publication.
+Both HTTPS ingestion and ONS refresh support
+[opt-in bounded retries](docs/registry-handoff-ingestion.md#retry-temporary-extraction-failures)
+for temporary source failures, with byte budgets preserved across attempts.
 
 ## DuckDB/Parquet analytical layer
 

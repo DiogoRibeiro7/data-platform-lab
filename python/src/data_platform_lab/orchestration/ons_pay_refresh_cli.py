@@ -45,6 +45,14 @@ def main(argv: list[str] | None = None) -> None:
         "--timeout-seconds", type=float, help="Fetch socket timeout, at most 300 (default: 30)"
     )
     parser.add_argument(
+        "--max-attempts", type=int, help="Fetch attempts per object, 1-5 (default: 1; no retries)"
+    )
+    parser.add_argument(
+        "--retry-delay-seconds",
+        type=float,
+        help="Initial fetch retry delay, at most 30 (default: 1)",
+    )
+    parser.add_argument(
         "--max-object-bytes", type=int, help="Fetch budget per object (default: 16777216)"
     )
     parser.add_argument(
@@ -77,6 +85,10 @@ def main(argv: list[str] | None = None) -> None:
                         timeout_seconds=args.timeout_seconds
                         if args.timeout_seconds is not None
                         else 30,
+                        max_attempts=args.max_attempts if args.max_attempts is not None else 1,
+                        retry_delay_seconds=args.retry_delay_seconds
+                        if args.retry_delay_seconds is not None
+                        else 1,
                         max_object_bytes=args.max_object_bytes
                         if args.max_object_bytes is not None
                         else 16 * 1024 * 1024,
@@ -90,7 +102,13 @@ def main(argv: list[str] | None = None) -> None:
         else:
             if any(
                 value is not None
-                for value in (args.timeout_seconds, args.max_object_bytes, args.max_source_bytes)
+                for value in (
+                    args.timeout_seconds,
+                    args.max_object_bytes,
+                    args.max_source_bytes,
+                    args.max_attempts,
+                    args.retry_delay_seconds,
+                )
             ):
                 raise _ArgumentError("Fetch limits require --fetch-source.")
             sources = [RefreshSource(manifest, checkout) for manifest, checkout in args.source]
@@ -126,6 +144,16 @@ def main(argv: list[str] | None = None) -> None:
                             "source_transport": "https"
                             if isinstance(item.source, RemoteRefreshSource)
                             else "checkout",
+                            **(
+                                {
+                                    "max_attempts": item.source.fetch_options.max_attempts,
+                                    "retry_delay_seconds": (
+                                        item.source.fetch_options.retry_delay_seconds
+                                    ),
+                                }
+                                if isinstance(item.source, RemoteRefreshSource)
+                                else {}
+                            ),
                         }
                         for item in plan
                     ],
