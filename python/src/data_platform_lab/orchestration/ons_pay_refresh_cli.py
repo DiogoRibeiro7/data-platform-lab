@@ -15,6 +15,7 @@ from data_platform_lab.orchestration.ons_pay_refresh import (
     plan_ons_pay_refresh,
     refresh_ons_pay,
 )
+from data_platform_lab.orchestration.ons_pay_refresh_job import RefreshJobError, load_refresh_job
 from data_platform_lab.serving.publish_cli import _ArgumentError, _Parser
 from data_platform_lab.storage import LocalBlobStore
 
@@ -41,6 +42,9 @@ def main(argv: list[str] | None = None) -> None:
         action="append",
         help="Explicitly fetch a pinned ONS registry snapshot; repeat in backfill order.",
     )
+    source_mode.add_argument(
+        "--job", type=Path, help="Run a saved JSON refresh job; only --dry-run may accompany it."
+    )
     parser.add_argument(
         "--timeout-seconds", type=float, help="Fetch socket timeout, at most 300 (default: 30)"
     )
@@ -58,8 +62,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--max-source-bytes", type=int, help="Fetch budget per handoff (default: 67108864)"
     )
-    parser.add_argument("--object-root", type=Path, default=Path("../data/object-store"))
-    parser.add_argument("--output-root", type=Path, default=Path("../data"))
+    parser.add_argument("--object-root", type=Path, help="Default: ../data/object-store")
+    parser.add_argument("--output-root", type=Path, help="Default: ../data")
     parser.add_argument(
         "--max-source-age-days",
         type=int,
@@ -74,7 +78,35 @@ def main(argv: list[str] | None = None) -> None:
     try:
         args = parser.parse_args(argv)
         sources: list[RefreshInput]
-        if args.fetch_source:
+        job_sha256 = None
+        object_root = (
+            args.object_root if args.object_root is not None else Path("../data/object-store")
+        )
+        output_root = args.output_root if args.output_root is not None else Path("../data")
+        max_source_age_days = args.max_source_age_days
+        fetch_settings = (
+            args.timeout_seconds,
+            args.max_object_bytes,
+            args.max_source_bytes,
+            args.max_attempts,
+            args.retry_delay_seconds,
+        )
+        if args.job is not None:
+            if any(
+                value is not None
+                for value in (
+                    *fetch_settings,
+                    args.object_root,
+                    args.output_root,
+                    args.max_source_age_days,
+                )
+            ):
+                raise _ArgumentError("Saved job settings cannot be overridden; edit the job file.")
+            job = load_refresh_job(args.job)
+            sources = list(job.sources)
+            object_root, output_root = job.object_root, job.output_root
+            max_source_age_days, job_sha256 = job.max_source_age_days, job.sha256
+        elif args.fetch_source:
             sources = [
                 RemoteRefreshSource(
                     Path(manifest),
@@ -100,31 +132,22 @@ def main(argv: list[str] | None = None) -> None:
                 for manifest, commit in args.fetch_source
             ]
         else:
-            if any(
-                value is not None
-                for value in (
-                    args.timeout_seconds,
-                    args.max_object_bytes,
-                    args.max_source_bytes,
-                    args.max_attempts,
-                    args.retry_delay_seconds,
-                )
-            ):
+            if any(value is not None for value in fetch_settings):
                 raise _ArgumentError("Fetch limits require --fetch-source.")
             sources = [RefreshSource(manifest, checkout) for manifest, checkout in args.source]
-        for destination in (args.object_root, args.output_root):
+        for destination in (object_root, output_root):
             if any(
                 destination.resolve().is_relative_to(source.registry_root.resolve())
                 for source in sources
                 if isinstance(source, RefreshSource)
             ):
                 parser.error("object and output roots must remain outside canonical Git checkouts")
-    except _ArgumentError as exc:
+    except (_ArgumentError, RefreshJobError) as exc:
         parser.exit(2, f"{exc}\n")
 
     if args.dry_run:
         try:
-            plan = plan_ons_pay_refresh(sources, max_source_age_days=args.max_source_age_days)
+            plan = plan_ons_pay_refresh(sources, max_source_age_days=max_source_age_days)
         except RefreshError as exc:
             parser.exit(2, f"refresh preflight failed: {exc}\n")
         print(
@@ -132,7 +155,16 @@ def main(argv: list[str] | None = None) -> None:
                 {
                     "status": "planned",
                     "writes": False,
-                    "max_source_age_days": args.max_source_age_days,
+                    "max_source_age_days": max_source_age_days,
+                    **(
+                        {
+                            "job_sha256": job_sha256,
+                            "object_root": str(object_root),
+                            "output_root": str(output_root),
+                        }
+                        if job_sha256 is not None
+                        else {}
+                    ),
                     "vintages": [
                         {
                             "registry_commit": item.registry_commit,
@@ -166,9 +198,10 @@ def main(argv: list[str] | None = None) -> None:
     try:
         result = refresh_ons_pay(
             sources=sources,
-            store=LocalBlobStore(args.object_root),
-            output_root=args.output_root,
-            max_source_age_days=args.max_source_age_days,
+            store=LocalBlobStore(object_root),
+            output_root=output_root,
+            max_source_age_days=max_source_age_days,
+            job_sha256=job_sha256,
         )
     except RefreshError as exc:
         parser.exit(1, f"{exc}\n")
@@ -183,6 +216,7 @@ def main(argv: list[str] | None = None) -> None:
                 "parquet_published": sum(item.parquet_published for item in result.sources),
                 "parquet_reused": sum(item.parquet_reused for item in result.sources),
                 "receipt_path": str(result.receipt_path),
+                **({"job_sha256": job_sha256} if job_sha256 is not None else {}),
             },
             indent=2,
         )

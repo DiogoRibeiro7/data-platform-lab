@@ -336,6 +336,11 @@ with `--fetch-source ../data/manifests/ons-handoff.json "$ONS_REGISTRY_COMMIT"`,
 using an independently selected full commit. See the
 [HTTPS refresh example](docs/ons-pay-refresh.md#extract-load-and-transform-over-https).
 
+For repeated runs, save source pins, output paths and policies in a
+[JSON refresh job](docs/ons-pay-refresh-jobs.md), then run
+`data-platform-lab ons-pay-refresh --job /path/to/ons-refresh.json`.
+Jobs support mixed checkout/HTTPS batches and verify each saved handoff digest.
+
 ## Operational health and freshness alerts
 
 The read-only `ons-pay-monitor` command validates one explicitly pinned

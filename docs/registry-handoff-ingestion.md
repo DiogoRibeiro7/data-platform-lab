@@ -106,6 +106,8 @@ activates releases, discovers newer upstream versions or updates the registry.
 For a combined extraction, loading and transformation batch, use
 [`ons-pay-refresh --fetch-source`](ons-pay-refresh.md#extract-load-and-transform-over-https).
 It supports ordered historical sources, freshness gates and audited partial recovery.
+For reusable source selections, destinations and policies, pass a
+[saved refresh job](ons-pay-refresh-jobs.md) to `ons-pay-refresh --job`.
 
 ### Fetch integrity and operational limits
 

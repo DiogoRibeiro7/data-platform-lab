@@ -164,6 +164,11 @@ those are rechecked during the actual run.
 
 ## Scheduling and operating limits
 
+For repeatable invocations, use a [saved JSON refresh job](ons-pay-refresh-jobs.md).
+The job file records source order, exact handoff digests, local destinations and policies
+in one configuration, with paths relative to that file. It supports mixed checkout
+and HTTPS sources, and adds the job digest to the existing batch audit.
+
 The CLI is deterministic and exits nonzero on failure, so a local scheduler,
 CI job, Dagster asset or later managed orchestrator can run it with the
 *explicit handoff and checkout paths or HTTPS commits*. Freshness breaches and partial failures
@@ -187,7 +192,7 @@ ingestion/curation contracts or selecting a database supplier.
 ```bash
 cd python
 poetry install --extras serving
-poetry run pytest tests/test_ons_pay_refresh.py tests/test_ons_pay_remote_refresh.py -q
+poetry run pytest tests/test_ons_pay_refresh.py tests/test_ons_pay_remote_refresh.py tests/test_ons_pay_refresh_job.py -q
 poetry run ruff check src/ tests/
 poetry run ruff format --check src/ tests/
 poetry run mypy src/

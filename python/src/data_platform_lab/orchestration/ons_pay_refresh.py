@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -24,7 +25,11 @@ from data_platform_lab.ingestion.registry_fetch import (
     _prepare_fetch,
     ingest_registry_fetch,
 )
-from data_platform_lab.ingestion.registry_handoff import ingest_handoff, parse_handoff
+from data_platform_lab.ingestion.registry_handoff import (
+    _verify_manifest_bytes,
+    ingest_handoff,
+    parse_handoff,
+)
 from data_platform_lab.storage import BlobStore
 
 _REGISTRY = "DiogoRibeiro7/data"
@@ -52,6 +57,7 @@ class RefreshSource:
 
     manifest_path: Path
     registry_root: Path
+    expected_manifest_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +66,7 @@ class RemoteRefreshSource:
 
     manifest_path: Path
     fetch_options: RegistryFetchOptions
+    expected_manifest_sha256: str | None = None
 
 
 RefreshInput = RefreshSource | RemoteRefreshSource
@@ -154,6 +161,7 @@ def plan_ons_pay_refresh(
             else:
                 manifest_bytes = source.manifest_path.read_bytes()
                 plan = parse_handoff(json.loads(manifest_bytes))
+            _verify_manifest_bytes(manifest_bytes, source.expected_manifest_sha256)
             if plan.dataset_id != DATASET_ID or plan.repository != _REGISTRY:
                 raise RefreshError("handoff is not the approved ONS pay registry source")
             raw = [item for item in plan.objects if item.role == "raw"]
@@ -251,13 +259,19 @@ def refresh_ons_pay(
     output_root: Path,
     max_source_age_days: int | None = None,
     as_of: date | None = None,
+    job_sha256: str | None = None,
 ) -> RefreshResult:
     """Verify, ingest, curate and audit one or more pinned ONS snapshots.
 
     A partial failure does not undo prior published immutable objects. Every
     rerun rechecks them and reuses matching bytes. An audit records the last
     completed source and failing phase, making backfills safely resumable.
+    A job digest optionally identifies the saved configuration in both outcomes.
     """
+    if job_sha256 is not None and (
+        not isinstance(job_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", job_sha256) is None
+    ):
+        raise RefreshError("job_sha256 must be a lowercase SHA-256 digest")
     started = datetime.now(UTC)
     run_id = uuid4().hex
     reference_date = as_of if as_of is not None else started.date()
@@ -341,7 +355,14 @@ def refresh_ons_pay(
         _write_audit(
             receipt_path,
             _audit_document(
-                run_id, started, "failed", completed, max_source_age_days, reference_date, failure
+                run_id,
+                started,
+                "failed",
+                completed,
+                max_source_age_days,
+                reference_date,
+                failure,
+                job_sha256,
             ),
         )
         raise RefreshError(
@@ -353,7 +374,14 @@ def refresh_ons_pay(
     _write_audit(
         receipt_path,
         _audit_document(
-            run_id, started, "success", completed, max_source_age_days, reference_date, None
+            run_id,
+            started,
+            "success",
+            completed,
+            max_source_age_days,
+            reference_date,
+            None,
+            job_sha256,
         ),
     )
     return RefreshResult(run_id, receipt_path, tuple(completed))
@@ -367,6 +395,7 @@ def _audit_document(
     max_source_age_days: int | None,
     reference_date: date,
     failure: dict[str, object] | None,
+    job_sha256: str | None = None,
 ) -> dict[str, Any]:
     finished = datetime.now(UTC)
     return {
@@ -385,4 +414,5 @@ def _audit_document(
         "metrics": _metrics(completed),
         "sources": [_source_record(item) for item in completed],
         "failure": failure,
+        **({"job_sha256": job_sha256} if job_sha256 is not None else {}),
     }
