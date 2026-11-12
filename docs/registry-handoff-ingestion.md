@@ -122,8 +122,9 @@ It supports ordered historical sources, freshness gates and audited partial reco
   current `BlobStore` interface then materializes one bounded object in memory;
   this is not a streaming bulk-storage adapter or a bound on destination reads.
 - `--timeout-seconds` accepts positive finite values up to 300. It limits blocking
-  socket operations, not the duration of the whole run. There are no automatic
-  retries: fix the cause and explicitly rerun the same approved selection.
+  socket operations, not the duration of the whole run. The default is one
+  attempt per object. Temporary transfer failures can use the explicit
+  [bounded retry policy](#retry-temporary-extraction-failures) below.
 - Every execution fetches and verifies source bytes again, including replays.
   Matching destinations are reused without rewriting them; corrupt destinations
   fail. A later-object failure can leave earlier verified objects loaded, but
@@ -132,6 +133,9 @@ It supports ordered historical sources, freshness gates and audited partial reco
   `source_transport: "https"`. Provenance dates remain the registry's source
   dates; receipt timestamps describe this run. No local Git checkout verification
   is claimed in this mode. The existing local mode retains its Git blob checks.
+  HTTPS receipts also include `fetch_statistics`: total `attempts`, `retries`
+  and `downloaded_bytes` across objects. Downloaded body bytes include discarded
+  partial attempts; `bytes_verified` counts only complete verified objects.
 - Dry-run validates metadata only. It does not establish remote availability,
   content integrity or destination permissions, and it does not construct a store.
   Use one controlled writer for each selected destination; there is no
@@ -147,6 +151,48 @@ The Python API exposes `RegistryFetchOptions`, `plan_registry_fetch` and
 `ingest_registry_fetch` in `data_platform_lab.ingestion.registry_fetch`.
 It accepts the existing `BlobStore` interface and returns the same `IngestionResult`
 as local ingestion. No provider credentials or new runtime dependencies are required.
+
+### Retry temporary extraction failures
+
+Both `registry-ingest --fetch` and `ons-pay-refresh --fetch-source` accept:
+
+```bash
+--max-attempts 3 --retry-delay-seconds 1
+```
+
+`--max-attempts` is an integer from **1 to 5**, including the initial request;
+the default **1** preserves execution without automatic retries.
+`--retry-delay-seconds` is a positive finite value up to **30** (default **1**).
+The delay doubles after each failed attempt, capped at 30 seconds. Both flags
+require HTTPS mode, are validated before connecting, and appear in dry-run output.
+
+Only the current object's GET is retried, always at its exact pinned URL.
+Eligible failures are HTTP **408, 429, 500, 502, 503 and 504**, socket timeouts,
+connection failures, temporary DNS failure, and an interrupted or demonstrably
+truncated response. TLS errors, permanent DNS failure, redirects, other HTTP
+statuses, checksum/size mismatches, invalid response headers and exhausted byte
+budgets stop immediately. Storage writes and transformation are never retried
+by this policy. Earlier successfully loaded objects are not fetched again
+within that execution.
+
+For eligible HTTP failures, the policy respects a valid
+[`Retry-After`](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after)
+value expressed as seconds or an HTTP date, waiting at least that long.
+If the server requests more than 30 seconds, execution stops for a later
+explicit rerun instead of retrying too early. Missing or malformed values use
+the exponential delay. No sleep follows the final failed attempt.
+
+Partial bodies are discarded before retrying. Body bytes returned by the HTTP
+reader, including partial bytes reported with an interrupted read, consume the
+original per-handoff byte budget; retries never reset it. Reserve room for
+retransmission when setting `--max-total-bytes` (`--max-source-bytes` in refresh).
+Error response bodies are closed without reading or recording their contents.
+These are application body-byte limits, excluding headers and TLS traffic.
+Attempt and wait caps do not provide a deadline for the entire batch.
+
+Exhausting attempts produces the existing failure exit and no ingestion success
+receipt for that handoff. ONS refresh retains earlier completed vintages in its
+failure audit. An explicit rerun verifies and reuses their immutable outputs.
 
 A local real-data smoke run on **2026-11-10** fetched the approved ONS source at
 registry commit `f407638aa9795b0a71d3bfe92eaf8b3dd344d7ba`, using the checksum in
@@ -216,9 +262,10 @@ demo. The receipt preserves the `s3://` destination address and source lineage.
 ## Scope and operational limits
 
 - **Explicit source selection:** Use an exact local checkout or explicitly select
-  HTTPS extraction with independently chosen pins. Arbitrary URLs, automatic
-  source discovery and automatic fetch retries are not supported. ONS historical
-  batches use the [refresh workflow](ons-pay-refresh.md).
+  HTTPS extraction with independently chosen pins. Arbitrary URLs and automatic
+  source discovery are not supported. Automatic transfer retries require the
+  explicit bounded policy above. ONS historical batches use the
+  [refresh workflow](ons-pay-refresh.md).
 - **In-memory blob contract:** The current platform's `put_bytes`/`get_bytes`
   reads one object into memory. Large objects should use a future streaming
   `BlobStore` extension with multipart upload and a bounded checksum buffer.
@@ -237,7 +284,7 @@ demo. The receipt preserves the `s3://` destination address and source lineage.
 
 ```bash
 cd python
-poetry run pytest tests/test_registry_handoff_ingestion.py -q
+poetry run pytest tests/test_registry_handoff_ingestion.py tests/test_registry_fetch.py tests/test_registry_fetch_retries.py -q
 poetry run ruff check src/ tests/
 poetry run mypy src/
 ```
@@ -246,3 +293,6 @@ Tests use a synthetic Git repository and no network or cloud credentials. They
 cover checksum rejection, Git pinning, path traversal, symlink escape, license
 gating, duplicate identity, corrupt destinations, idempotent replay, and CLI
 receipt lineage.
+Retry tests also cover transient recovery, permanent failures, server wait hints,
+partial-transfer budgets, exhausted batch recovery, both CLIs and a local HTTP
+server. No public source access is needed by these tests.

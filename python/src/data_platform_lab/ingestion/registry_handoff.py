@@ -360,6 +360,7 @@ def _ingest_verified_handoff(
     store: BlobStore,
     receipt_dir: Path,
     source_transport: str | None = None,
+    fetch_statistics: dict[str, int] | None = None,
 ) -> IngestionResult:
     """Share promotion and receipt handling; the reader verifies source identity."""
     started_at = datetime.now(UTC)
@@ -431,6 +432,8 @@ def _ingest_verified_handoff(
     }
     if source_transport is not None:
         receipt["source_transport"] = source_transport
+    if fetch_statistics is not None:
+        receipt["fetch_statistics"] = dict(fetch_statistics)
     receipt_dir.mkdir(parents=True, exist_ok=True)
     receipt_path = receipt_dir / f"registry_handoff_ingestion_{run_id}.json"
     temporary_path: Path | None = None

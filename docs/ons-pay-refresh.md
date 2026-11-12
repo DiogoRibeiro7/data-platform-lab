@@ -80,12 +80,20 @@ apply: exact HTTPS URLs, no redirects, bounded reads, checksum and size validati
 and verification of destination bytes. `--timeout-seconds` limits each blocking
 socket operation, not total batch duration. `--max-object-bytes` caps each object;
 `--max-source-bytes` caps the sum downloaded for **each handoff**, resetting for
-the next source. These fetch flags require `--fetch-source`. There are no automatic
-retries; explicit reruns fetch and verify source bytes again before reusing outputs.
+the next source. These fetch flags require `--fetch-source`. The default is one
+attempt per object; explicit reruns fetch and verify source bytes again before reusing outputs.
+
+For temporary HTTP or connection failures, add `--max-attempts 3` and optionally
+`--retry-delay-seconds 1`. The
+[bounded extraction retry policy](registry-handoff-ingestion.md#retry-temporary-extraction-failures)
+applies to each object, honors server wait hints up to 30 seconds, and counts
+partial attempts against the same source byte budget. It never retries storage
+writes or curation. Dry-run reports the policy without fetching or sleeping.
 
 Remote refresh uses the existing batch audit, linked ingestion and curation
 receipts, and monitoring command. The ingestion receipt records
-`source_transport: "https"`; source retrieval dates retain their upstream meaning.
+`source_transport: "https"` plus attempt, retry and downloaded-byte statistics;
+source retrieval dates retain their upstream meaning.
 For raw loading without transformation, use `registry-ingest --fetch` instead.
 [Database publication](ons-pay-portable-publishing.md) remains a separate command.
 
