@@ -11,6 +11,7 @@ from data_platform_lab.curation.ons_pay_cli import main as ons_pay_curate_main
 from data_platform_lab.iceberg.cli import main as iceberg_main
 from data_platform_lab.ingestion.registry_cli import main as registry_ingest_main
 from data_platform_lab.metadata.cli import main as metadata_main
+from data_platform_lab.observability.ons_pay_job_status_cli import main as ons_pay_job_status_main
 from data_platform_lab.observability.ons_pay_monitor_cli import main as ons_pay_monitor_main
 from data_platform_lab.observability.ons_pay_publication_status_cli import (
     main as ons_pay_publication_status_main,
@@ -36,6 +37,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "metadata": metadata_main,
     "ons-pay-compare": ons_pay_compare_main,
     "ons-pay-curate": ons_pay_curate_main,
+    "ons-pay-job-status": ons_pay_job_status_main,
     "ons-pay-monitor": ons_pay_monitor_main,
     "ons-pay-publish": ons_pay_publish_main,
     "ons-pay-publication-history": ons_pay_publication_history_main,

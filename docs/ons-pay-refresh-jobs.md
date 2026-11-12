@@ -170,8 +170,17 @@ include `load_only: true`; the summary omits Parquet counts. A load audit named
 `ons_pay_load_<run-id>.json` records verified bytes, publication/reuse counts and
 links to ingestion receipts. It does not claim row-quality checks, create
 Silver/Gold outputs or update curated refresh health. Both successful and failed
-raw-load batches are excluded from the curated monitor's refresh history; assess
-them using the command's exit code and their own audits.
+raw-load batches are excluded from the curated monitor's refresh history. Inspect
+their latest completed outcome with [saved-job status](ons-pay-job-status.md):
+
+```bash
+poetry run data-platform-lab ons-pay-job-status \
+  --job ../jobs/ons-load.json --max-success-age-hours 24
+```
+
+This read-only check also supports full refresh jobs. It reports the latest run,
+last complete success and failure progress for the exact saved configuration.
+Retain invocation exit codes as well: busy rejections and crashes may leave no audit.
 
 Change the saved field to `false` for a subsequent full refresh, or use each
 ingestion receipt for [separate offline curation](ons-pay-refresh.md#load-raw-data-without-transformation).
