@@ -127,8 +127,10 @@ rerun the full batch; previously valid objects and Parquet outputs are checked
 and reused. Corrupted immutable files are never silently overwritten.
 Failure audits retain the exception type and stage with a fixed diagnostic,
 so raw transport or transformation exception text is not stored in the audit.
-Successful runs exit `0`, invalid arguments or dry-run preflight exit `2`, and
-execution failures (including execution preflight) exit `1` with an audit path.
+Successful runs exit `0`; invalid arguments or dry-run preflight exit `2`.
+Execution failures (including execution preflight) exit `1` with an audit path
+when the audit could be written. Destination guard errors exit `1` before a run
+starts, without an audit; a busy destination exits `3` as described below.
 
 ## Freshness SLA and quality semantics
 
@@ -162,6 +164,35 @@ policy and, for HTTPS sources, explicit pins and fetch budgets. It does **not** 
 Git checkouts, source file bytes, storage integrity, or downstream SQL quality;
 those are rechecked during the actual run.
 
+## Overlapping runs
+
+Actual refreshes automatically acquire nonblocking local guards for the resolved
+`output_root` and, for `LocalBlobStore`, its object root. Another refresh sharing
+either exact root is rejected before handoff preflight, source loading or fetching.
+This applies to direct CLI arguments, saved jobs and the Python API. The CLI exits
+`3` with a fixed busy message; the API raises `RefreshBusyError` with no receipt.
+There is no waiting, extraction retry or failed batch audit for a rejected run.
+A scheduler can retry later; dry-run neither acquires guards nor checks availability.
+
+Guards remain held through success or failure audit publication. Windows uses
+an OS byte-range lock and POSIX uses `flock`; process exit or termination releases
+ownership automatically. For `/work/objects`, metadata lives in the sibling file
+`/work/.objects.ons-pay-refresh.lock`. Destination parent directories must be
+writable, and missing parents may be created. Metadata is outside that root's
+object namespace, so a separate object store's listings remain unchanged.
+The empty lock files persist after release: **do not delete or replace them while
+runs may be active**. Their existence does not mean a job is running, and no stale
+PID cleanup is needed. Existing metadata is never truncated or rewritten; symlinks,
+hard links and nonregular lock files are rejected.
+
+Coordination covers cooperating refresh processes using the same resolved roots
+on one host's local filesystem. Keep these directories under trusted control.
+Different nested roots are not treated as the same destination. Standalone
+`registry-ingest`, `ons-pay-curate` and other writers must still be coordinated
+separately. Network filesystems and distributed execution are outside this
+guarantee; a nonlocal `BlobStore` is protected only by its local output-root guard,
+not by a remote object-store lock.
+
 ## Scheduling and operating limits
 
 For repeatable invocations, use a [saved JSON refresh job](ons-pay-refresh-jobs.md).
@@ -179,7 +210,7 @@ Use the [read-only monitoring command](ons-pay-monitoring.md) to check the
 published table contracts and refresh audit history, obtain numeric health
 metrics, and return alert-ready exit codes for a configured scheduler.
 
-The process is a single-writer local workflow. It does not support
+The process enforces one cooperating refresh writer per local destination. It does not support
 distributed locking, rollback across multiple sources, concurrent publication,
 automatic registry-version discovery, or signed attestations against a local
 actor who can rewrite both receipts and files. Core orchestration accepts a
@@ -192,7 +223,7 @@ ingestion/curation contracts or selecting a database supplier.
 ```bash
 cd python
 poetry install --extras serving
-poetry run pytest tests/test_ons_pay_refresh.py tests/test_ons_pay_remote_refresh.py tests/test_ons_pay_refresh_job.py -q
+poetry run pytest tests/test_ons_pay_refresh.py tests/test_ons_pay_remote_refresh.py tests/test_ons_pay_refresh_job.py tests/test_local_run_guard.py tests/test_ons_pay_refresh_guard.py -q
 poetry run ruff check src/ tests/
 poetry run ruff format --check src/ tests/
 poetry run mypy src/
@@ -205,6 +236,8 @@ audits, source tampering, SQL quality gates, and conflicting Parquet bytes.
 HTTPS tests use synthetic responses to cover ordered backfills, preflight before
 network access, manifest changes, partial failure recovery and audit compatibility.
 They require neither network access nor a hosted database account.
+Separate-process tests check contention, independent destinations, release after
+exceptions or termination, and ownership through audit publication on Windows and POSIX.
 
 After backfilling at least two vintages, use the
 [read-only release comparison gate](ons-pay-release-comparison.md) to examine

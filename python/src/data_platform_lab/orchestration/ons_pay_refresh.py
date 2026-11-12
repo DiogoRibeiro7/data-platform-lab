@@ -30,7 +30,12 @@ from data_platform_lab.ingestion.registry_handoff import (
     ingest_handoff,
     parse_handoff,
 )
-from data_platform_lab.storage import BlobStore
+from data_platform_lab.orchestration.local_run_guard import (
+    LocalRunBusyError,
+    LocalRunGuardError,
+    guard_local_roots,
+)
+from data_platform_lab.storage import BlobStore, LocalBlobStore
 
 _REGISTRY = "DiogoRibeiro7/data"
 _RAW_SOURCE = f"datasets/{DATASET_ID}/raw/gross-median-weekly-pay.csv"
@@ -49,6 +54,10 @@ class RefreshError(ValueError):
         super().__init__(message)
         self.receipt_path = receipt_path
         self.source_index = source_index
+
+
+class RefreshBusyError(RefreshError):
+    """A refresh was rejected before preflight because a destination is busy."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,22 +276,56 @@ def refresh_ons_pay(
     rerun rechecks them and reuses matching bytes. An audit records the last
     completed source and failing phase, making backfills safely resumable.
     A job digest optionally identifies the saved configuration in both outcomes.
+    Local destination guards cover preflight through the final audit. Contention
+    raises RefreshBusyError before source reads or creation of a batch audit.
     """
     if job_sha256 is not None and (
         not isinstance(job_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", job_sha256) is None
     ):
         raise RefreshError("job_sha256 must be a lowercase SHA-256 digest")
-    started = datetime.now(UTC)
-    run_id = uuid4().hex
-    reference_date = as_of if as_of is not None else started.date()
     output_root = output_root.resolve()
+    roots = [output_root]
+    if isinstance(store, LocalBlobStore):
+        roots.append(store.root)
     if any(
-        output_root.is_relative_to(source.registry_root.resolve())
+        root.is_relative_to(source.registry_root.resolve())
+        for root in roots
         for source in sources
         if isinstance(source, RefreshSource)
     ):
-        # Do not write even a *failure* audit into the canonical source checkout.
-        raise RefreshError("output_root must be outside each canonical registry checkout")
+        # Do not write guards or even a failure audit into a canonical checkout.
+        raise RefreshError("destination roots must be outside each canonical registry checkout")
+    try:
+        with guard_local_roots(roots):
+            return _refresh_locked(
+                sources=sources,
+                store=store,
+                output_root=output_root,
+                max_source_age_days=max_source_age_days,
+                as_of=as_of,
+                job_sha256=job_sha256,
+            )
+    except LocalRunBusyError as exc:
+        raise RefreshBusyError(
+            "Another ONS pay refresh is using a destination; retry after it finishes."
+        ) from exc
+    except LocalRunGuardError as exc:
+        raise RefreshError("Unable to acquire ONS pay refresh destination guards.") from exc
+
+
+def _refresh_locked(
+    *,
+    sources: Sequence[RefreshInput],
+    store: BlobStore,
+    output_root: Path,
+    max_source_age_days: int | None,
+    as_of: date | None,
+    job_sha256: str | None,
+) -> RefreshResult:
+    """Run the batch while the caller holds its destination guards."""
+    started = datetime.now(UTC)
+    run_id = uuid4().hex
+    reference_date = as_of if as_of is not None else started.date()
     receipt_path = output_root / "manifests" / f"ons_pay_refresh_{run_id}.json"
     completed: list[RefreshedSource] = []
     phase = "preflight"

@@ -339,6 +339,9 @@ using an independently selected full commit. See the
 For repeated runs, save source pins, output paths and policies in a
 [JSON refresh job](docs/ons-pay-refresh-jobs.md), then run
 `data-platform-lab ons-pay-refresh --job /path/to/ons-refresh.json`.
+Refreshes sharing a local destination are rejected with exit code `3` before
+source loading. See [local run guards](docs/ons-pay-refresh.md#overlapping-runs)
+for scheduling, automatic release and coordination limits.
 Jobs support mixed checkout/HTTPS batches and verify each saved handoff digest.
 
 ## Operational health and freshness alerts
