@@ -92,7 +92,7 @@ jobs:
 
       - name: Test local refresh and process guards
         run: >-
-          poetry run pytest -q --basetemp=C:/t/ons-pay
+          poetry run pytest -q --basetemp="${{ runner.temp }}/ons-pay"
           tests/test_local_run_guard.py tests/test_ons_pay_refresh_guard.py
           tests/test_ons_pay_refresh.py tests/test_ons_pay_remote_refresh.py
           tests/test_ons_pay_refresh_job.py
