@@ -245,6 +245,9 @@ not by a remote object-store lock.
 ## Scheduling and operating limits
 
 For repeatable invocations, use a [saved JSON refresh job](ons-pay-refresh-jobs.md).
+Add `--save-job /path/to/new-job.json` to direct source arguments to prepare that
+configuration without executing it; combine with `--dry-run` for a read-only preview.
+Preparation captures handoff digests and refuses to overwrite an existing job.
 The job file records source order, exact handoff digests, local destinations and policies
 in one configuration, with paths relative to that file. It supports mixed checkout
 and HTTPS sources, and adds the job digest to the existing batch audit.

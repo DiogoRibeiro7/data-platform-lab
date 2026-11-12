@@ -78,16 +78,9 @@ def _path(value: Any, directory: Path) -> Path:
     return (directory / value).resolve()
 
 
-def load_refresh_job(path: Path) -> RefreshJob:
-    """Parse a v1 UTF-8 job without opening handoffs, stores or network connections.
-
-    A job must be trusted as execution configuration. No command execution,
-    credential fields, variable expansion or floating HTTPS source selection is supported.
-    Manifest pins are verified by the normal whole-batch refresh preflight.
-    """
+def _parse_refresh_job(path: Path, raw: bytes) -> RefreshJob:
+    """Validate one bounded job snapshot, resolving paths against its location."""
     try:
-        with path.open("rb") as handle:
-            raw = handle.read(_MAX_JOB_BYTES + 1)
         if len(raw) > _MAX_JOB_BYTES:
             raise RefreshJobError("Refresh job exceeds the 256 KiB limit.")
         document = _fields(
@@ -164,3 +157,18 @@ def load_refresh_job(path: Path) -> RefreshJob:
         raise RefreshJobError(str(exc)) from None
     except (OSError, UnicodeError, ValueError, TypeError, RuntimeError, OverflowError):
         raise RefreshJobError("Cannot read a valid refresh job.") from None
+
+
+def load_refresh_job(path: Path) -> RefreshJob:
+    """Parse a v1 UTF-8 job without opening handoffs, stores or network connections.
+
+    A job must be trusted as execution configuration. No command execution,
+    credential fields, variable expansion or floating HTTPS source selection is supported.
+    Manifest pins are verified by the normal whole-batch refresh preflight.
+    """
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(_MAX_JOB_BYTES + 1)
+    except (OSError, UnicodeError, ValueError, TypeError, RuntimeError, OverflowError):
+        raise RefreshJobError("Cannot read a valid refresh job.") from None
+    return _parse_refresh_job(path, raw)
