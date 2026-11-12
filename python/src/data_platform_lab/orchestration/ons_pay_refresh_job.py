@@ -45,6 +45,7 @@ class RefreshJob:
     output_root: Path
     max_source_age_days: int | None
     sha256: str
+    load_only: bool = False
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -96,10 +97,13 @@ def load_refresh_job(path: Path) -> RefreshJob:
                 parse_constant=_reject_constant,
             ),
             {"schema_version", "sources", "object_root", "output_root"},
-            {"fetch", "max_source_age_days"},
+            {"fetch", "max_source_age_days", "load_only"},
         )
         if type(document["schema_version"]) is not int or document["schema_version"] != 1:
             raise RefreshJobError("Refresh job requires schema_version 1.")
+        load_only = document.get("load_only", False)
+        if type(load_only) is not bool:
+            raise RefreshJobError("Refresh job load_only must be a boolean.")
         entries = document["sources"]
         if not isinstance(entries, list) or not 1 <= len(entries) <= _MAX_SOURCES:
             raise RefreshJobError("Refresh job requires between 1 and 256 sources.")
@@ -152,6 +156,7 @@ def load_refresh_job(path: Path) -> RefreshJob:
             output_root=_path(document["output_root"], directory),
             max_source_age_days=max_age,
             sha256=hashlib.sha256(raw).hexdigest(),
+            load_only=load_only,
         )
     except RefreshJobError:
         raise

@@ -343,6 +343,9 @@ Refreshes sharing a local destination are rejected with exit code `3` before
 source loading. See [local run guards](docs/ons-pay-refresh.md#overlapping-runs)
 for scheduling, automatic release and coordination limits.
 Jobs support mixed checkout/HTTPS batches and verify each saved handoff digest.
+For raw-only loading, add `--load-only` to direct arguments or `"load_only": true`
+to a saved job. [Load audits](docs/ons-pay-refresh.md#load-raw-data-without-transformation)
+retain verified lineage without creating Parquet or resetting curated refresh health.
 
 ## Operational health and freshness alerts
 

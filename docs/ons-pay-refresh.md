@@ -94,8 +94,57 @@ Remote refresh uses the existing batch audit, linked ingestion and curation
 receipts, and monitoring command. The ingestion receipt records
 `source_transport: "https"` plus attempt, retry and downloaded-byte statistics;
 source retrieval dates retain their upstream meaning.
-For raw loading without transformation, use `registry-ingest --fetch` instead.
+For a single raw load, use `registry-ingest --fetch`. For ordered raw-only batches,
+use the mode below.
 [Database publication](ons-pay-portable-publishing.md) remains a separate command.
+
+## Load raw data without transformation
+
+Add `--load-only` to a direct invocation to stop after verified raw loading:
+
+```bash
+poetry run data-platform-lab ons-pay-refresh --load-only \
+  --fetch-source ../data/manifests/ons-handoff.json "$ONS_REGISTRY_COMMIT" \
+  --object-root ../data/object-store --output-root ../data
+```
+
+With `--fetch-source`, this extracts and loads pinned HTTPS bytes. With `--source`,
+it loads bytes from the exact local checkout. It supports the same ordered batches,
+freshness gates, handoff digests, checksum/size checks, extraction retries and
+destination guards as a full refresh. `--dry-run --load-only` remains read-only.
+The optional analytics dependency is unnecessary for this mode.
+
+A raw-only batch creates `manifests/ons_pay_load_<run-id>.json` under `output_root`,
+with `pipeline_name: "ons_pay_load"` and `schema_version: 1`. The audit retains
+source pins, retrieval ages, ingestion receipt paths, verified bytes, object
+publication/reuse counts, any job digest, and partial failures. It omits model
+version, curation receipt paths, Parquet counts and row-quality metrics because
+transformation did not run. CLI summaries and previews include `load_only: true`;
+success summaries omit Parquet counts. Existing exit codes apply.
+
+The raw payload is preserved unchanged, including bytes that may later fail CSV
+schema or business-quality checks. A successful load is evidence of source and
+storage integrity; it does not establish analytical suitability. No Silver/Gold
+outputs, serving entries or release changes are produced. Both successful and
+failed raw-load batch audits are excluded from `ons-pay-monitor` refresh history,
+so a load cannot reset curated-data freshness or hide a failed full refresh.
+Use the load command's exit status and load audit to assess ingestion outcomes.
+
+To transform later without downloading again, pass an `ingestion_receipt_path`
+from the load audit to the existing command:
+
+```bash
+poetry install --extras analytics
+poetry run data-platform-lab ons-pay-curate \
+  --receipt /path/from/load-audit/registry_handoff_ingestion_<run-id>.json \
+  --object-root ../data/object-store --output-root ../data
+```
+
+This verifies stored bytes and runs the normal curation quality checks. It does
+not fabricate a full refresh audit. Alternatively, run `ons-pay-refresh` without
+`--load-only`; that rechecks the sources, reuses matching raw objects and creates
+normal refresh evidence. A [saved job](ons-pay-refresh-jobs.md) selects raw loading
+with the boolean `"load_only": true`; CLI overrides of saved settings are rejected.
 
 ## Historical backfill
 
@@ -223,7 +272,7 @@ ingestion/curation contracts or selecting a database supplier.
 ```bash
 cd python
 poetry install --extras serving
-poetry run pytest tests/test_ons_pay_refresh.py tests/test_ons_pay_remote_refresh.py tests/test_ons_pay_refresh_job.py tests/test_local_run_guard.py tests/test_ons_pay_refresh_guard.py -q
+poetry run pytest tests/test_ons_pay_refresh.py tests/test_ons_pay_remote_refresh.py tests/test_ons_pay_refresh_job.py tests/test_ons_pay_load_only.py tests/test_local_run_guard.py tests/test_ons_pay_refresh_guard.py -q
 poetry run ruff check src/ tests/
 poetry run ruff format --check src/ tests/
 poetry run mypy src/

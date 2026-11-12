@@ -16,7 +16,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, overload
 from uuid import uuid4
 
 from data_platform_lab.curation.ons_pay import DATASET_ID, MODEL_VERSION, curate_ons_pay
@@ -124,6 +124,30 @@ class RefreshResult:
     sources: tuple[RefreshedSource, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class LoadedSource:
+    """One verified raw load; no transformation or row-quality claim is made."""
+
+    manifest_path: Path
+    registry_commit: str
+    source_sha256: str
+    retrieved_at: str
+    source_age_days: int
+    ingestion_receipt_path: Path
+    objects_published: int
+    objects_reused: int
+    bytes_verified: int
+
+
+@dataclass(frozen=True, slots=True)
+class LoadResult:
+    """A raw-only batch with an audit distinct from completed refresh evidence."""
+
+    run_id: str
+    receipt_path: Path
+    sources: tuple[LoadedSource, ...]
+
+
 def parse_retrieved_date(value: str) -> date:
     """Interpret upstream retrieval metadata as UTC calendar-day freshness."""
     try:
@@ -205,18 +229,22 @@ def plan_ons_pay_refresh(
     return tuple(inspected)
 
 
-def _source_record(source: RefreshedSource) -> dict[str, object]:
-    return {
+def _source_record(source: RefreshedSource | LoadedSource) -> dict[str, object]:
+    record: dict[str, object] = {
         "manifest_path": str(source.manifest_path),
         "registry_commit": source.registry_commit,
         "source_sha256": source.source_sha256,
         "retrieved_at": source.retrieved_at,
         "source_age_days": source.source_age_days,
         "ingestion_receipt_path": str(source.ingestion_receipt_path),
-        "curation_receipt_path": str(source.curation_receipt_path),
         "objects_published": source.objects_published,
         "objects_reused": source.objects_reused,
         "bytes_verified": source.bytes_verified,
+    }
+    if isinstance(source, LoadedSource):
+        return record
+    return record | {
+        "curation_receipt_path": str(source.curation_receipt_path),
         "parquet_published": source.parquet_published,
         "parquet_reused": source.parquet_reused,
         "source_rows": source.source_rows,
@@ -245,20 +273,66 @@ def _write_audit(path: Path, document: dict[str, Any]) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def _metrics(sources: list[RefreshedSource]) -> dict[str, int]:
+def _metrics(
+    sources: Sequence[RefreshedSource | LoadedSource], *, load_only: bool = False
+) -> dict[str, int]:
     """Aggregates count rows across *vintages*, not unique source observations."""
-    return {
+    metrics = {
         "vintages_completed": len(sources),
         "objects_published": sum(item.objects_published for item in sources),
         "objects_reused": sum(item.objects_reused for item in sources),
         "bytes_verified": sum(item.bytes_verified for item in sources),
-        "parquet_published": sum(item.parquet_published for item in sources),
-        "parquet_reused": sum(item.parquet_reused for item in sources),
-        "source_rows": sum(item.source_rows for item in sources),
-        "rows_with_pay": sum(item.rows_with_pay for item in sources),
-        "rows_without_pay": sum(item.rows_without_pay for item in sources),
         "max_source_age_days_observed": max((item.source_age_days for item in sources), default=0),
     }
+    if load_only:
+        return metrics
+    curated = [item for item in sources if isinstance(item, RefreshedSource)]
+    return metrics | {
+        "parquet_published": sum(item.parquet_published for item in curated),
+        "parquet_reused": sum(item.parquet_reused for item in curated),
+        "source_rows": sum(item.source_rows for item in curated),
+        "rows_with_pay": sum(item.rows_with_pay for item in curated),
+        "rows_without_pay": sum(item.rows_without_pay for item in curated),
+    }
+
+
+@overload
+def refresh_ons_pay(
+    *,
+    sources: Sequence[RefreshInput],
+    store: BlobStore,
+    output_root: Path,
+    max_source_age_days: int | None = None,
+    as_of: date | None = None,
+    job_sha256: str | None = None,
+    load_only: Literal[False] = False,
+) -> RefreshResult: ...
+
+
+@overload
+def refresh_ons_pay(
+    *,
+    sources: Sequence[RefreshInput],
+    store: BlobStore,
+    output_root: Path,
+    max_source_age_days: int | None = None,
+    as_of: date | None = None,
+    job_sha256: str | None = None,
+    load_only: Literal[True],
+) -> LoadResult: ...
+
+
+@overload
+def refresh_ons_pay(
+    *,
+    sources: Sequence[RefreshInput],
+    store: BlobStore,
+    output_root: Path,
+    max_source_age_days: int | None = None,
+    as_of: date | None = None,
+    job_sha256: str | None = None,
+    load_only: bool,
+) -> RefreshResult | LoadResult: ...
 
 
 def refresh_ons_pay(
@@ -269,7 +343,8 @@ def refresh_ons_pay(
     max_source_age_days: int | None = None,
     as_of: date | None = None,
     job_sha256: str | None = None,
-) -> RefreshResult:
+    load_only: bool = False,
+) -> RefreshResult | LoadResult:
     """Verify, ingest, curate and audit one or more pinned ONS snapshots.
 
     A partial failure does not undo prior published immutable objects. Every
@@ -278,7 +353,11 @@ def refresh_ons_pay(
     A job digest optionally identifies the saved configuration in both outcomes.
     Local destination guards cover preflight through the final audit. Contention
     raises RefreshBusyError before source reads or creation of a batch audit.
+    Opt-in load_only preserves raw bytes and writes a separate ons_pay_load audit;
+    it never runs curation or contributes to curated refresh health evidence.
     """
+    if type(load_only) is not bool:
+        raise RefreshError("load_only must be a boolean")
     if job_sha256 is not None and (
         not isinstance(job_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", job_sha256) is None
     ):
@@ -304,6 +383,7 @@ def refresh_ons_pay(
                 max_source_age_days=max_source_age_days,
                 as_of=as_of,
                 job_sha256=job_sha256,
+                load_only=load_only,
             )
     except LocalRunBusyError as exc:
         raise RefreshBusyError(
@@ -321,13 +401,16 @@ def _refresh_locked(
     max_source_age_days: int | None,
     as_of: date | None,
     job_sha256: str | None,
-) -> RefreshResult:
+    load_only: bool,
+) -> RefreshResult | LoadResult:
     """Run the batch while the caller holds its destination guards."""
     started = datetime.now(UTC)
     run_id = uuid4().hex
     reference_date = as_of if as_of is not None else started.date()
-    receipt_path = output_root / "manifests" / f"ons_pay_refresh_{run_id}.json"
+    pipeline = "ons_pay_load" if load_only else "ons_pay_refresh"
+    receipt_path = output_root / "manifests" / f"{pipeline}_{run_id}.json"
     completed: list[RefreshedSource] = []
+    loaded: list[LoadedSource] = []
     phase = "preflight"
     source_index: int | None = None
     active_ingestion_receipt: Path | None = None
@@ -356,6 +439,21 @@ def _refresh_locked(
                     expected_manifest_sha256=item.manifest_sha256,
                 )
             active_ingestion_receipt = ingested.receipt_path
+            if load_only:
+                loaded.append(
+                    LoadedSource(
+                        manifest_path=item.source.manifest_path.resolve(),
+                        registry_commit=item.registry_commit,
+                        source_sha256=item.source_sha256,
+                        retrieved_at=item.retrieved_at,
+                        source_age_days=item.age_days,
+                        ingestion_receipt_path=ingested.receipt_path,
+                        objects_published=ingested.files_published,
+                        objects_reused=ingested.files_reused,
+                        bytes_verified=ingested.bytes_verified,
+                    )
+                )
+                continue
             phase = "curation"
             curated = curate_ons_pay(
                 input_receipt=ingested.receipt_path, store=store, output_root=output_root
@@ -401,11 +499,12 @@ def _refresh_locked(
                 run_id,
                 started,
                 "failed",
-                completed,
+                loaded if load_only else completed,
                 max_source_age_days,
                 reference_date,
                 failure,
                 job_sha256,
+                load_only=load_only,
             ),
         )
         raise RefreshError(
@@ -420,13 +519,16 @@ def _refresh_locked(
             run_id,
             started,
             "success",
-            completed,
+            loaded if load_only else completed,
             max_source_age_days,
             reference_date,
             None,
             job_sha256,
+            load_only=load_only,
         ),
     )
+    if load_only:
+        return LoadResult(run_id, receipt_path, tuple(loaded))
     return RefreshResult(run_id, receipt_path, tuple(completed))
 
 
@@ -434,17 +536,19 @@ def _audit_document(
     run_id: str,
     started: datetime,
     status: str,
-    completed: list[RefreshedSource],
+    completed: Sequence[RefreshedSource | LoadedSource],
     max_source_age_days: int | None,
     reference_date: date,
     failure: dict[str, object] | None,
     job_sha256: str | None = None,
+    *,
+    load_only: bool = False,
 ) -> dict[str, Any]:
     finished = datetime.now(UTC)
     return {
-        "pipeline_name": "ons_pay_refresh",
+        "pipeline_name": "ons_pay_load" if load_only else "ons_pay_refresh",
         "schema_version": 1,
-        "model_version": MODEL_VERSION,
+        **({} if load_only else {"model_version": MODEL_VERSION}),
         "run_id": run_id,
         "status": status,
         "started_at": started.isoformat(),
@@ -454,7 +558,7 @@ def _audit_document(
             "max_source_age_days": max_source_age_days,
             "as_of_utc_date": reference_date.isoformat(),
         },
-        "metrics": _metrics(completed),
+        "metrics": _metrics(completed, load_only=load_only),
         "sources": [_source_record(item) for item in completed],
         "failure": failure,
         **({"job_sha256": job_sha256} if job_sha256 is not None else {}),
