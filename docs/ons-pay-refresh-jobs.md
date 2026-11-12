@@ -121,11 +121,17 @@ Source preflight failures exit `2` during dry-run; during execution they exit `1
 with a failure audit. Success exits `0`. The existing source and transformation
 quality gates are unchanged.
 
+Overlapping refreshes sharing either resolved local destination exit `3` before
+source preflight, with no batch audit. Guard setup failures exit `1` without an
+audit. The default [local run guards](ons-pay-refresh.md#overlapping-runs) apply to
+saved jobs and direct invocations alike, and release automatically on process exit.
+Dry-run does not reserve destinations or check whether they are busy.
+
 Treat a job as trusted execution configuration: it selects local inputs and write
 destinations. No shell commands, credential fields, variable interpolation, database
 publication or release activation are supported. This workflow always curates ONS
-data; use `registry-ingest` for raw loading alone. Continue to use one controlled
-writer per destination; a job file does not add concurrent-writer coordination.
+data; use `registry-ingest` for raw loading alone. Coordinate standalone ingestion,
+curation and other external writers separately from refresh jobs.
 
 The Python API `load_refresh_job` in
 `data_platform_lab.orchestration.ons_pay_refresh_job` returns an immutable

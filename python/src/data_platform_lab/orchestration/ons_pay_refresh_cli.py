@@ -8,6 +8,7 @@ from pathlib import Path
 from data_platform_lab.curation.ons_pay import DATASET_ID
 from data_platform_lab.ingestion.registry_fetch import RegistryFetchOptions
 from data_platform_lab.orchestration.ons_pay_refresh import (
+    RefreshBusyError,
     RefreshError,
     RefreshInput,
     RefreshSource,
@@ -203,6 +204,8 @@ def main(argv: list[str] | None = None) -> None:
             max_source_age_days=max_source_age_days,
             job_sha256=job_sha256,
         )
+    except RefreshBusyError as exc:
+        parser.exit(3, f"{exc}\n")
     except RefreshError as exc:
         parser.exit(1, f"{exc}\n")
     print(
