@@ -7,6 +7,11 @@ from pathlib import Path
 
 from data_platform_lab.curation.ons_pay import DATASET_ID
 from data_platform_lab.ingestion.registry_fetch import RegistryFetchOptions
+from data_platform_lab.orchestration.ons_pay_job_preparation import (
+    RefreshJobWriteError,
+    prepare_refresh_job,
+    save_refresh_job,
+)
 from data_platform_lab.orchestration.ons_pay_refresh import (
     RefreshBusyError,
     RefreshError,
@@ -46,6 +51,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     source_mode.add_argument(
         "--job", type=Path, help="Run a saved JSON refresh job; only --dry-run may accompany it."
+    )
+    parser.add_argument(
+        "--save-job",
+        type=Path,
+        help="Save a new pinned job without running it; add --dry-run to preview without writes.",
     )
     parser.add_argument(
         "--timeout-seconds", type=float, help="Fetch socket timeout, at most 300 (default: 30)"
@@ -109,6 +119,7 @@ def main(argv: list[str] | None = None) -> None:
                     args.output_root,
                     args.max_source_age_days,
                     args.load_only,
+                    args.save_job,
                 )
             ):
                 raise _ArgumentError("Saved job settings cannot be overridden; edit the job file.")
@@ -155,6 +166,36 @@ def main(argv: list[str] | None = None) -> None:
                 parser.error("object and output roots must remain outside canonical Git checkouts")
     except (_ArgumentError, RefreshJobError) as exc:
         parser.exit(2, f"{exc}\n")
+
+    if args.save_job is not None:
+        try:
+            prepared = prepare_refresh_job(
+                path=args.save_job,
+                sources=sources,
+                object_root=object_root.expanduser(),
+                output_root=output_root,
+                max_source_age_days=max_source_age_days,
+                load_only=load_only,
+            )
+            if not args.dry_run:
+                save_refresh_job(prepared)
+        except RefreshJobWriteError as exc:
+            parser.exit(1, f"{exc}\n")
+        except RefreshJobError as exc:
+            parser.exit(2, f"{exc}\n")
+        print(
+            json.dumps(
+                {
+                    "status": "planned" if args.dry_run else "saved",
+                    "writes": not args.dry_run,
+                    "job_path": str(prepared.path),
+                    "job_sha256": prepared.sha256,
+                    "job": json.loads(prepared.content),
+                },
+                indent=2,
+            )
+        )
+        return
 
     if args.dry_run:
         try:

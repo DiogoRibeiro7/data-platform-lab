@@ -10,7 +10,64 @@ creating it does not install a schedule or discover newer upstream versions.
 ## Prepare a job
 
 Obtain a trusted handoff using the [registry guide](registry-handoff-ingestion.md).
-Choose its full registry commit independently, then calculate the SHA-256 of the
+Choose its full registry commit independently. To generate a job from that selection,
+add `--save-job` to direct refresh arguments:
+
+```bash
+cd python
+export ONS_REGISTRY_COMMIT="<trusted-full-40-character-commit>"
+
+# Preview the exact configuration without creating any files or directories.
+poetry run data-platform-lab ons-pay-refresh \
+  --fetch-source ../handoffs/ons.json "$ONS_REGISTRY_COMMIT" \
+  --object-root ../data/object-store --output-root ../data \
+  --max-source-age-days 365 --max-attempts 3 --load-only \
+  --save-job ../jobs/ons-load.json --dry-run
+
+# Save configuration only; this does not extract, load or transform data.
+poetry run data-platform-lab ons-pay-refresh \
+  --fetch-source ../handoffs/ons.json "$ONS_REGISTRY_COMMIT" \
+  --object-root ../data/object-store --output-root ../data \
+  --max-source-age-days 365 --max-attempts 3 --load-only \
+  --save-job ../jobs/ons-load.json
+
+# Execute the saved configuration separately.
+poetry run data-platform-lab ons-pay-refresh --job ../jobs/ons-load.json
+```
+
+Use `--source HANDOFF_JSON PINNED_CHECKOUT` for checkout jobs, or repeat the selected
+source flag for a historical batch. Omit `--load-only` to prepare full refresh.
+Preparation reads and validates every handoff using the existing preflight, captures
+its exact SHA-256, and records the selected policies, including all HTTPS defaults.
+It opens no source transport or object store, runs no curation, and acquires no
+destination guards. The source checkout and raw bytes are verified during execution.
+
+Input paths are interpreted from the invocation's working directory. The saved
+paths are relative to the resolved job directory where possible; paths on different
+Windows drives remain absolute. Moving the whole directory tree preserves relative
+relationships; moving the job alone may require path edits. JSON results report
+`status` (`planned` or `saved`), `writes`, `job_path`, `job_sha256` and the job document.
+The digest identifies the formatted UTF-8 file bytes, including its final newline,
+not the JSON envelope printed to the terminal. Unchanged inputs produce identical
+job bytes. A preview does not reserve the file or authorize a later execution.
+
+`--save-job` never overwrites an existing file, directory or symbolic link. Saving
+creates missing job parent directories and publishes the complete file exclusively
+using a temporary file and hard link, as with immutable platform evidence. Use a
+local filesystem supporting hard links; a failed save may leave newly created
+parent directories. Keep job directories under trusted control. The job and its
+destinations must remain outside every selected canonical checkout. `--job` and
+`--save-job` cannot be combined.
+
+Preparation or validation errors exit `2` without publishing a job. Publication
+failures, including another writer creating the target after preparation, exit `1`;
+preview or successful save exits `0`. No refresh/load batch audit is created because
+no ingestion ran. Handoffs are revalidated at execution, so a change after preparation
+requires an intentional new digest; preparation does not discover or trust new sources.
+
+### Write a job manually
+
+The same v1 schema remains available for hand-written jobs. Calculate the SHA-256 of the
 exact handoff bytes. For a handoff saved at `jobs/ons-handoff.json`:
 
 ```bash
@@ -166,3 +223,10 @@ only the job; call `plan_ons_pay_refresh` to validate its handoffs or
 `job_sha256=job.sha256, load_only=job.load_only` to execute and retain configuration
 lineage. The default returns the existing `RefreshResult`; `load_only=True` returns
 `LoadResult` containing `LoadedSource` entries, with ingestion fields only.
+
+For programmatic preparation, `prepare_refresh_job` in
+`data_platform_lab.orchestration.ons_pay_job_preparation` accepts the same source
+objects, destinations, freshness policy and load mode plus the intended job `path`.
+It returns immutable `PreparedRefreshJob` bytes without writing. Pass that result
+to `save_refresh_job` to publish it exclusively. Mixed checkout/HTTPS lists preserve
+source order; HTTPS sources must share one fetch policy, as required by the v1 schema.
