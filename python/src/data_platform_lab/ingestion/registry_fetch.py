@@ -50,8 +50,8 @@ class RegistryFetchOptions:
     retry_delay_seconds: float = 1
 
 
-def _prepare_fetch(manifest_path: Path, options: RegistryFetchOptions) -> tuple[bytes, HandoffPlan]:
-    """Validate configuration and the entire plan before opening a connection."""
+def _validate_fetch_options(options: RegistryFetchOptions) -> None:
+    """Validate source identity and transfer policy without reading files or connecting."""
     if (
         not isinstance(options.repository, str)
         or re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", options.repository) is None
@@ -81,6 +81,11 @@ def _prepare_fetch(manifest_path: Path, options: RegistryFetchOptions) -> tuple[
         or not math.isfinite(options.retry_delay_seconds)
     ):
         raise HandoffError("Fetch retry delay must be positive finite seconds, at most 30.")
+
+
+def _prepare_fetch(manifest_path: Path, options: RegistryFetchOptions) -> tuple[bytes, HandoffPlan]:
+    """Validate configuration and the entire plan before opening a connection."""
+    _validate_fetch_options(options)
     try:
         with manifest_path.open("rb") as handle:
             raw = handle.read(_MANIFEST_BYTES + 1)
