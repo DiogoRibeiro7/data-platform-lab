@@ -108,6 +108,10 @@ For a combined extraction, loading and transformation batch, use
 It supports ordered historical sources, freshness gates and audited partial recovery.
 For reusable source selections, destinations and policies, pass a
 [saved refresh job](ons-pay-refresh-jobs.md) to `ons-pay-refresh --job`.
+For ordered ONS raw-only batches, add `--load-only` to direct refresh arguments or
+set `"load_only": true` in the saved job. This retains verified loading, replay
+and partial-failure audits while deferring transformation; see
+[load first, transform later](ons-pay-refresh.md#load-raw-data-without-transformation).
 
 ### Fetch integrity and operational limits
 

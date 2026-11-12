@@ -3,7 +3,8 @@
 Use `ons-pay-refresh --job` to keep an ordered batch, explicit source pins,
 destinations, freshness policy and HTTPS limits in one JSON file. It runs the
 existing [refresh pipeline](ons-pay-refresh.md): verified raw loading, Silver/Gold
-curation and an atomic batch audit. The file can be passed to a local scheduler;
+curation and an atomic batch audit. An opt-in raw-only mode stops after loading.
+The file can be passed to a local scheduler;
 creating it does not install a schedule or discover newer upstream versions.
 
 ## Prepare a job
@@ -85,6 +86,7 @@ outside every selected canonical checkout, including in a mixed batch.
 | `object_root`, `output_root` | Required local destinations; no implicit destination defaults in jobs. |
 | `max_source_age_days` | Optional non-negative integer; omit or use `null` for historical backfills. |
 | `fetch` | Optional settings shared by HTTPS sources; omit when all sources use checkouts. |
+| `load_only` | Optional boolean, default `false`; `true` skips transformation and writes a separate raw-load batch audit. |
 
 The optional `fetch` keys use the same defaults and validation as direct HTTPS
 ingestion. `max_source_bytes` resets per handoff and counts partial retry bodies.
@@ -97,6 +99,28 @@ versions, malformed pins, invalid policies and non-finite JSON numbers are
 rejected. `--job` cannot be combined with source arguments or overrides for
 destinations, freshness, limits or retries—even an override equal to a default.
 Edit the saved configuration to change those settings. `--dry-run` is supported.
+
+## Load first, transform later
+
+Set `"load_only": true` at the top level of the job to load verified raw objects
+without running curation. HTTPS sources still extract their pinned bytes; checkout
+sources load locally. Mixed source batches are supported in both modes. Omit the
+field or set it to `false` for the original full refresh behavior. Strings such as
+`"false"`, numbers and `null` are rejected.
+
+Run the same `ons-pay-refresh --job` command. The preview and success summary
+include `load_only: true`; the summary omits Parquet counts. A load audit named
+`ons_pay_load_<run-id>.json` records verified bytes, publication/reuse counts and
+links to ingestion receipts. It does not claim row-quality checks, create
+Silver/Gold outputs or update curated refresh health. Both successful and failed
+raw-load batches are excluded from the curated monitor's refresh history; assess
+them using the command's exit code and their own audits.
+
+Change the saved field to `false` for a subsequent full refresh, or use each
+ingestion receipt for [separate offline curation](ons-pay-refresh.md#load-raw-data-without-transformation).
+The latter needs the analytics extra; raw loading does not. Full refresh rechecks
+sources and reuses matching raw objects. Changing the mode changes the job digest.
+`--load-only` cannot accompany `--job`, even when it agrees with the saved value.
 
 ## Execution, evidence and recovery
 
@@ -129,8 +153,9 @@ Dry-run does not reserve destinations or check whether they are busy.
 
 Treat a job as trusted execution configuration: it selects local inputs and write
 destinations. No shell commands, credential fields, variable interpolation, database
-publication or release activation are supported. This workflow always curates ONS
-data; use `registry-ingest` for raw loading alone. Coordinate standalone ingestion,
+publication or release activation are supported. Full refresh curates ONS data;
+`load_only` preserves raw bytes, and `registry-ingest` remains available for single
+raw loads and other approved datasets. Coordinate standalone ingestion,
 curation and other external writers separately from refresh jobs.
 
 The Python API `load_refresh_job` in
@@ -138,4 +163,6 @@ The Python API `load_refresh_job` in
 configuration with resolved paths and existing refresh source objects. It reads
 only the job; call `plan_ons_pay_refresh` to validate its handoffs or
 `refresh_ons_pay` with its sources, destinations, freshness policy and
-`job_sha256=job.sha256` to execute and retain configuration lineage.
+`job_sha256=job.sha256, load_only=job.load_only` to execute and retain configuration
+lineage. The default returns the existing `RefreshResult`; `load_only=True` returns
+`LoadResult` containing `LoadedSource` entries, with ingestion fields only.

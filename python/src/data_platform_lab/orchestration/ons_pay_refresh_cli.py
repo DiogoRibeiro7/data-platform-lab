@@ -11,6 +11,7 @@ from data_platform_lab.orchestration.ons_pay_refresh import (
     RefreshBusyError,
     RefreshError,
     RefreshInput,
+    RefreshResult,
     RefreshSource,
     RemoteRefreshSource,
     plan_ons_pay_refresh,
@@ -24,7 +25,7 @@ from data_platform_lab.storage import LocalBlobStore
 def main(argv: list[str] | None = None) -> None:
     parser = _Parser(
         prog="data-platform-lab ons-pay-refresh",
-        description="Verify, ingest and curate one or more explicitly pinned ONS pay vintages.",
+        description="Verify, ingest and curate pinned ONS pay vintages, or stop after raw loading.",
         allow_abbrev=False,
     )
     source_mode = parser.add_mutually_exclusive_group(required=True)
@@ -72,6 +73,12 @@ def main(argv: list[str] | None = None) -> None:
         help="Optional retrieval-age SLA; omit for intentionally historical backfills.",
     )
     parser.add_argument(
+        "--load-only",
+        action="store_true",
+        default=None,
+        help="Stop after verified raw loading and write a separate load audit.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Read-only manifest/freshness preflight; no source reads, network access or writes.",
@@ -85,6 +92,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         output_root = args.output_root if args.output_root is not None else Path("../data")
         max_source_age_days = args.max_source_age_days
+        load_only = args.load_only is True
         fetch_settings = (
             args.timeout_seconds,
             args.max_object_bytes,
@@ -100,6 +108,7 @@ def main(argv: list[str] | None = None) -> None:
                     args.object_root,
                     args.output_root,
                     args.max_source_age_days,
+                    args.load_only,
                 )
             ):
                 raise _ArgumentError("Saved job settings cannot be overridden; edit the job file.")
@@ -107,6 +116,7 @@ def main(argv: list[str] | None = None) -> None:
             sources = list(job.sources)
             object_root, output_root = job.object_root, job.output_root
             max_source_age_days, job_sha256 = job.max_source_age_days, job.sha256
+            load_only = job.load_only
         elif args.fetch_source:
             sources = [
                 RemoteRefreshSource(
@@ -156,6 +166,7 @@ def main(argv: list[str] | None = None) -> None:
                 {
                     "status": "planned",
                     "writes": False,
+                    **({"load_only": True} if load_only else {}),
                     "max_source_age_days": max_source_age_days,
                     **(
                         {
@@ -203,6 +214,7 @@ def main(argv: list[str] | None = None) -> None:
             output_root=output_root,
             max_source_age_days=max_source_age_days,
             job_sha256=job_sha256,
+            load_only=load_only,
         )
     except RefreshBusyError as exc:
         parser.exit(3, f"{exc}\n")
@@ -216,8 +228,14 @@ def main(argv: list[str] | None = None) -> None:
                 "vintages_completed": len(result.sources),
                 "objects_published": sum(item.objects_published for item in result.sources),
                 "objects_reused": sum(item.objects_reused for item in result.sources),
-                "parquet_published": sum(item.parquet_published for item in result.sources),
-                "parquet_reused": sum(item.parquet_reused for item in result.sources),
+                **(
+                    {
+                        "parquet_published": sum(item.parquet_published for item in result.sources),
+                        "parquet_reused": sum(item.parquet_reused for item in result.sources),
+                    }
+                    if isinstance(result, RefreshResult)
+                    else {"load_only": True}
+                ),
                 "receipt_path": str(result.receipt_path),
                 **({"job_sha256": job_sha256} if job_sha256 is not None else {}),
             },
