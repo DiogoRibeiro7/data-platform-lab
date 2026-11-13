@@ -182,6 +182,8 @@ This read-only check also supports full refresh jobs. It reports the latest run,
 last complete success and failure progress for the exact saved configuration.
 Retain invocation exit codes as well: busy rejections and crashes may leave no audit.
 
+Pass a successful load audit to [offline batch transformation](ons-pay-offline-transform.md)
+to curate all its sources without downloading again or editing the saved load job.
 Change the saved field to `false` for a subsequent full refresh, or use each
 ingestion receipt for [separate offline curation](ons-pay-refresh.md#load-raw-data-without-transformation).
 The latter needs the analytics extra; raw loading does not. Full refresh rechecks

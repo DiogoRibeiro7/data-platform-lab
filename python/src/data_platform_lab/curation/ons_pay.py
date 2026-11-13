@@ -295,6 +295,7 @@ def curate_ons_pay(
     input_receipt: Path,
     store: BlobStore,
     output_root: Path,
+    expected_receipt_sha256: str | None = None,
 ) -> CurationResult:
     """Model one verified ONS pay snapshot with audited, immutable Parquet output.
 
@@ -302,8 +303,16 @@ def curate_ons_pay(
     model produces different bytes under an existing versioned key, it fails
     closed; intentionally changing SQL semantics requires ``MODEL_VERSION`` to
     be advanced. Multi-file output is single-writer, not a distributed commit.
+    An optional receipt digest binds execution to a previous metadata preflight
+    before any object-store access or output writes.
     """
     raw_receipt = input_receipt.read_bytes()
+    if expected_receipt_sha256 is not None and (
+        not isinstance(expected_receipt_sha256, str)
+        or not _HASH_RE.fullmatch(expected_receipt_sha256)
+        or hashlib.sha256(raw_receipt).hexdigest() != expected_receipt_sha256
+    ):
+        raise CurationError("ingestion receipt differs from the planned SHA-256")
     try:
         source = parse_ingestion_receipt(json.loads(raw_receipt))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:

@@ -130,6 +130,18 @@ failed raw-load batch audits are excluded from `ons-pay-monitor` refresh history
 so a load cannot reset curated-data freshness or hide a failed full refresh.
 Use the load command's exit status and load audit to assess ingestion outcomes.
 
+To transform the entire successful load batch offline, use
+[`ons-pay-transform`](ons-pay-offline-transform.md) with its load audit:
+
+```bash
+poetry run data-platform-lab ons-pay-transform \
+  --load-audit /path/to/ons_pay_load_<run-id>.json \
+  --object-root ../data/object-store --output-root ../data --dry-run
+```
+
+Remove `--dry-run` to execute. It checks all ingestion receipt links first, then
+verifies raw bytes and runs curation with separate batch progress evidence.
+
 To transform later without downloading again, pass an `ingestion_receipt_path`
 from the load audit to the existing command:
 

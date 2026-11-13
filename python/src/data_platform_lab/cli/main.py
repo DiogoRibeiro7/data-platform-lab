@@ -17,6 +17,7 @@ from data_platform_lab.observability.ons_pay_publication_status_cli import (
     main as ons_pay_publication_status_main,
 )
 from data_platform_lab.orchestration.ons_pay_refresh_cli import main as ons_pay_refresh_main
+from data_platform_lab.orchestration.ons_pay_transform_cli import main as ons_pay_transform_main
 from data_platform_lab.recovery.cli import main as recovery_main
 from data_platform_lab.serving.cli import main as ons_pay_serve_main
 from data_platform_lab.serving.ons_pay_compare_cli import main as ons_pay_compare_main
@@ -46,6 +47,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "ons-pay-refresh": ons_pay_refresh_main,
     "ons-pay-release": ons_pay_release_main,
     "ons-pay-serve": ons_pay_serve_main,
+    "ons-pay-transform": ons_pay_transform_main,
     "recovery": recovery_main,
     "registry-ingest": registry_ingest_main,
     "storage": storage_main,
