@@ -29,6 +29,7 @@ _FETCH_KEYS = {
     "max_source_bytes",
     "max_attempts",
     "retry_delay_seconds",
+    "reuse_verified",
 }
 
 

@@ -38,7 +38,9 @@ poetry run data-platform-lab ons-pay-refresh --job ../jobs/ons-load.json
 Use `--source HANDOFF_JSON PINNED_CHECKOUT` for checkout jobs, or repeat the selected
 source flag for a historical batch. Omit `--load-only` to prepare full refresh.
 Preparation reads and validates every handoff using the existing preflight, captures
-its exact SHA-256, and records the selected policies, including all HTTPS defaults.
+its exact SHA-256, and records the selected policies and HTTPS limits. Add
+`--reuse-verified` to save `"reuse_verified": true` in `fetch`; the default `false`
+is omitted from generated jobs so existing job bytes remain stable.
 It opens no source transport or object store, runs no curation, and acquires no
 destination guards. The source checkout and raw bytes are verified during execution.
 
@@ -151,6 +153,16 @@ Omitting `max_attempts` preserves the default of one attempt. See the
 [retry policy and limits](registry-handoff-ingestion.md#retry-temporary-extraction-failures).
 The socket timeout is not a deadline for the whole batch.
 
+`fetch.reuse_verified` is an optional boolean, default `false`. With `true`, HTTPS
+sources first verify existing stored bytes against the handoff's checksum and size,
+then download only missing objects. Corrupt or unreadable objects fail without
+repair. The policy is shared across HTTPS sources and has no effect on checkout
+verification. Cached bytes and partial downloads share the source byte budget;
+see [reuse evidence and limits](registry-handoff-ingestion.md#reuse-verified-raw-objects).
+Dry-run reports the policy without checking stored objects. Changing this setting
+changes the saved job digest and its status history; `--reuse-verified` cannot
+override `--job`. Numbers, strings and `null` are rejected for this field.
+
 Job files are bounded to 256 KiB. Unknown or duplicate fields, unsupported schema
 versions, malformed pins, invalid policies and non-finite JSON numbers are
 rejected. `--job` cannot be combined with source arguments or overrides for
@@ -160,8 +172,9 @@ Edit the saved configuration to change those settings. `--dry-run` is supported.
 ## Load first, transform later
 
 Set `"load_only": true` at the top level of the job to load verified raw objects
-without running curation. HTTPS sources still extract their pinned bytes; checkout
-sources load locally. Mixed source batches are supported in both modes. Omit the
+without running curation. HTTPS sources extract their pinned bytes or reuse verified
+stored bytes when explicitly configured; checkout sources load locally.
+Mixed source batches are supported in both modes. Omit the
 field or set it to `false` for the original full refresh behavior. Strings such as
 `"false"`, numbers and `null` are rejected.
 

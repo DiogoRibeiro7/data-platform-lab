@@ -53,6 +53,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--max-total-bytes", type=int, help="Fetch limit per run (default: 67108864)"
     )
     parser.add_argument(
+        "--reuse-verified",
+        action="store_true",
+        default=None,
+        help="Verify existing store objects and fetch only missing ones (requires --fetch).",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate fetch selection without network access or writes",
@@ -101,6 +107,7 @@ def main(argv: list[str] | None = None) -> None:
                 max_total_bytes=args.max_total_bytes
                 if args.max_total_bytes is not None
                 else 64 * 1024 * 1024,
+                reuse_verified=args.reuse_verified is True,
             )
             plan = plan_registry_fetch(manifest_path=args.manifest, options=options)
             if args.dry_run:
@@ -121,6 +128,7 @@ def main(argv: list[str] | None = None) -> None:
                             "retry_delay_seconds": options.retry_delay_seconds,
                             "max_object_bytes": options.max_object_bytes,
                             "max_total_bytes": options.max_total_bytes,
+                            **({"reuse_verified": True} if options.reuse_verified else {}),
                         },
                         indent=2,
                     )
@@ -137,6 +145,7 @@ def main(argv: list[str] | None = None) -> None:
                 args.retry_delay_seconds,
                 args.max_object_bytes,
                 args.max_total_bytes,
+                args.reuse_verified,
             )
         ):
             raise _ArgumentError("Fetch selection, limits and --dry-run require --fetch.")
