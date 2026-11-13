@@ -18,6 +18,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--model-version", type=int, choices=(1,), default=1)
     parser.add_argument("--max-source-age-days", type=int, default=None)
     parser.add_argument("--max-refresh-age-hours", type=float, default=None)
+    parser.add_argument(
+        "--workflow",
+        choices=("refresh", "transform"),
+        default="refresh",
+        help="Audit workflow to assess; default: refresh.",
+    )
+    parser.add_argument("--max-transform-age-hours", type=float, default=None)
     parser.add_argument("--max-missing-pay-percent", type=float, default=None)
     parser.add_argument("--format", choices=("json", "prometheus"), default="json")
     parser.add_argument(
@@ -48,6 +55,8 @@ def main(argv: list[str] | None = None) -> None:
             max_source_age_days=args.max_source_age_days,
             max_refresh_age_hours=args.max_refresh_age_hours,
             max_missing_pay_percent=args.max_missing_pay_percent,
+            workflow=args.workflow,
+            max_transform_age_hours=args.max_transform_age_hours,
         )
     except MonitorError as exc:
         parser.error(str(exc))

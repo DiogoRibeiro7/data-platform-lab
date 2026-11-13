@@ -46,11 +46,17 @@ class MonitorCheck:
 
 
 @dataclass(frozen=True, slots=True)
-class RefreshAudit:
+class BatchAudit:
+    """Validated completed-run facts shared by refresh and transformation checks."""
+
     run_id: str
     created_at: datetime
     status: BatchStatus
     completed_vintages: frozenset[VintageKey]
+
+
+# Preserve the original import for callers using the refresh-only record name.
+RefreshAudit = BatchAudit
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,9 +69,26 @@ class MonitorReport:
     latest_batch_run_id: str | None
     latest_vintage_success_run_id: str | None
 
+    @property
+    def workflow(self) -> Literal["refresh", "transform"]:
+        """Identify the audit workflow without changing default serialized fields."""
+        return "refresh"
+
     def to_dict(self) -> dict[str, Any]:
         """Stable JSON-compatible report for automation and human inspection."""
         return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class TransformMonitorReport(MonitorReport):
+    """Opt-in transformation report with an explicit JSON/metrics discriminator."""
+
+    @property
+    def workflow(self) -> Literal["refresh", "transform"]:
+        return "transform"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self) | {"workflow": self.workflow}
 
 
 def _mapping(value: object, name: str) -> dict[str, object]:
@@ -199,6 +222,8 @@ def monitor_ons_pay(
     max_source_age_days: int | None = None,
     max_refresh_age_hours: float | None = None,
     max_missing_pay_percent: float | None = None,
+    workflow: Literal["refresh", "transform"] = "refresh",
+    max_transform_age_hours: float | None = None,
     now: datetime | None = None,
 ) -> MonitorReport:
     """Evaluate immutable curated data, upstream freshness and audited runs.
@@ -206,6 +231,8 @@ def monitor_ons_pay(
     A failed last batch is an operational alert across the ONS pay pipeline;
     the selected vintage's successful refresh recency is measured separately.
     No default/latest vintage is selected on behalf of the caller.
+    Opt-in transformation monitoring uses its own audit history and age metric;
+    source retrieval freshness remains independent of either execution workflow.
     """
     if (
         key.model_version != MODEL_VERSION
@@ -217,6 +244,20 @@ def monitor_ons_pay(
         raise MonitorError("max_source_age_days must be an integer")
     _threshold(max_source_age_days, "max_source_age_days")
     _threshold(max_refresh_age_hours, "max_refresh_age_hours")
+    _threshold(max_transform_age_hours, "max_transform_age_hours")
+    if workflow not in {"refresh", "transform"}:
+        raise MonitorError("workflow must be refresh or transform")
+    if (workflow == "refresh" and max_transform_age_hours is not None) or (
+        workflow == "transform" and max_refresh_age_hours is not None
+    ):
+        raise MonitorError("execution age threshold must match the selected workflow")
+    max_run_age = max_refresh_age_hours if workflow == "refresh" else max_transform_age_hours
+    noun = "refresh" if workflow == "refresh" else "transformation"
+    audit_metric = f"{workflow}_audit_integrity"
+    age_metric = f"last_vintage_{workflow}_age_hours"
+    batch_metric = "last_batch_success" if workflow == "refresh" else "last_transform_batch_success"
+    success_check = f"vintage_{workflow}_success"
+    recency_check = f"{workflow}_recency"
     _threshold(max_missing_pay_percent, "max_missing_pay_percent", maximum=100.0)
     checked_at = datetime.now(UTC) if now is None else now
     if checked_at.tzinfo is None or checked_at.utcoffset() is None:
@@ -233,9 +274,9 @@ def monitor_ons_pay(
         "missing_pay_percent": None,
         "geography_year_rows": None,
         "local_authority_yoy_rows": None,
-        "refresh_audit_integrity": 0,
-        "last_batch_success": None,
-        "last_vintage_refresh_age_hours": None,
+        audit_metric: 0,
+        batch_metric: None,
+        age_metric: None,
     }
     root = data_root.resolve()
     vintage = None
@@ -381,26 +422,31 @@ def monitor_ons_pay(
     latest_batch: RefreshAudit | None = None
     latest_vintage_success: RefreshAudit | None = None
     try:
-        audits = _read_audits(root, checked_at)
+        if workflow == "transform":
+            from data_platform_lab.observability.ons_pay_transform_audits import (
+                read_transform_audits,
+            )
+
+            audits = read_transform_audits(root, checked_at)
+        else:
+            audits = _read_audits(root, checked_at)
     except MonitorError:
         checks.append(
             MonitorCheck(
-                "refresh_audit_integrity",
+                audit_metric,
                 "fail",
                 0,
                 1,
-                "Refresh audit is malformed, unsafe, or future-dated",
+                f"{noun.capitalize()} audit is malformed, unsafe, or future-dated",
             )
         )
     else:
         if not audits:
             checks.append(
-                MonitorCheck(
-                    "refresh_audit_integrity", "fail", 0, 1, "No audited ONS pay refresh runs found"
-                )
+                MonitorCheck(audit_metric, "fail", 0, 1, f"No audited ONS pay {noun} runs found")
             )
         else:
-            metrics["refresh_audit_integrity"] = 1
+            metrics[audit_metric] = 1
             latest_batch = audits[-1]
             successes = [
                 item
@@ -410,88 +456,93 @@ def monitor_ons_pay(
             latest_vintage_success = successes[-1] if successes else None
             checks.append(
                 MonitorCheck(
-                    "refresh_audit_integrity",
+                    audit_metric,
                     "pass",
                     len(audits),
                     None,
-                    "Refresh audit log passed schema/identity checks",
+                    f"{noun.capitalize()} audit log passed schema/identity checks",
                 )
             )
 
     if latest_batch is None:
         checks.append(
-            MonitorCheck("last_batch", "skipped", None, None, "No trusted latest refresh batch")
+            MonitorCheck("last_batch", "skipped", None, None, f"No trusted latest {noun} batch")
         )
     else:
         succeeded = latest_batch.status == "success"
-        metrics["last_batch_success"] = int(succeeded)
+        metrics[batch_metric] = int(succeeded)
         checks.append(
             MonitorCheck(
                 "last_batch",
                 "pass" if succeeded else "fail",
                 int(succeeded),
                 1,
-                "Latest refresh batch succeeded"
+                f"Latest {noun} batch succeeded"
                 if succeeded
-                else "Latest ONS pay refresh batch failed",
+                else f"Latest ONS pay {noun} batch failed",
             )
         )
 
     if latest_vintage_success is None:
         checks.append(
             MonitorCheck(
-                "vintage_refresh_success",
+                success_check,
                 "fail",
                 0,
                 1,
-                "No successful refresh audit for requested vintage",
+                f"No successful {noun} audit for requested vintage",
             )
         )
         checks.append(
             MonitorCheck(
-                "refresh_recency",
-                "fail" if max_refresh_age_hours is not None else "skipped",
+                recency_check,
+                "fail" if max_run_age is not None else "skipped",
                 None,
-                max_refresh_age_hours,
-                "No successful pinned refresh for recency evaluation",
+                max_run_age,
+                f"No successful pinned {noun} for recency evaluation",
             )
         )
     else:
         checks.append(
             MonitorCheck(
-                "vintage_refresh_success",
+                success_check,
                 "pass",
                 1,
                 1,
-                "Selected vintage has a successful refresh audit",
+                f"Selected vintage has a successful {noun} audit",
             )
         )
         age_hours = (checked_at - latest_vintage_success.created_at).total_seconds() / 3600.0
-        metrics["last_vintage_refresh_age_hours"] = age_hours
-        if max_refresh_age_hours is None:
+        metrics[age_metric] = age_hours
+        if max_run_age is None:
             checks.append(
                 MonitorCheck(
-                    "refresh_recency", "skipped", age_hours, None, "No refresh-age SLA configured"
+                    recency_check, "skipped", age_hours, None, f"No {noun}-age SLA configured"
                 )
             )
         else:
-            healthy = age_hours <= max_refresh_age_hours
+            healthy = age_hours <= max_run_age
             checks.append(
                 MonitorCheck(
-                    "refresh_recency",
+                    recency_check,
                     "pass" if healthy else "fail",
                     age_hours,
-                    max_refresh_age_hours,
-                    "Selected vintage refreshed within SLA"
+                    max_run_age,
+                    (
+                        "Selected vintage refreshed within SLA"
+                        if workflow == "refresh"
+                        else "Selected vintage transformed within SLA"
+                    )
                     if healthy
-                    else "Selected vintage refresh age breached SLA",
+                    else f"Selected vintage {noun} age breached SLA",
                 )
             )
 
     status: Literal["healthy", "unhealthy"] = (
         "unhealthy" if any(check.state == "fail" for check in checks) else "healthy"
     )
-    return MonitorReport(
+    report_type = TransformMonitorReport if workflow == "transform" else MonitorReport
+    return report_type(
         checked_at_utc=checked_at.isoformat(),
         vintage=key,
         status=status,
@@ -515,7 +566,14 @@ _METRIC_HELP = {
     "local_authority_yoy_rows": "Number of Gold local-authority trend rows.",
     "refresh_audit_integrity": "Refresh audit log is present and valid (1=yes).",
     "last_batch_success": "Latest ONS pay refresh batch succeeded (1=yes).",
+    "last_transform_batch_success": "Latest ONS pay transformation batch succeeded (1=yes).",
     "last_vintage_refresh_age_hours": "Hours since last successful refresh of this pinned vintage.",
+    "transform_audit_integrity": (
+        "Transformation audit log and linked evidence are present and valid (1=yes)."
+    ),
+    "last_vintage_transform_age_hours": (
+        "Hours since last successful transformation of this pinned vintage."
+    ),
 }
 
 
@@ -530,6 +588,8 @@ def format_prometheus(report: MonitorReport) -> str:
         f'registry_commit="{report.vintage.registry_commit}",'
         f'source_sha256="{report.vintage.source_sha256}"'
     )
+    if report.workflow == "transform":
+        label += ',workflow="transform"'
     lines = [
         "# HELP dpl_ons_pay_monitor_healthy All configured health checks passed (1=yes).",
         "# TYPE dpl_ons_pay_monitor_healthy gauge",
@@ -564,7 +624,7 @@ def format_prometheus(report: MonitorReport) -> str:
             ]
         )
     for name, help_text in _METRIC_HELP.items():
-        value = report.metrics[name]
+        value = report.metrics.get(name)
         if value is None:
             continue
         metric_name = f"dpl_ons_pay_{name}"

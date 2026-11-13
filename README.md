@@ -351,6 +351,9 @@ retain verified lineage without creating Parquet or resetting curated refresh he
 Use [`ons-pay-transform`](docs/ons-pay-offline-transform.md) with a successful load
 audit to transform the whole batch later, without downloading its sources again.
 It supports metadata previews, checks stored bytes and records partial failures for retry.
+Assess the result with `ons-pay-monitor --workflow transform --max-transform-age-hours 24`
+and the exact source pins. [Transformation health](docs/ons-pay-monitoring.md#monitor-offline-transformations)
+checks its own run history while retaining source-age and data-quality checks.
 
 Check either saved job with
 `data-platform-lab ons-pay-job-status --job /path/to/job.json --max-success-age-hours 24`.

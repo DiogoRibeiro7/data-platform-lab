@@ -88,10 +88,11 @@ and logs, and use an explicit retry to reconcile matching outputs.
 Transformation does not create `ons_pay_refresh` evidence or alter the original
 load/job status. [`ons-pay-job-status`](ons-pay-job-status.md) continues to describe
 the original saved load or refresh job. The [curated monitor](ons-pay-monitoring.md)
-can verify the resulting vintage's tables, but transformation does not reset its
-full-refresh recency. Inspect the transformation audit for this batch's progress.
-In a new output root with no full-refresh audit, that monitor reports overall
-`unhealthy` for missing refresh evidence even when curation/table checks pass.
+can assess the resulting vintage with `--workflow transform` and an optional
+`--max-transform-age-hours` limit. This checks transformation history alongside
+table integrity and source freshness. The default refresh workflow still requires
+full-refresh evidence; transformation does not reset that clock. See
+[transformation monitoring](ons-pay-monitoring.md#monitor-offline-transformations).
 
 For Python callers, `plan_ons_pay_transform` and `transform_ons_pay` are in
 `data_platform_lab.orchestration.ons_pay_transform`. They return immutable

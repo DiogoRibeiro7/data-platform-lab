@@ -100,6 +100,7 @@ jobs:
           tests/test_ons_pay_job_preparation.py
           tests/test_ons_pay_job_status.py
           tests/test_ons_pay_transform.py
+          tests/test_ons_pay_transform_monitor.py
 
   test:
     # Preserve the existing 3.11 status-check name for branch protection.
