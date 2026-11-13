@@ -61,6 +61,69 @@ thresholds. The last-batch check is deliberately *pipeline-global* to signal
 operational failures during other backfill items; the vintage recency check
 always applies to the requested pin.
 
+## Monitor offline transformations
+
+After [offline batch transformation](ons-pay-offline-transform.md), select its
+audit workflow explicitly:
+
+```bash
+poetry run data-platform-lab ons-pay-monitor \
+  --data-root ../data \
+  --registry-commit COMMIT_SHA40 --source-sha256 SOURCE_SHA256 \
+  --workflow transform --max-transform-age-hours 30 \
+  --max-source-age-days 365 --max-missing-pay-percent 5
+```
+
+This mode can report healthy without a full-refresh audit. It shares the existing
+curation integrity, table schema/row/lineage, source-age and missing-pay checks.
+Its run-history checks are `transform_audit_integrity`, `last_batch`,
+`vintage_transform_success` and `transform_recency`. A later failed transformation
+in the selected data root fails `last_batch`, even when an older success still
+exists. Only a successful **whole batch** establishes selected-vintage success
+and recency; a completed prefix in a failed batch does not reset the clock.
+
+JSON adds `workflow: "transform"`. Run IDs refer to transformation attempts.
+Metrics use `transform_audit_integrity`, `last_transform_batch_success` and
+`last_vintage_transform_age_hours` in place of the corresponding refresh metrics.
+The optional age limit is measured from transformation completion; equality passes.
+It does not renew the source retrieval date. `--max-refresh-age-hours` cannot
+accompany transformation mode, and `--max-transform-age-hours` requires it.
+
+`--format prometheus` and the existing opt-in `--textfile` export also support
+this mode. Every transformation metric carries `workflow="transform"`, including
+shared table/quality/health gauges, so a refresh report for the same pin remains
+a different series. Run-specific gauges are
+`dpl_ons_pay_transform_audit_integrity`, `dpl_ons_pay_last_transform_batch_success`
+and `dpl_ons_pay_last_vintage_transform_age_hours`. Filter shared PromQL selectors
+by workflow when collecting both modes, and use separate `.prom` output files
+with existing parent directories. Existing alert/dashboard templates target the
+default refresh workflow; adapt selectors and run-age metric names explicitly.
+
+Transformation history is read from `manifests/ons_pay_transform_*.json` only.
+Every retained audit must have consistent schema, identity, timestamps, progress
+and counts. For completed sources, the monitor rechecks the linked load audit's
+digest, the ingestion receipt's digest and source pins, and the local curation
+receipt's lineage and counts. It checks current Parquet contents for the selected
+vintage using the existing catalog. Keep these absolute receipt paths available;
+missing or changed linked evidence fails the audit check. A preflight failure
+may have no valid load evidence, and curation failures validate only their
+completed prefix, retaining useful failure identity when the failed input is missing.
+
+Inspection rejects symlinked evidence, duplicate JSON keys and non-finite JSON.
+It is bounded to 10,000 unique metadata files including linked receipts, 4 MiB
+per file and 64 MiB total per evaluation. Each linked file is read once per check.
+Exceeding a bound yields unhealthy audit integrity rather than partial success.
+These are trusted local records, not signed attestations; all writers must remain
+under trusted control. Completed audits do not detect a live process, a busy
+rejection or a crash that left no audit. Keep scheduler exit codes and logs.
+
+Default `--workflow refresh`, JSON fields and Prometheus series remain compatible.
+Raw-load and refresh audits cannot substitute for transformation success, nor
+can transformation runs satisfy refresh-only checks. Active-release assessment
+and its stored history continue to use the refresh workflow. The Python API
+`monitor_ons_pay` accepts `workflow="transform"` and `max_transform_age_hours`;
+the returned report retains the common check/metric interface.
+
 Missing ONS pay is sometimes intentionally suppressed (`x` or `u` upstream).
 The percentage is an observable quality metric, **not a claim that those
 values should be imputed or deleted**. Choose the tolerance in context;
