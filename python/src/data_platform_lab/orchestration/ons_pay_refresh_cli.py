@@ -74,6 +74,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--max-source-bytes", type=int, help="Fetch budget per handoff (default: 67108864)"
     )
+    parser.add_argument(
+        "--reuse-verified",
+        action="store_true",
+        default=None,
+        help="Verify existing raw objects and fetch only missing ones (requires --fetch-source).",
+    )
     parser.add_argument("--object-root", type=Path, help="Default: ../data/object-store")
     parser.add_argument("--output-root", type=Path, help="Default: ../data")
     parser.add_argument(
@@ -109,6 +115,7 @@ def main(argv: list[str] | None = None) -> None:
             args.max_source_bytes,
             args.max_attempts,
             args.retry_delay_seconds,
+            args.reuse_verified,
         )
         if args.job is not None:
             if any(
@@ -149,6 +156,7 @@ def main(argv: list[str] | None = None) -> None:
                         max_total_bytes=args.max_source_bytes
                         if args.max_source_bytes is not None
                         else 64 * 1024 * 1024,
+                        reuse_verified=args.reuse_verified is True,
                     ),
                 )
                 for manifest, commit in args.fetch_source
@@ -234,6 +242,11 @@ def main(argv: list[str] | None = None) -> None:
                                     "max_attempts": item.source.fetch_options.max_attempts,
                                     "retry_delay_seconds": (
                                         item.source.fetch_options.retry_delay_seconds
+                                    ),
+                                    **(
+                                        {"reuse_verified": True}
+                                        if item.source.fetch_options.reuse_verified
+                                        else {}
                                     ),
                                 }
                                 if isinstance(item.source, RemoteRefreshSource)

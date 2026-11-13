@@ -361,6 +361,7 @@ def _ingest_verified_handoff(
     receipt_dir: Path,
     source_transport: str | None = None,
     fetch_statistics: dict[str, int] | None = None,
+    object_transports: dict[str, str] | None = None,
 ) -> IngestionResult:
     """Share promotion and receipt handling; the reader verifies source identity."""
     started_at = datetime.now(UTC)
@@ -398,6 +399,11 @@ def _ingest_verified_handoff(
                 "storage_key": item.storage_key,
                 "destination_uri": _destination_uri(store, item.storage_key),
                 "status": status,
+                **(
+                    {"source_transport": object_transports[item.storage_key]}
+                    if object_transports is not None
+                    else {}
+                ),
             }
         )
 

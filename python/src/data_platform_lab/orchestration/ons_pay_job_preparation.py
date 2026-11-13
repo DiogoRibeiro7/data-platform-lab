@@ -108,6 +108,7 @@ def prepare_refresh_job(
                     "max_source_bytes": options.max_total_bytes,
                     "max_attempts": options.max_attempts,
                     "retry_delay_seconds": options.retry_delay_seconds,
+                    **({"reuse_verified": True} if options.reuse_verified else {}),
                 }
                 if shared_fetch is not None and shared_fetch != fetch:
                     raise RefreshJobError("A saved job requires shared HTTPS fetch settings.")

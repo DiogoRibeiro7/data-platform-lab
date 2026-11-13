@@ -81,7 +81,16 @@ and verification of destination bytes. `--timeout-seconds` limits each blocking
 socket operation, not total batch duration. `--max-object-bytes` caps each object;
 `--max-source-bytes` caps the sum downloaded for **each handoff**, resetting for
 the next source. These fetch flags require `--fetch-source`. The default is one
-attempt per object; explicit reruns fetch and verify source bytes again before reusing outputs.
+attempt per object; by default, explicit reruns fetch and verify source bytes again
+before reusing outputs.
+
+Add `--reuse-verified` to check existing raw objects against the handoff's checksum
+and size and download only missing objects. This works for full refresh and
+`--load-only`, and is retained by `--save-job`. Corrupt or unreadable stored objects
+fail without automatic repair. All-cached runs open no source HTTPS transport, but missing
+objects still require the network. Source retrieval dates and freshness checks
+remain unchanged; the batch audit describes execution time. See the
+[reuse evidence and byte limits](registry-handoff-ingestion.md#reuse-verified-raw-objects).
 
 For temporary HTTP or connection failures, add `--max-attempts 3` and optionally
 `--retry-delay-seconds 1`. The
@@ -108,7 +117,8 @@ poetry run data-platform-lab ons-pay-refresh --load-only \
   --object-root ../data/object-store --output-root ../data
 ```
 
-With `--fetch-source`, this extracts and loads pinned HTTPS bytes. With `--source`,
+With `--fetch-source`, this extracts and loads pinned HTTPS bytes, or checks existing
+raw bytes when `--reuse-verified` is selected. With `--source`,
 it loads bytes from the exact local checkout. It supports the same ordered batches,
 freshness gates, handoff digests, checksum/size checks, extraction retries and
 destination guards as a full refresh. `--dry-run --load-only` remains read-only.

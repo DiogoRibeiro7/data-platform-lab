@@ -15,7 +15,7 @@ from pathlib import Path
 from time import sleep
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, OpenerDirector, Request, build_opener
 
 from data_platform_lab.ingestion.registry_handoff import (
     CanonicalObject,
@@ -48,10 +48,13 @@ class RegistryFetchOptions:
     max_total_bytes: int = 64 * 1024 * 1024
     max_attempts: int = 1
     retry_delay_seconds: float = 1
+    reuse_verified: bool = False
 
 
 def _validate_fetch_options(options: RegistryFetchOptions) -> None:
     """Validate source identity and transfer policy without reading files or connecting."""
+    if type(options.reuse_verified) is not bool:
+        raise HandoffError("Fetch reuse_verified must be a boolean.")
     if (
         not isinstance(options.repository, str)
         or re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", options.repository) is None
@@ -163,7 +166,8 @@ class _HttpReader:
     def __init__(self, options: RegistryFetchOptions) -> None:
         self.options = options
         self.statistics = {"attempts": 0, "retries": 0, "downloaded_bytes": 0}
-        self.opener = build_opener(_NoRedirect())
+        # An all-cached run must not even construct an HTTP transport.
+        self.opener: OpenerDirector | None = None
 
     def __call__(self, item: CanonicalObject) -> bytes:
         for attempt in range(self.options.max_attempts):
@@ -191,7 +195,11 @@ class _HttpReader:
         raise AssertionError("validated fetch attempts must be positive")
 
     def _remaining_limit(self, item: CanonicalObject) -> int:
-        remaining = self.options.max_total_bytes - self.statistics["downloaded_bytes"]
+        remaining = (
+            self.options.max_total_bytes
+            - self.statistics["downloaded_bytes"]
+            - self.statistics.get("cached_bytes", 0)
+        )
         limit = min(self.options.max_object_bytes, remaining)
         if remaining <= 0 and item.size_bytes != 0:
             raise HandoffError("Source exceeds the remaining fetch byte budget.")
@@ -201,6 +209,8 @@ class _HttpReader:
 
     def _read_once(self, item: CanonicalObject, limit: int) -> bytes:
         """Discard partial bodies; only a complete verified attempt reaches storage."""
+        if self.opener is None:
+            self.opener = build_opener(_NoRedirect())
         request = Request(
             item.source_uri,
             headers={
@@ -273,16 +283,38 @@ def ingest_registry_fetch(
     fetched. Operators must trust their manifest and independent source pins.
     An optional expected manifest digest binds execution to a prior preflight.
     No checkout verification or authenticity of upstream attribution is claimed.
+    Explicit reuse_verified checks existing store bytes before HTTPS fallback for
+    missing objects. Corrupt/unreadable objects fail without repair or download.
     """
     raw, plan = _prepare_fetch(manifest_path, options)
     _verify_manifest_bytes(raw, expected_manifest_sha256)
     reader = _HttpReader(options)
+    object_transports: dict[str, str] = {}
+    if options.reuse_verified:
+        reader.statistics.update(cached_objects=0, cached_bytes=0)
+
+    def read_source(item: CanonicalObject) -> bytes:
+        if options.reuse_verified and store.exists(item.storage_key):
+            limit = reader._remaining_limit(item)
+            payload = store.get_bytes(item.storage_key)
+            if len(payload) > limit:
+                raise HandoffError("Stored source exceeds the fetch byte limits.")
+            _verify_source_bytes(item, payload)
+            reader.statistics["cached_objects"] += 1
+            reader.statistics["cached_bytes"] += len(payload)
+            object_transports[item.storage_key] = "verified_store"
+            return payload
+        payload = reader(item)
+        object_transports[item.storage_key] = "https"
+        return payload
+
     return _ingest_verified_handoff(
         plan=plan,
         raw_manifest=raw,
-        read_source=reader,
+        read_source=read_source,
         store=store,
         receipt_dir=receipt_dir,
-        source_transport="https",
+        source_transport="https_or_verified_store" if options.reuse_verified else "https",
         fetch_statistics=reader.statistics,
+        object_transports=object_transports if options.reuse_verified else None,
     )

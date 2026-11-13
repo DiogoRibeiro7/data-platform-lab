@@ -170,6 +170,9 @@ covers verified raw loading, optional transformation and later database publicat
 Both HTTPS ingestion and ONS refresh support
 [opt-in bounded retries](docs/registry-handoff-ingestion.md#retry-temporary-extraction-failures)
 for temporary source failures, with byte budgets preserved across attempts.
+Add [`--reuse-verified`](docs/registry-handoff-ingestion.md#reuse-verified-raw-objects)
+to verify existing raw objects and download only missing ones. Saved ONS jobs retain
+the option; source dates stay unchanged and damaged objects fail without repair.
 
 ## DuckDB/Parquet analytical layer
 

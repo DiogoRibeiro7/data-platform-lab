@@ -133,11 +133,11 @@ and partial-failure audits while deferring transformation; see
   socket operations, not the duration of the whole run. The default is one
   attempt per object. Temporary transfer failures can use the explicit
   [bounded retry policy](#retry-temporary-extraction-failures) below.
-- Every execution fetches and verifies source bytes again, including replays.
+- By default, every execution fetches and verifies source bytes again, including replays.
   Matching destinations are reused without rewriting them; corrupt destinations
   fail. A later-object failure can leave earlier verified objects loaded, but
   no success receipt. A rerun reconciles that partial state.
-- Successful HTTPS loads keep the existing v1 ingestion receipt and add
+- By default, successful HTTPS loads keep the existing v1 ingestion receipt and add
   `source_transport: "https"`. Provenance dates remain the registry's source
   dates; receipt timestamps describe this run. No local Git checkout verification
   is claimed in this mode. The existing local mode retains its Git blob checks.
@@ -159,6 +159,52 @@ The Python API exposes `RegistryFetchOptions`, `plan_registry_fetch` and
 `ingest_registry_fetch` in `data_platform_lab.ingestion.registry_fetch`.
 It accepts the existing `BlobStore` interface and returns the same `IngestionResult`
 as local ingestion. No provider credentials or new runtime dependencies are required.
+
+### Reuse verified raw objects
+
+Add `--reuse-verified` to `registry-ingest --fetch` or
+`ons-pay-refresh --fetch-source` to check the selected object store first. Each
+existing object's exact bytes must match the handoff's SHA-256 and optional size.
+Only missing objects are downloaded. A fully cached handoff opens no source HTTP
+transport; damaged or unreadable objects fail without downloading replacements
+or overwriting the stored bytes. The default remains a fresh download on every run.
+
+```bash
+poetry run data-platform-lab registry-ingest --fetch --reuse-verified \
+  --manifest ../data/manifests/ons-handoff.json \
+  --registry-repository DiogoRibeiro7/data \
+  --registry-commit "$ONS_REGISTRY_COMMIT" \
+  --dataset-id ons-gross-median-weekly-pay \
+  --root ../data/object-store --receipt-dir ../data/manifests
+```
+
+Use an independently selected full commit as in the extraction example above.
+The Python option is `RegistryFetchOptions(reuse_verified=True, ...)`; saved
+ONS jobs accept `"reuse_verified": true` inside `fetch`. The flag requires HTTPS
+selection and also works with `--load-only`. Preparation and dry-run report the
+policy without reading the store or claiming cache hits. This is not an offline
+guarantee: a missing object still requires its pinned HTTPS source.
+
+Per-object limits apply to both cached and downloaded bytes. The per-handoff
+total counts verified cached bytes plus all downloaded body bytes, including
+discarded retry bodies. Known sizes are checked during preflight regardless of
+where bytes will come from. As with other `BlobStore` reads, cached objects are
+read into memory before their actual length is checked; these limits are not a
+streaming memory ceiling.
+
+Opt-in receipts use `source_transport: "https_or_verified_store"` for the selected
+policy. Each object records its actual `source_transport`, either `"https"` or
+`"verified_store"`. `fetch_statistics` adds `cached_objects` and `cached_bytes`;
+`attempts`, `retries` and `downloaded_bytes` still describe HTTP activity only.
+`files_reused` describes destination reuse, so a default fresh download can also
+produce a reused file. Existing default receipt fields remain unchanged.
+
+Reuse still validates the handoff, pins and any freshness policy. It preserves
+source retrieval dates and does not establish current remote availability or
+verify a local registry checkout. Full refresh still validates and transforms
+raw bytes, reuses matching Parquet files and records a new execution audit.
+Load-only runs still stop at raw storage. No success receipt is written after a
+failed handoff; an explicit rerun can reuse the verified prefix of a partial load.
 
 ### Retry temporary extraction failures
 
