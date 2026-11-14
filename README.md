@@ -378,6 +378,7 @@ checks its own run history while retaining source-age and data-quality checks.
 Use [`--backend s3`](docs/ons-pay-s3-storage.md) to keep raw objects in an
 S3-compatible bucket for refresh, load-only jobs and deferred transformation.
 Saved jobs retain the location; Parquet and audit evidence stay local.
+For hosted raw storage, see the [private Cloudflare R2 setup](docs/cloudflare-r2.md).
 
 Check either saved job with
 `data-platform-lab ons-pay-job-status --job /path/to/job.json --max-success-age-hours 24`.

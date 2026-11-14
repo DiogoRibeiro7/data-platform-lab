@@ -5,6 +5,9 @@ ONS refresh, raw-only loading and deferred transformation can use the existing
 audits and saved-job history remain under the local `--output-root`. No database
 provider, hosted account or new runtime dependency is required.
 
+For private hosted raw storage, follow the [Cloudflare R2 setup and smoke
+check](cloudflare-r2.md). It uses the same S3 adapter and explicit flags.
+
 ## Load into a local Garage service
 
 The project's [Garage bootstrap](../infra/garage/bootstrap.sh) supplies a local bucket and
