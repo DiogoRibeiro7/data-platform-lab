@@ -47,6 +47,11 @@ def _parser() -> argparse.ArgumentParser:
         allow_abbrev=False,
     )
     parser.add_argument("--data-root", type=Path, default=Path("../data"))
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        help="Neon .env.local for PostgreSQL; used only with --apply/--verify.",
+    )
     parser.add_argument("--model-version", type=int, choices=(1,), required=True)
     parser.add_argument("--registry-commit", required=True)
     parser.add_argument("--source-sha256", required=True)
@@ -123,6 +128,61 @@ def _required(environ: Mapping[str, str], name: str) -> str:
     return value
 
 
+def _neon_connection_urls(path: Path) -> dict[str, str]:
+    """Read only PostgreSQL URLs from a Neon-generated dotenv file.
+
+    The Neon CLI writes straightforward KEY=VALUE lines. Do not evaluate shell
+    syntax, interpolate values, read Auth tokens, or include file content in an
+    exception: database URLs may contain credentials.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        raise _ConfigurationError("Cannot read the selected Neon environment file.") from None
+
+    urls: dict[str, str] = {}
+    allowed = {"DATABASE_URL_UNPOOLED", "DATABASE_URL"}
+    for line in lines:
+        key, separator, value = line.strip().partition("=")
+        key = key.removeprefix("export ").strip()
+        if not separator or key not in allowed:
+            continue
+        if key in urls:
+            raise _ConfigurationError("Duplicate Neon PostgreSQL setting in environment file.")
+        value = value.strip()
+        if value.startswith(("'", '"')):
+            if len(value) < 2 or value[-1] != value[0]:
+                raise _ConfigurationError("Invalid quoted Neon PostgreSQL setting.")
+            value = value[1:-1]
+        urls[key] = value
+    return urls
+
+
+def _postgres_address(environ: Mapping[str, str], env_file: Path | None) -> str:
+    """Use the explicit DSN first, then Neon direct or pooled URLs.
+
+    The publishing path runs DDL and may configure session timeouts. Neon's
+    direct URL is preferable to PgBouncer's transaction-pooled URL here.
+    Explicit process settings take precedence over values from the file.
+    """
+    for name in ("ONS_PAY_POSTGRES_DSN", "DATABASE_URL_UNPOOLED", "DATABASE_URL"):
+        value = environ.get(name)
+        if value and value.strip():
+            return value
+
+    if env_file is not None:
+        settings = _neon_connection_urls(env_file)
+        for name in ("DATABASE_URL_UNPOOLED", "DATABASE_URL"):
+            value = settings.get(name)
+            if value and value.strip():
+                return value
+
+    raise _ConfigurationError(
+        "Set ONS_PAY_POSTGRES_DSN, DATABASE_URL_UNPOOLED, or DATABASE_URL "
+        "before --apply/--verify, or supply --env-file for Neon."
+    )
+
+
 @contextmanager
 def _open_sink(
     args: argparse.Namespace,
@@ -138,7 +198,7 @@ def _open_sink(
         if postgres_connection is not None:
             yield postgres_connection
             return
-        address = _required(environ, "ONS_PAY_POSTGRES_DSN")
+        address = _postgres_address(environ, args.env_file)
         driver_name = "psycopg"
     else:
         if postgres_connection is not None:
@@ -428,6 +488,8 @@ def main(
                 validate_target_id(args.target_id)
             except PublicationEvidenceError as exc:
                 raise _ArgumentError(str(exc)) from None
+        if args.env_file is not None and args.sink != "postgresql":
+            raise _ArgumentError("--env-file is only supported for PostgreSQL.")
         timeouts = (args.statement_timeout_ms, args.lock_timeout_ms)
         if any(value is not None for value in timeouts):
             if args.sink != "postgresql" or any(

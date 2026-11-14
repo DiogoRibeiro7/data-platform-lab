@@ -96,3 +96,4 @@ javascript/data/manifests/*
 tmp/
 temp/
 settings.local.json
+.neon

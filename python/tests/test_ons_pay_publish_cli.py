@@ -249,6 +249,133 @@ def test_missing_configuration_never_imports_drivers(
     assert result["error"]["code"] == "configuration_error"
 
 
+@pytest.mark.parametrize(
+    ("settings", "expected"),
+    [
+        ({"DATABASE_URL": "postgresql://pooled-host/db"}, "postgresql://pooled-host/db"),
+        (
+            {
+                "DATABASE_URL": "postgresql://pooled-host/db",
+                "DATABASE_URL_UNPOOLED": "postgresql://direct-host/db",
+            },
+            "postgresql://direct-host/db",
+        ),
+        (
+            {
+                "ONS_PAY_POSTGRES_DSN": SECRET,
+                "DATABASE_URL_UNPOOLED": "postgresql://direct-host/db",
+            },
+            SECRET,
+        ),
+    ],
+)
+def test_postgres_accepts_neon_environment_variables_with_explicit_dsn_priority(
+    curated: tuple[Path, VintageKey],
+    capsys: pytest.CaptureFixture[str],
+    settings: dict[str, str],
+    expected: str,
+) -> None:
+    pg = CliPostgres("local_authority_yoy")
+    connect = Mock(return_value=pg)
+    with patch.object(
+        publish_cli.importlib, "import_module", return_value=SimpleNamespace(connect=connect)
+    ):
+        result = _invoke(capsys, [*_args(curated), "--verify"], environ=settings, expected_exit=3)
+    connect.assert_called_once_with(expected, autocommit=False, connect_timeout=10)
+    assert result["status"] == "rejected"
+    assert pg.read_only and pg.closed
+
+
+def test_neon_env_file_uses_unpooled_url_and_does_not_read_auth_secrets(
+    curated: tuple[Path, VintageKey], capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    pooled = "postgresql://pooled-user:private-pass@pooled-host/db?sslmode=require"
+    direct = "postgresql://direct-user:private-pass@direct-host/db?sslmode=require"
+    env_file = tmp_path / ".env.local"
+    env_file.write_text(
+        f'# Neon-managed variables\nDATABASE_URL="{pooled}"\n'
+        f"DATABASE_URL_UNPOOLED='{direct}'\n"
+        "NEON_AUTH_BASE_URL=https://not-used.example.org\n",
+        encoding="utf-8",
+    )
+    pg = CliPostgres("local_authority_yoy")
+    connect = Mock(return_value=pg)
+    with patch.object(
+        publish_cli.importlib, "import_module", return_value=SimpleNamespace(connect=connect)
+    ):
+        result = _invoke(
+            capsys,
+            [*_args(curated), "--verify", "--env-file", str(env_file)],
+            environ={},
+            expected_exit=3,
+        )
+    connect.assert_called_once_with(direct, autocommit=False, connect_timeout=10)
+    assert pg.read_only and pg.closed
+    assert direct not in json.dumps(result) and pooled not in json.dumps(result)
+    assert "NEON_AUTH_BASE_URL" not in json.dumps(result)
+
+
+def test_process_environment_overrides_neon_env_file(
+    curated: tuple[Path, VintageKey], capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    env_file = tmp_path / ".env.local"
+    env_file.write_text("DATABASE_URL_UNPOOLED=postgresql://file-host/db\n", encoding="utf-8")
+    connect = Mock(return_value=CliPostgres("local_authority_yoy"))
+    with patch.object(
+        publish_cli.importlib, "import_module", return_value=SimpleNamespace(connect=connect)
+    ):
+        _invoke(
+            capsys,
+            [*_args(curated), "--verify", "--env-file", str(env_file)],
+            environ={"ONS_PAY_POSTGRES_DSN": SECRET},
+            expected_exit=3,
+        )
+    connect.assert_called_once_with(SECRET, autocommit=False, connect_timeout=10)
+
+
+@pytest.mark.parametrize(
+    "env_contents", [None, 'DATABASE_URL="unterminated\n', "NEON_AUTH_BASE_URL=ignored\n"]
+)
+def test_missing_or_invalid_neon_connection_settings_are_sanitized(
+    curated: tuple[Path, VintageKey],
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    env_contents: str | None,
+) -> None:
+    env_file = tmp_path / ".env.local"
+    if env_contents is not None:
+        env_file.write_text(env_contents, encoding="utf-8")
+    with patch.object(publish_cli.importlib, "import_module", side_effect=AssertionError):
+        result = _invoke(
+            capsys,
+            [*_args(curated), "--verify", "--env-file", str(env_file)],
+            environ={},
+            expected_exit=2,
+        )
+    assert result["error"]["code"] == "configuration_error"
+    assert SECRET not in json.dumps(result)
+    assert str(env_file) not in json.dumps(result)
+
+
+def test_preview_with_neon_env_file_never_reads_the_file(
+    curated: tuple[Path, VintageKey], capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    missing_file = tmp_path / "not-created.env"
+    with patch.object(publish_cli, "_neon_connection_urls", side_effect=AssertionError):
+        result = _invoke(capsys, [*_args(curated), "--env-file", str(missing_file)], environ=Mock())
+    assert result["status"] == "previewed"
+    assert not missing_file.exists()
+
+
+def test_neon_env_file_is_not_valid_for_mongodb(
+    curated: tuple[Path, VintageKey], capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = _invoke(
+        capsys, [*_args(curated, "mongodb"), "--env-file", ".env.local"], expected_exit=2
+    )
+    assert result["error"]["code"] == "invalid_arguments"
+
+
 @pytest.mark.parametrize("table", ["geography_year", "local_authority_yoy"])
 @pytest.mark.parametrize("sink", ["postgresql", "mongodb"])
 @pytest.mark.parametrize("target_id", [None, "local-target"])
