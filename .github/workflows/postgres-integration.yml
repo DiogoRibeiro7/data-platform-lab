@@ -13,6 +13,8 @@ on:
       - "python/src/data_platform_lab/metadata/**"
       - "python/src/data_platform_lab/serving/**"
       - "python/src/data_platform_lab/curation/**"
+      - "python/src/data_platform_lab/orchestration/ons_pay_postgres_cli.py"
+      - "python/tests/test_ons_pay_postgres_workflow*.py"
       - "python/tests/test_ons_pay_publish_*.py"
       - "python/tests/test_ons_pay_serving.py"
       - "python/src/data_platform_lab/cli/main.py"
@@ -28,6 +30,8 @@ on:
       - "python/src/data_platform_lab/metadata/**"
       - "python/src/data_platform_lab/serving/**"
       - "python/src/data_platform_lab/curation/**"
+      - "python/src/data_platform_lab/orchestration/ons_pay_postgres_cli.py"
+      - "python/tests/test_ons_pay_postgres_workflow*.py"
       - "python/tests/test_ons_pay_publish_*.py"
       - "python/tests/test_ons_pay_serving.py"
       - "python/src/data_platform_lab/cli/main.py"
@@ -66,7 +70,7 @@ jobs:
         working-directory: python
         env:
           DPL_POSTGRES_SERVICE_LIVE: "1"
-        run: poetry run pytest -q tests/test_postgres_dataset_service_live.py
+        run: poetry run pytest -q tests/test_postgres_dataset_service_live.py tests/test_ons_pay_postgres_workflow_live.py
       - name: Persistent service diagnostics
         if: failure()
         run: docker compose logs postgres

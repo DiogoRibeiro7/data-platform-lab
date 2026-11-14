@@ -19,6 +19,7 @@ from data_platform_lab.observability.ons_pay_monitor_cli import main as ons_pay_
 from data_platform_lab.observability.ons_pay_publication_status_cli import (
     main as ons_pay_publication_status_main,
 )
+from data_platform_lab.orchestration.ons_pay_postgres_cli import main as ons_pay_postgres_main
 from data_platform_lab.orchestration.ons_pay_refresh_cli import main as ons_pay_refresh_main
 from data_platform_lab.orchestration.ons_pay_transform_cli import main as ons_pay_transform_main
 from data_platform_lab.recovery.cli import main as recovery_main
@@ -47,6 +48,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "ons-pay-load-verify": ons_pay_load_verify_main,
     "ons-pay-monitor": ons_pay_monitor_main,
     "ons-pay-publish": ons_pay_publish_main,
+    "ons-pay-postgres": ons_pay_postgres_main,
     "ons-pay-publication-history": ons_pay_publication_history_main,
     "ons-pay-publication-status": ons_pay_publication_status_main,
     "ons-pay-publish-plan": ons_pay_publish_plan_main,

@@ -460,14 +460,14 @@ def _execute(
     return code
 
 
-def main(
+def run_publication(
     argv: list[str] | None = None,
     *,
     environ: Mapping[str, str] | None = None,
     postgres_connection: PostgresConnection | PostgresReader | None = None,
     mongo_collection: MongoCollection | MongoReader | None = None,
-) -> None:
-    """Print safe JSON; exit 0/2/3/4/5 for success/validation/drift/database/evidence.
+) -> tuple[int, dict[str, Any]]:
+    """Return the existing publication exit code and safe JSON without printing.
 
     Embedders may inject connection settings or caller-owned handles. An apply
     handle must support both the existing write and read protocols; verification
@@ -543,6 +543,23 @@ def main(
             code = _failure(
                 result, "configuration_error", "Install the analytics or serving extra first.", 2
             )
+    return code, result
+
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
+    postgres_connection: PostgresConnection | PostgresReader | None = None,
+    mongo_collection: MongoCollection | MongoReader | None = None,
+) -> None:
+    """Print safe JSON; exit 0/2/3/4/5 for success/validation/drift/database/evidence."""
+    code, result = run_publication(
+        argv,
+        environ=environ,
+        postgres_connection=postgres_connection,
+        mongo_collection=mongo_collection,
+    )
     print(json.dumps(result, indent=2, allow_nan=False))
     if code:
         raise SystemExit(code)
