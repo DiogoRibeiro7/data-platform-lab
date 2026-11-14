@@ -42,6 +42,10 @@ repeats metadata preflight; `--load-sha256` rejects a changed load audit. Within
 execution, each ingestion receipt must still match its captured digest when curation
 reads it. Every raw object is independently verified before its model runs.
 
+Use [`ons-pay-load-verify`](ons-pay-load-verification.md) for a separate read-only
+check of the batch's local raw checksums, sizes and optional source age before
+transformation. It needs no analytics dependencies and does not create model outputs.
+
 Only a **successful whole raw-load batch** is accepted. A failed or incomplete batch,
 full-refresh audit, malformed JSON, duplicate JSON keys, non-finite values,
 inconsistent evidence or symlinked receipt is rejected. Limits are 256 sources,
