@@ -93,11 +93,17 @@ The integration does not automatically schedule cloud writes or run migrations.
 
 The separate `postgres-service` command manages privileged roles and numbered
 schema migrations for the [persistent dataset service](persistent-postgres-datasets.md).
-It deliberately still requires an explicit `DPL_POSTGRES_SERVICE_DSN`; it does
-not consume `--env-file` or silently use Neon's application URL. If those
-migrations are needed on Neon, first review the SQL and account permissions on
-a development branch. Do not run the administrative `--apply` against the
-linked production branch as a connection test.
+It requires either `DPL_POSTGRES_SERVICE_DSN` or an **explicit** `--env-file`
+pointing to a Neon file containing `DATABASE_URL_UNPOOLED`. Pooled connections
+are never used for administrative migrations. No connection is opened for a
+preview; `--apply` is always required to modify the schema.
+
+The end-to-end `ons-pay-postgres` workflow also accepts `--env-file` with the
+same PostgreSQL resolution order as `ons-pay-publish`. It preserves the existing
+source pins, acceptance checks and mandatory POSIX evidence storage. See the
+[Neon ONS runbook](neon-ons-pay-runbook.md) before executing it against the
+temporary development branch. Do not run either administrative or publication
+`--apply` against the linked production branch as a connection test.
 
 ## Claude Code and Claude Desktop
 

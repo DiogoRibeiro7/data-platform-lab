@@ -56,6 +56,61 @@ def test_preview_reads_no_settings_driver_or_destination(tmp_path: Path, capsys:
     assert not list(tmp_path.iterdir())
 
 
+def test_neon_preview_never_opens_an_environment_file(tmp_path: Path, capsys: Any) -> None:
+    """Metadata-only previews do not resolve or validate database credentials."""
+    missing_file = tmp_path / ".env.local"
+    with patch(
+        "data_platform_lab.serving.postgres_service_cli._neon_connection_urls",
+        side_effect=AssertionError("env file read during preview"),
+    ):
+        main(["--env-file", str(missing_file)], environ={})
+    assert json.loads(capsys.readouterr().out)["operation"] == "preview"
+    assert not missing_file.exists()
+
+
+@pytest.mark.parametrize("operation", ["--apply", "--verify"])
+def test_cli_neon_env_file_uses_only_unpooled_admin_url(
+    tmp_path: Path, capsys: Any, operation: str
+) -> None:
+    """Explicit Neon configuration supplies a direct connection for schema work."""
+    env_file = tmp_path / ".env.local"
+    env_file.write_text(
+        f'DATABASE_URL="postgresql://pooled-host/db"\n'
+        f'DATABASE_URL_UNPOOLED="{SECRET}"\nNEON_AUTH_BASE_URL=unused\n',
+        encoding="utf-8",
+    )
+    connection = _connection()
+    connection.__enter__.return_value = connection
+    implementation = "apply_migrations" if operation == "--apply" else "verify_service"
+    report = {"status": "ready", "operation": operation[2:], "writes": operation == "--apply"}
+    with (
+        patch("psycopg.connect", return_value=connection) as connect,
+        patch(
+            f"data_platform_lab.serving.postgres_service_cli.{implementation}",
+            return_value=report,
+        ),
+    ):
+        main([operation, "--env-file", str(env_file)], environ={})
+    connect.assert_called_once_with(SECRET, autocommit=False, connect_timeout=10)
+    assert json.loads(capsys.readouterr().out) == report
+    connection.__exit__.assert_called_once()
+
+
+def test_cli_neon_rejects_pooled_only_file_without_connecting(tmp_path: Path, capsys: Any) -> None:
+    """Migration commands require a direct Neon URL and cannot fall back to pooling."""
+    env_file = tmp_path / ".env.local"
+    env_file.write_text("DATABASE_URL=postgresql://pooler-host/db\n", encoding="utf-8")
+    with (
+        patch("psycopg.connect") as connect,
+        pytest.raises(SystemExit) as error,
+    ):
+        main(["--apply", "--env-file", str(env_file)], environ={})
+    assert error.value.code == 2
+    output = capsys.readouterr()
+    assert SECRET not in output.err and "pooler-host" not in output.err
+    connect.assert_not_called()
+
+
 def test_numbered_sql_preserves_existing_ons_contracts_and_has_no_data_reset() -> None:
     (migration,) = service.migrations()
     for table in ("geography_year", "local_authority_yoy"):
