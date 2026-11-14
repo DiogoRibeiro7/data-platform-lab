@@ -93,6 +93,8 @@ def test_verification_preserves_files_and_works_without_sources_or_transformatio
     assert all(item.observed_sha256 == item.source_sha256 for item in report.sources)
     assert all(item.bytes_read == len(PAYLOAD) for item in report.sources)
     assert json.loads(json.dumps(report.to_dict()))["writes"] is False
+    assert report.to_dict()["object_root"] == str(tmp_path / "objects")
+    assert "object_store" not in report.to_dict()
     assert _snapshot(tmp_path) == before
 
 

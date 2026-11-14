@@ -55,7 +55,7 @@ A raw-load success means the raw batch completed, with no claim that data was
 transformed. It cannot reset the freshness of a full refresh. For current curated
 table integrity, source age and quality checks, use
 [`ons-pay-monitor`](ons-pay-monitoring.md).
-For current local raw-object integrity and optional source age, pass a successful
+For current local or S3 raw-object integrity and optional source age, pass a successful
 load audit to [`ons-pay-load-verify`](ons-pay-load-verification.md). That inspection
 does not change completed-job status or create a new load audit.
 

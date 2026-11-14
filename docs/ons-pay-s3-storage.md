@@ -97,8 +97,9 @@ poetry run data-platform-lab ons-pay-transform \
 Add `--dry-run` for metadata-only preflight. Execution reads and revalidates raw
 bytes from S3, runs the existing model checks and writes local Parquet. No source
 HTTP download or original handoff is required. `ons-pay-job-status` and curated
-monitoring continue to inspect local evidence. `ons-pay-load-verify` currently
-supports local raw storage only.
+monitoring continue to inspect local evidence. Use
+[`ons-pay-load-verify`](ons-pay-load-verification.md) with the same S3 flags to check
+raw checksums, sizes and optional source age without transformation or writes.
 
 ## Coordination and limits
 
@@ -107,7 +108,8 @@ bucket or coordinate writers on other hosts or different local output roots.
 Coordinate writers sharing a bucket/prefix; this is not a distributed transaction.
 Earlier successfully loaded objects survive a later batch failure. Source-fetch
 retry flags control source HTTPS requests; S3 operations use the existing adapter
-and SDK behavior. The adapter reads a raw object into memory for checksum checks.
+and SDK behavior. Ingestion and transformation read a raw object into memory for
+checksum checks; the separate load verifier uses bounded streaming reads.
 
 The Python configuration `S3Storage` in `data_platform_lab.storage.config` validates
 and serializes locations without connecting. Its `open()` method constructs the
@@ -116,6 +118,7 @@ existing adapter. `prepare_refresh_job` accepts `object_store=S3Storage(...)` wi
 transformation still consume the existing `BlobStore` protocol.
 
 Offline tests use the S3 adapter with an in-memory client. The S3 CI workflow also
-runs load-only/full saved jobs, verified replay and deferred transformation against
+runs load-only/full saved jobs, verified replay, deferred transformation and read-only
+verification (including corrupt and missing objects) against
 disposable Garage. Live tests require `ONS_PAY_LIVE_S3=1`, reject hosted endpoints
 and clean up only their own randomly named prefixes.

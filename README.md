@@ -352,8 +352,8 @@ For raw-only loading, add `--load-only` to direct arguments or `"load_only": tru
 to a saved job. [Load audits](docs/ons-pay-refresh.md#load-raw-data-without-transformation)
 retain verified lineage without creating Parquet or resetting curated refresh health.
 Check retained raw data with [`ons-pay-load-verify`](docs/ons-pay-load-verification.md).
-It verifies load evidence, local checksums and optional source age without downloads,
-analytics dependencies or filesystem writes.
+It verifies load evidence, local or S3 checksums and optional source age without
+source downloads, analytics dependencies or writes. S3 checks use bounded streaming reads.
 Use [`ons-pay-transform`](docs/ons-pay-offline-transform.md) with a successful load
 audit to transform the whole batch later, without downloading its sources again.
 It supports metadata previews, checks stored bytes and records partial failures for retry.

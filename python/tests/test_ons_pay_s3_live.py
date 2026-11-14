@@ -147,5 +147,43 @@ def test_live_s3_saved_job_replay_and_deferred_transform(
             )
         transformed = json.loads(capsys.readouterr().out)
         assert transformed["source_rows"] == 7 and transformed["parquet_published"] == 3
+        verify_args = ["ons-pay-load-verify", "--load-audit", replay["receipt_path"], *storage_args]
+        before_files = {
+            path: (path.read_bytes(), path.stat().st_mtime_ns)
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        }
+        with patch.object(
+            registry_fetch, "build_opener", side_effect=AssertionError("source HTTP")
+        ):
+            platform_main(verify_args)
+        verified = json.loads(capsys.readouterr().out)
+        assert verified["status"] == "healthy" and verified["bytes_verified"] == len(PAYLOAD)
+        assert verified["object_store"] == config.to_dict() and verified["writes"] is False
+        after = client.head_object(Bucket=config.bucket, Key=key)
+        assert (after["ETag"], after["LastModified"]) == (
+            original["ETag"],
+            original["LastModified"],
+        )
+
+        # Fault injection only touches the fixture's disposable, randomly named prefix.
+        client.put_object(Bucket=config.bucket, Key=key, Body=b"x" * len(PAYLOAD))
+        corrupt = client.head_object(Bucket=config.bucket, Key=key)
+        with pytest.raises(SystemExit) as error:
+            platform_main(verify_args)
+        assert error.value.code == 1
+        assert json.loads(capsys.readouterr().out)["sources"][0]["integrity"] == "checksum_mismatch"
+        after = client.head_object(Bucket=config.bucket, Key=key)
+        assert (after["ETag"], after["LastModified"]) == (corrupt["ETag"], corrupt["LastModified"])
+        client.delete_object(Bucket=config.bucket, Key=key)
+        with pytest.raises(SystemExit) as error:
+            platform_main(verify_args)
+        assert error.value.code == 1
+        assert json.loads(capsys.readouterr().out)["sources"][0]["integrity"] == "missing"
+        assert {
+            path: (path.read_bytes(), path.stat().st_mtime_ns)
+            for path in tmp_path.rglob("*")
+            if path.is_file()
+        } == before_files
     else:
         assert replay["parquet_reused"] == 3

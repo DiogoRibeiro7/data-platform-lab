@@ -12,6 +12,7 @@ on:
       - "python/src/data_platform_lab/orchestration/**"
       - "python/src/data_platform_lab/ingestion/**"
       - "python/src/data_platform_lab/curation/**"
+      - "python/src/data_platform_lab/observability/ons_pay_load_verification*.py"
       - "python/tests/test_ons_pay_s3*.py"
       - "python/src/data_platform_lab/cli/main.py"
       - "javascript/package.json"
@@ -29,6 +30,7 @@ on:
       - "python/src/data_platform_lab/orchestration/**"
       - "python/src/data_platform_lab/ingestion/**"
       - "python/src/data_platform_lab/curation/**"
+      - "python/src/data_platform_lab/observability/ons_pay_load_verification*.py"
       - "python/tests/test_ons_pay_s3*.py"
       - "python/src/data_platform_lab/cli/main.py"
       - "javascript/package.json"
@@ -70,7 +72,7 @@ jobs:
           set +a
           poetry run data-platform-lab storage --backend s3
 
-      - name: ONS S3 loading, replay and transformation
+      - name: ONS S3 loading, replay, transformation and verification
         working-directory: python
         shell: bash
         run: |
