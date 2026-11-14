@@ -188,6 +188,7 @@ def _index_verified(args: argparse.Namespace, result: dict[str, Any], connection
         if not report.passed:
             raise ValueError("Persisted rows differ from an accepted baseline.")
         record = evidence.to_dict()
+        evidence_path = archive.root / f"{evidence.record_sha256}.json"
         values = (
             evidence.record_sha256,
             record["run_id"],
@@ -201,7 +202,7 @@ def _index_verified(args: argparse.Namespace, result: dict[str, Any], connection
             plan.records_sha256,
             report.observed_sink_sha256,
             datetime.fromisoformat(record["ended_at"]),
-            f"manifests/ons_pay_publish/{evidence.record_sha256}.json",
+            evidence_path.relative_to(archive.data_root).as_posix(),
         )
         connection.execute(
             f"INSERT INTO dpl_curated.publications ({columns}) "

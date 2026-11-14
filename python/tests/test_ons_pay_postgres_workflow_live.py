@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import secrets
@@ -83,12 +84,26 @@ def test_apply_replay_restart_and_independent_reader(
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "published"
     assert [item["status"] for item in result["publications"]] == ["accepted", "accepted"]
-    evidence_before = _snapshot(root / "manifests/ons_pay_publish")
+    archive = PublicationArchive(root)
+    evidence_before = _snapshot(archive.root)
+    assert len(archive.history()) == len(TABLES)
+    with _connect(reader) as connection:
+        references = connection.execute(
+            "SELECT table_name, attempt_id::text, evidence_sha256, evidence_path "
+            "FROM dpl_curated.publications ORDER BY table_name"
+        ).fetchall()
+    assert len(references) == len(TABLES)
+    for table, attempt_id, digest, evidence_path in references:
+        path = root / evidence_path
+        assert path.is_file(), "Indexed publication evidence must exist on disk"
+        payload = path.read_bytes()
+        assert hashlib.sha256(payload).hexdigest() == digest
+        assert json.loads(payload)["run_id"] == attempt_id == result["attempts"][table]
     main([*argv, "--apply"])
     replayed = json.loads(capsys.readouterr().out)
     assert replayed["status"] == "published"
     assert all(item["evidence"]["replayed"] for item in replayed["publications"])
-    assert _snapshot(root / "manifests/ons_pay_publish") == evidence_before
+    assert _snapshot(archive.root) == evidence_before
     with _connect(reader) as connection:
         assert connection.execute("SELECT count(*) FROM dpl_curated.publications").fetchone() == (
             2,
@@ -115,7 +130,7 @@ def test_apply_replay_restart_and_independent_reader(
     with pytest.raises(SystemExit):
         main([*argv, "--apply"])
     assert json.loads(capsys.readouterr().out)["status"] == "failed"
-    assert _snapshot(root / "manifests/ons_pay_publish") == evidence_before
+    assert _snapshot(archive.root) == evidence_before
 
 
 def test_partial_table_failure_never_indexes_a_batch(
