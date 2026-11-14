@@ -14,7 +14,8 @@ from data_platform_lab.orchestration.ons_pay_transform import (
     transform_ons_pay,
 )
 from data_platform_lab.serving.publish_cli import _ArgumentError, _Parser
-from data_platform_lab.storage import LocalBlobStore
+from data_platform_lab.storage import BlobStore, LocalBlobStore
+from data_platform_lab.storage.config import add_s3_arguments, s3_from_arguments
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -26,7 +27,8 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--load-audit", type=Path, required=True)
     parser.add_argument("--load-sha256", help="Optional exact SHA-256 from a previous preview.")
-    parser.add_argument("--object-root", type=Path, required=True)
+    parser.add_argument("--object-root", type=Path, help="Required for local raw storage.")
+    add_s3_arguments(parser)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument(
         "--dry-run",
@@ -37,7 +39,12 @@ def main(argv: list[str] | None = None) -> None:
         args = parser.parse_args(argv)
         if args.load_sha256 is not None and re.fullmatch(r"[0-9a-f]{64}", args.load_sha256) is None:
             raise _ArgumentError("load-sha256 must be a lowercase SHA-256 digest.")
-        object_root = args.object_root.expanduser().resolve()
+        object_store = s3_from_arguments(args)
+        if object_store is None and args.object_root is None:
+            raise _ArgumentError("Local transformation requires --object-root.")
+        object_root = (
+            args.object_root.expanduser().resolve() if args.object_root is not None else None
+        )
         output_root = args.output_root.expanduser().resolve()
         if args.dry_run:
             plan = plan_ons_pay_transform(
@@ -52,7 +59,11 @@ def main(argv: list[str] | None = None) -> None:
                         "load_audit_sha256": plan.load_audit_sha256,
                         "load_run_id": plan.load_run_id,
                         "load_job_sha256": plan.load_job_sha256,
-                        "object_root": str(object_root),
+                        **(
+                            {"object_store": object_store.to_dict()}
+                            if object_store is not None
+                            else {"object_root": str(object_root)}
+                        ),
                         "output_root": str(output_root),
                         "sources": [
                             {
@@ -71,9 +82,15 @@ def main(argv: list[str] | None = None) -> None:
     except (_ArgumentError, TransformError, OSError, RuntimeError, ValueError):
         parser.exit(2, "Invalid transformation arguments or load evidence.\n")
     try:
+        store: BlobStore
+        if object_store is not None:
+            store = object_store.open()
+        else:
+            assert object_root is not None
+            store = LocalBlobStore(object_root)
         result = transform_ons_pay(
             load_audit=args.load_audit,
-            store=LocalBlobStore(object_root),
+            store=store,
             output_root=output_root,
             expected_load_sha256=args.load_sha256,
         )
@@ -81,7 +98,7 @@ def main(argv: list[str] | None = None) -> None:
         parser.exit(3, f"{exc}\n")
     except TransformError as exc:
         parser.exit(1, f"{exc}\n")
-    except (OSError, ValueError, RuntimeError):
+    except Exception:
         parser.exit(1, "Unable to access ONS transformation destinations.\n")
     print(
         json.dumps(

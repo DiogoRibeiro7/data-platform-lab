@@ -9,6 +9,10 @@ on:
       - "python/pyproject.toml"
       - "python/poetry.lock"
       - "python/src/data_platform_lab/storage/**"
+      - "python/src/data_platform_lab/orchestration/**"
+      - "python/src/data_platform_lab/ingestion/**"
+      - "python/src/data_platform_lab/curation/**"
+      - "python/tests/test_ons_pay_s3*.py"
       - "python/src/data_platform_lab/cli/main.py"
       - "javascript/package.json"
       - "javascript/yarn.lock"
@@ -22,6 +26,10 @@ on:
       - "python/pyproject.toml"
       - "python/poetry.lock"
       - "python/src/data_platform_lab/storage/**"
+      - "python/src/data_platform_lab/orchestration/**"
+      - "python/src/data_platform_lab/ingestion/**"
+      - "python/src/data_platform_lab/curation/**"
+      - "python/tests/test_ons_pay_s3*.py"
       - "python/src/data_platform_lab/cli/main.py"
       - "javascript/package.json"
       - "javascript/yarn.lock"
@@ -50,7 +58,7 @@ jobs:
         working-directory: python
         run: |
           poetry check --lock
-          poetry sync --no-interaction
+          poetry sync --no-interaction --extras serving
           git diff --exit-code -- poetry.lock
 
       - name: Python S3 smoke
@@ -61,6 +69,15 @@ jobs:
           source ../infra/garage/dev.env
           set +a
           poetry run data-platform-lab storage --backend s3
+
+      - name: ONS S3 loading, replay and transformation
+        working-directory: python
+        shell: bash
+        run: |
+          set -a
+          source ../infra/garage/dev.env
+          set +a
+          ONS_PAY_LIVE_S3=1 poetry run pytest tests/test_ons_pay_s3_live.py -q
 
       - uses: actions/setup-node@v4
         with:

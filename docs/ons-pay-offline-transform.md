@@ -22,9 +22,12 @@ poetry run data-platform-lab ons-pay-transform \
   --object-root ../data/object-store --output-root ../data
 ```
 
-The three paths are required and explicit; relative command-line paths use the
-working directory. `--object-root` must contain the previously loaded canonical
-objects. `--output-root` may be the load destination or another local directory.
+Load-audit and output paths are required; relative command-line paths use the
+working directory. For local raw storage, required `--object-root` must contain
+the previously loaded canonical objects. Alternatively, select the same
+[S3 raw location](ons-pay-s3-storage.md#save-and-transform-later) with `--backend s3`
+and its bucket settings. `--output-root` remains local and may be the load destination
+or another directory.
 Both HTTPS and checkout sources, including mixed batches, use the same offline path.
 
 ## Preview and input evidence

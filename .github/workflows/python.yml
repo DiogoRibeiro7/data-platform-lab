@@ -103,6 +103,7 @@ jobs:
           tests/test_ons_pay_transform_monitor.py
           tests/test_registry_verified_reuse.py
           tests/test_ons_pay_load_verification.py
+          tests/test_ons_pay_s3_storage.py
 
   test:
     # Preserve the existing 3.11 status-check name for branch protection.
