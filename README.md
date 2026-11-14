@@ -99,6 +99,8 @@ The existing PostgreSQL volume can also host a
 Use `postgres-service` to preview migrations, `--apply` to initialize the schema and
 reader/writer roles, and `--verify` for read-only readiness. ONS publishing retains
 its current table contracts and acceptance checks.
+Use the [pinned ONS PostgreSQL workflow](docs/ons-pay-postgres-workflow.md) to preview
+or explicitly ingest, curate, publish and independently verify both Gold tables.
 
 ## What is implemented
 

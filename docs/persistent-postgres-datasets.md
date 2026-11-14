@@ -147,12 +147,11 @@ names, types, null semantics, stable record IDs and full vintage pins.
 registry/source pins, model version, count, plan/sink fingerprints, publication
 time and immutable evidence path/digest. It has no active-release or `latest` pointer.
 
-This increment prepares the index schema; the existing publishing CLI does **not**
-populate it automatically. An index row alone cannot establish acceptance. A
-writer must obtain accepted immutable evidence through the existing gate before
-registering that exact reference. The integration fixture demonstrates the link
-with synthetic, gate-accepted evidence. Source approvals, licensing and canonical
-provenance remain in `DiogoRibeiro7/data`.
+The [`ons-pay-postgres` workflow](ons-pay-postgres-workflow.md) registers both Gold
+tables only after validating accepted immutable evidence and reconciling current
+rows. The single-table `ons-pay-publish` CLI does not populate the index. An index
+row alone cannot establish acceptance or current health. Source approvals,
+licensing and canonical provenance remain in `DiogoRibeiro7/data`.
 
 PostgreSQL rows, roles and migration history survive restarts in the named volume.
 Raw S3 objects, local Parquet, receipts and immutable evidence have separate
