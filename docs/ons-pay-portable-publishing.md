@@ -4,6 +4,10 @@ For a complete local example, run the [synthetic publishing demonstration](ons-p
 It exercises both sinks and Gold tables, durable outcomes, controlled drift and
 explicit recovery without hosted services or external dataset downloads.
 
+For retained local data, use the [persistent PostgreSQL runbook](persistent-postgres-datasets.md)
+to apply versioned schemas and configure separate writer/reader identities on the
+existing named volume. This does not change publication acceptance or release selection.
+
 The optional `ons-pay-publish-plan` command models a verified, exact ONS pay
 Gold vintage in two target representations: flat relational rows and nested
 documents. It is a **read-only publishing preview**, not a database writer.

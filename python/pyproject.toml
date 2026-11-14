@@ -8,6 +8,7 @@ license = "MIT"
 packages = [{ include = "data_platform_lab", from = "src" }]
 include = [
   { path = "src/data_platform_lab/curation/sql/*.sql", format = ["sdist", "wheel"] },
+  { path = "src/data_platform_lab/serving/sql/*.sql", format = ["sdist", "wheel"] },
   { path = "src/data_platform_lab/demo_data/*.csv", format = ["sdist", "wheel"] },
 ]
 

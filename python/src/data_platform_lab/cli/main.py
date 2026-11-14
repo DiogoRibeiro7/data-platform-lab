@@ -24,6 +24,7 @@ from data_platform_lab.orchestration.ons_pay_transform_cli import main as ons_pa
 from data_platform_lab.recovery.cli import main as recovery_main
 from data_platform_lab.serving.cli import main as ons_pay_serve_main
 from data_platform_lab.serving.ons_pay_compare_cli import main as ons_pay_compare_main
+from data_platform_lab.serving.postgres_service_cli import main as postgres_service_main
 from data_platform_lab.serving.publish_cli import main as ons_pay_publish_main
 from data_platform_lab.serving.publish_evidence_cli import main as ons_pay_publication_history_main
 from data_platform_lab.serving.publish_plan_cli import main as ons_pay_publish_plan_main
@@ -39,6 +40,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "broker": broker_main,
     "iceberg": iceberg_main,
     "metadata": metadata_main,
+    "postgres-service": postgres_service_main,
     "ons-pay-compare": ons_pay_compare_main,
     "ons-pay-curate": ons_pay_curate_main,
     "ons-pay-job-status": ons_pay_job_status_main,

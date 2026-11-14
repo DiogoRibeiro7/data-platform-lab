@@ -94,6 +94,12 @@ node src/cli/main.js storage --backend s3
 
 See [S3-compatible object storage](docs/s3-object-storage.md) for architecture and local setup.
 
+The existing PostgreSQL volume can also host a
+[persistent curated-dataset service](docs/persistent-postgres-datasets.md).
+Use `postgres-service` to preview migrations, `--apply` to initialize the schema and
+reader/writer roles, and `--verify` for read-only readiness. ONS publishing retains
+its current table contracts and acceptance checks.
+
 ## What is implemented
 
 Nine exercises are implemented in both Python and JavaScript:

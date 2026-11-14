@@ -6,6 +6,8 @@ on:
     paths:
       - "compose.yaml"
       - "sql/platform/**"
+      - "infra/postgres-datasets-test/**"
+      - "python/tests/test_postgres_dataset_service*.py"
       - "python/pyproject.toml"
       - "python/poetry.lock"
       - "python/src/data_platform_lab/metadata/**"
@@ -19,6 +21,8 @@ on:
     paths:
       - "compose.yaml"
       - "sql/platform/**"
+      - "infra/postgres-datasets-test/**"
+      - "python/tests/test_postgres_dataset_service*.py"
       - "python/pyproject.toml"
       - "python/poetry.lock"
       - "python/src/data_platform_lab/metadata/**"
@@ -58,7 +62,12 @@ jobs:
           ONS_PAY_LIVE_POSTGRES: "1"
           ONS_PAY_POSTGRES_DSN: postgresql://data_platform_lab:data_platform_lab@localhost:5432/data_platform_lab
         run: poetry run pytest -q tests/test_ons_pay_publish_postgres_live.py
-      - name: Diagnostics
+      - name: Persistent dataset service and isolated restart
+        working-directory: python
+        env:
+          DPL_POSTGRES_SERVICE_LIVE: "1"
+        run: poetry run pytest -q tests/test_postgres_dataset_service_live.py
+      - name: Persistent service diagnostics
         if: failure()
         run: docker compose logs postgres
       - name: Stop services
