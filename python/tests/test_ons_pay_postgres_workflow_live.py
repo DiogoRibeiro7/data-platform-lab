@@ -108,6 +108,8 @@ def test_apply_replay_restart_and_independent_reader(
         assert connection.execute("SELECT count(*) FROM dpl_curated.publications").fetchone() == (
             2,
         )
+        for (path,) in connection.execute("SELECT evidence_path FROM dpl_curated.publications"):
+            assert (root / path).is_file()
     service_target.compose("restart", "postgres")
     service_target.compose("up", "-d", "--wait", "postgres")
     port = int(service_target.compose("port", "postgres", "5432").rsplit(":", 1)[1])
