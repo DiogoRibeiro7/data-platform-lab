@@ -6,6 +6,13 @@ service](persistent-postgres-datasets.md). It publishes both Gold tables with mo
 version 1. Source approval and licensing remain in `DiogoRibeiro7/data`; there is
 no discovery of newer sources or automatic release activation.
 
+For a hosted Neon development branch, the workflow can read the direct
+`DATABASE_URL_UNPOOLED` from an explicitly supplied `--env-file` during
+`--apply`. The schema migration command accepts the same option. Both require
+reviewed operator actions; previews never open the file. Follow the separate
+[Neon real-data runbook](neon-ons-pay-runbook.md) for the Windows/WSL boundary,
+temporary branches and secret-handling rules.
+
 ## Explicit operator execution
 
 Use a POSIX filesystem for durable evidence (Linux/WSL), install the locked

@@ -21,7 +21,7 @@ from data_platform_lab.orchestration.ons_pay_refresh import (
     plan_ons_pay_refresh,
     refresh_ons_pay,
 )
-from data_platform_lab.serving.publish_cli import _Parser, run_publication
+from data_platform_lab.serving.publish_cli import _Parser, _postgres_address, run_publication
 from data_platform_lab.serving.publish_evidence import (
     PublicationArchive,
     validate_attempt_id,
@@ -50,6 +50,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset-id", required=True)
     parser.add_argument("--source-sha256", required=True)
     parser.add_argument("--data-root", type=Path, required=True)
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        help="Optional Neon .env.local; read only for an explicit --apply.",
+    )
     parser.add_argument("--object-root", type=Path)
     add_s3_arguments(parser)
     parser.add_argument("--reuse-verified", action="store_true", help="HTTPS raw cache reuse.")
@@ -223,9 +228,9 @@ def _apply(
     """Reuse refresh and publication; retain partial outcomes without claiming batch success."""
     if os.name != "posix":
         raise ValueError("Durable publication evidence requires a POSIX filesystem.")
-    dsn = os.environ.get("ONS_PAY_POSTGRES_DSN")
-    if not dsn or not dsn.strip():
-        raise ValueError("Set ONS_PAY_POSTGRES_DSN for apply.")
+    # The workflow creates tables and uses session settings; prefer Neon's
+    # unpooled URL. Resolution is deferred until after explicit --apply.
+    dsn = _postgres_address(os.environ, args.env_file)
     import psycopg
 
     from data_platform_lab.serving.postgres_service import verify_service

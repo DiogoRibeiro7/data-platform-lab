@@ -83,6 +83,23 @@ def test_preview_has_no_clients_network_or_filesystem_changes(
     assert _snapshot(tmp_path) == before
 
 
+def test_neon_env_file_is_never_read_during_preview(
+    tmp_path: Path, monkeypatch: Any, capsys: Any
+) -> None:
+    """A preview must not access secret files, even when their path is supplied."""
+    source = _source(tmp_path)
+    missing_file = tmp_path / "absent.env.local"
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        pytest.fail("Preview tried to load Neon connection settings")
+
+    monkeypatch.setattr(workflow, "_postgres_address", forbidden)
+    workflow.main([*arguments(tmp_path, source), "--env-file", str(missing_file)])
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "previewed"
+    assert not missing_file.exists()
+
+
 @pytest.mark.parametrize(
     ("flag", "value"),
     [
