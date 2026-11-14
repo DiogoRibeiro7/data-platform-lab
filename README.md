@@ -186,6 +186,10 @@ Add [`--reuse-verified`](docs/registry-handoff-ingestion.md#reuse-verified-raw-o
 to verify existing raw objects and download only missing ones. Saved ONS jobs retain
 the option; source dates stay unchanged and damaged objects fail without repair.
 
+The [INE new-lease rents proposal](docs/ine-rents-registry-proposal.md) identifies
+a genuine 2025 snapshot and the intended municipal dataset contract. INE ingestion
+and publication remain blocked on canonical registry approval and a trusted handoff.
+
 ## DuckDB/Parquet analytical layer
 
 The first curated consumer uses the approved ONS gross median weekly pay
