@@ -281,7 +281,11 @@ poetry run data-platform-lab ons-pay-publish \
   --table local_authority_yoy --sink postgresql
 ```
 
-Set `ONS_PAY_POSTGRES_DSN`, then add `--apply` to publish and require acceptance,
+Set `ONS_PAY_POSTGRES_DSN`, or use Neon-provided `DATABASE_URL_UNPOOLED` / `DATABASE_URL`.
+When the Neon CLI has written a root `.env.local`, pass `--env-file ../.env.local`
+from `python/` to read its PostgreSQL URL without exposing it in command arguments.
+See [Neon configuration](docs/neon-integration.md) for branch isolation, secret
+handling and Claude Code setup. Add `--apply` to publish and require acceptance,
 or `--verify` to reconcile an existing vintage without writes. For `--sink mongodb`,
 install the optional driver with `poetry install --extras "serving mongodb"`
 and set `ONS_PAY_MONGODB_URI` and `ONS_PAY_MONGODB_DATABASE`.

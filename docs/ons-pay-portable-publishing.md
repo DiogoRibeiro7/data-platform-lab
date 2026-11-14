@@ -80,7 +80,8 @@ poetry run data-platform-lab ons-pay-publish \
   --registry-commit "$ONS_REGISTRY_COMMIT" --source-sha256 "$ONS_SOURCE_SHA256" \
   --table local_authority_yoy --sink postgresql
 
-# Supply ONS_PAY_POSTGRES_DSN through your environment before these commands.
+# Supply ONS_PAY_POSTGRES_DSN, DATABASE_URL_UNPOOLED or DATABASE_URL; alternatively,
+# append --env-file ../.env.local to load the URLs written by `neon deploy`.
 # Publish, commit, read the full vintage back, and require the acceptance gate.
 poetry run data-platform-lab ons-pay-publish \
   --data-root ../data --model-version 1 \
@@ -104,10 +105,21 @@ is unchanged.
 
 | Sink | Required environment | Fixed destination |
 | --- | --- | --- |
-| `postgresql` | `ONS_PAY_POSTGRES_DSN` | `ons_pay_geography_year` or `ons_pay_local_authority_yoy` |
+| `postgresql` | `ONS_PAY_POSTGRES_DSN`; alternatively Neon's `DATABASE_URL_UNPOOLED` or `DATABASE_URL` | `ons_pay_geography_year` or `ons_pay_local_authority_yoy` |
 | `mongodb` | `ONS_PAY_MONGODB_URI`, `ONS_PAY_MONGODB_DATABASE` | Same fixed collection names, in the explicitly configured database |
 
-There are no default credentials or connection-string CLI flags. Database
+There are no default credentials or connection-string CLI flags. With PostgreSQL,
+`--env-file PATH` optionally reads only `DATABASE_URL_UNPOOLED` and `DATABASE_URL`
+from Neon's `.env.local` (other Neon secrets, including Auth, are ignored). Explicit
+process environment variables win over file values; within each source the
+publisher prefers `ONS_PAY_POSTGRES_DSN`, then the direct `DATABASE_URL_UNPOOLED`,
+then the pooled `DATABASE_URL`. The direct URL is recommended for this workflow
+because it may create tables and configure session-level timeouts. The file is
+read only for `--apply` and `--verify`; preview never opens it. A missing or
+malformed file produces a sanitized configuration error, never its contents.
+For a branch-safe walkthrough, see [Neon integration](neon-integration.md).
+
+Database
 clients are loaded only for an apply/verify operation. Psycopg is supplied by
 the existing project dependencies. PyMongo remains optional; install it in
 your environment before selecting MongoDB. For example, in a disposable
