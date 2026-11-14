@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import date
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi import Path as RoutePath
@@ -18,13 +19,14 @@ from data_platform_lab.serving.catalog import (
     VintageKey,
     VintageNotFound,
 )
+from data_platform_lab.serving.postgres_catalog import PostgresCatalog, PublishedVintage
 from data_platform_lab.serving.release_store import ReleaseError, ReleaseStore
 
 Commit = Annotated[str, Query(pattern=r"^[0-9a-f]{40}$")]
 SourceHash = Annotated[str, Query(pattern=r"^[0-9a-f]{64}$")]
 ModelVersion = Annotated[int, Query(ge=1, le=1)]
 PageLimit = Annotated[int, Query(ge=1, le=100)]
-PageOffset = Annotated[int, Query(ge=0)]
+PageOffset = Annotated[int, Query(ge=0, le=100_000)]
 Year = Annotated[int | None, Query(ge=1900, le=2100)]
 
 
@@ -45,14 +47,37 @@ class VintageResponse(BaseModel):
     license_url: str
 
 
+class PublicationReferenceResponse(BaseModel):
+    attempt_id: str
+    evidence_sha256: str
+    accepted_at: str
+
+
+class PublishedTableResponse(BaseModel):
+    table: Literal["geography_year", "local_authority_yoy"]
+    grain: list[str]
+    first_year: int | None
+    last_year: int | None
+    records_accepted: int
+    source_plan_sha256: str
+    sink_snapshot_sha256: str
+    evidence: list[PublicationReferenceResponse]
+
+
+class PublishedVintageResponse(VintageResponse):
+    dataset_id: str
+    target_id: str
+    tables: list[PublishedTableResponse]
+
+
 class VintagesResponse(BaseModel):
-    vintages: list[VintageResponse]
+    vintages: list[PublishedVintageResponse | VintageResponse]
 
 
 class ActiveReleaseResponse(BaseModel):
     generation: int
     event_sha256: str
-    vintage: VintageResponse
+    vintage: PublishedVintageResponse | VintageResponse
 
 
 class _StrictRow(BaseModel):
@@ -87,7 +112,7 @@ class AreaTrendRow(_StrictRow):
 
 
 class GeographyYearPage(BaseModel):
-    vintage: VintageResponse
+    vintage: PublishedVintageResponse | VintageResponse
     total: int
     limit: int
     offset: int
@@ -95,7 +120,7 @@ class GeographyYearPage(BaseModel):
 
 
 class AreaTrendPage(BaseModel):
-    vintage: VintageResponse
+    vintage: PublishedVintageResponse | VintageResponse
     area_code: str
     total: int
     limit: int
@@ -104,7 +129,7 @@ class AreaTrendPage(BaseModel):
 
 
 def _vintage_response(vintage: CuratedVintage) -> VintageResponse:
-    return VintageResponse(
+    response = VintageResponse(
         model_version=vintage.key.model_version,
         registry_commit=vintage.key.registry_commit,
         source_sha256=vintage.key.source_sha256,
@@ -120,15 +145,39 @@ def _vintage_response(vintage: CuratedVintage) -> VintageResponse:
         license_name=vintage.license_name,
         license_url=vintage.license_url,
     )
+    if isinstance(vintage, PublishedVintage):
+        return PublishedVintageResponse(
+            **response.model_dump(),
+            dataset_id=vintage.dataset_id,
+            target_id=vintage.target_id,
+            tables=[
+                PublishedTableResponse.model_validate(asdict(table)) for table in vintage.tables
+            ],
+        )
+    return response
 
 
-def create_app(data_root: Path) -> FastAPI:
+def create_app(
+    data_root: Path,
+    *,
+    backend: Literal["parquet", "postgresql"] = "parquet",
+    postgres_dsn: str | None = None,
+    target_id: str | None = None,
+) -> FastAPI:
     """Build a local-only API backed by a trusted curated data directory.
 
     The factory does not create data, pick a default vintage, or open sockets.
     The CLI binds to loopback unless the operator explicitly overrides it.
     """
-    catalog = CuratedCatalog(data_root)
+    catalog: CuratedCatalog
+    if backend == "postgresql":
+        if postgres_dsn is None or target_id is None:
+            raise CatalogError("PostgreSQL serving requires a reader DSN and target ID")
+        catalog = PostgresCatalog(data_root, dsn=postgres_dsn, target_id=target_id)
+    elif backend == "parquet" and postgres_dsn is None and target_id is None:
+        catalog = CuratedCatalog(data_root)
+    else:
+        raise CatalogError("Invalid serving backend configuration")
     app = FastAPI(
         title="Data Platform Lab — ONS pay serving",
         version="1.0.0",

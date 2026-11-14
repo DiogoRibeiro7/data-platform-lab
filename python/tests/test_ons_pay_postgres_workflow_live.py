@@ -77,16 +77,20 @@ def test_apply_replay_restart_and_independent_reader(
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "published"
     assert [item["status"] for item in result["publications"]] == ["accepted", "accepted"]
-    evidence_before = _snapshot(root / "manifests/ons_pay_publish")
+    evidence_root = PublicationArchive(root).root
+    evidence_before = _snapshot(evidence_root)
+    assert len(list(evidence_root.glob("*.json"))) == 2
     main([*argv, "--apply"])
     replayed = json.loads(capsys.readouterr().out)
     assert replayed["status"] == "published"
     assert all(item["evidence"]["replayed"] for item in replayed["publications"])
-    assert _snapshot(root / "manifests/ons_pay_publish") == evidence_before
+    assert _snapshot(evidence_root) == evidence_before
     with _connect(reader) as connection:
         assert connection.execute("SELECT count(*) FROM dpl_curated.publications").fetchone() == (
             2,
         )
+        for (path,) in connection.execute("SELECT evidence_path FROM dpl_curated.publications"):
+            assert (root / path).is_file()
     service_target.compose("restart", "postgres")
     service_target.compose("up", "-d", "--wait", "postgres")
     port = int(service_target.compose("port", "postgres", "5432").rsplit(":", 1)[1])
@@ -109,7 +113,7 @@ def test_apply_replay_restart_and_independent_reader(
     with pytest.raises(SystemExit):
         main([*argv, "--apply"])
     assert json.loads(capsys.readouterr().out)["status"] == "failed"
-    assert _snapshot(root / "manifests/ons_pay_publish") == evidence_before
+    assert _snapshot(evidence_root) == evidence_before
 
 
 def test_partial_table_failure_never_indexes_a_batch(

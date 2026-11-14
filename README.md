@@ -101,6 +101,8 @@ reader/writer roles, and `--verify` for read-only readiness. ONS publishing reta
 its current table contracts and acceptance checks.
 Use the [pinned ONS PostgreSQL workflow](docs/ons-pay-postgres-workflow.md) to preview
 or explicitly ingest, curate, publish and independently verify both Gold tables.
+The [PostgreSQL research reader](docs/ons-pay-postgres-research.md) adds accepted
+vintage discovery and read-only queries to the same API, with Python and R examples.
 
 ## What is implemented
 

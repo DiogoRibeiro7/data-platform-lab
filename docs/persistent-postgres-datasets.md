@@ -152,6 +152,8 @@ tables only after validating accepted immutable evidence and reconciling current
 rows. The single-table `ons-pay-publish` CLI does not populate the index. An index
 row alone cannot establish acceptance or current health. Source approvals,
 licensing and canonical provenance remain in `DiogoRibeiro7/data`.
+The [research reader](ons-pay-postgres-research.md) validates those references and
+serves exact-vintage PostgreSQL queries using a dedicated read-only login.
 
 PostgreSQL rows, roles and migration history survive restarts in the named volume.
 Raw S3 objects, local Parquet, receipts and immutable evidence have separate
