@@ -4,10 +4,49 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import json
 import os
+import stat
 from importlib import import_module
 from pathlib import Path
 from typing import Any
+
+
+def _reader_file(path: Path) -> str:
+    """Load one JSON-quoted setting without evaluating shell/dotenv expressions."""
+    try:
+        # Inspect the opened file, not a prior path stat. NONBLOCK also lets us
+        # reject a FIFO without waiting for a writer. NOFOLLOW rejects final
+        # symlinks on platforms that support it (including Linux/WSL).
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+        with os.fdopen(os.open(path, flags), "rb") as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                raise ValueError
+            if os.name == "posix" and (info.st_uid != os.getuid() or info.st_mode & 0o077):
+                raise ValueError
+            raw = source.read(65537)
+        if len(raw) > 65536:
+            raise ValueError
+        lines = [
+            line.strip()
+            for line in raw.decode("utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        if len(lines) != 1:
+            raise ValueError
+        key, separator, encoded = lines[0].partition("=")
+        if key.strip() != "ONS_PAY_POSTGRES_READER_DSN" or not separator:
+            raise ValueError
+        value = json.loads(encoded)
+        if not isinstance(value, str) or not value.strip() or "\x00" in value:
+            raise ValueError
+        return value
+    except (OSError, UnicodeError, ValueError, RecursionError):
+        raise ValueError(
+            "Cannot load reader file: use a private regular UTF-8 file containing only "
+            "ONS_PAY_POSTGRES_READER_DSN=<JSON string> (owner-only permissions on POSIX)."
+        ) from None
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -20,6 +59,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--backend", choices=("parquet", "postgresql"), default="parquet")
     parser.add_argument("--target-id", help="Exact publication target; required for PostgreSQL.")
+    parser.add_argument(
+        "--reader-env-file",
+        type=Path,
+        help="Private file with one JSON-quoted reader setting; PostgreSQL only.",
+    )
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
@@ -33,9 +77,8 @@ def main(argv: list[str] | None = None) -> None:
             parser.error(
                 "PostgreSQL serving requires loopback until HTTP authentication is configured"
             )
-        reader_dsn = os.environ.get("ONS_PAY_POSTGRES_READER_DSN")
-        if not reader_dsn or not reader_dsn.strip() or args.target_id is None:
-            parser.error("Set ONS_PAY_POSTGRES_READER_DSN and --target-id for PostgreSQL")
+        if args.target_id is None:
+            parser.error("Set --target-id for PostgreSQL")
         from data_platform_lab.serving.publish_evidence import (
             PublicationEvidenceError,
             validate_target_id,
@@ -45,13 +88,23 @@ def main(argv: list[str] | None = None) -> None:
             validate_target_id(args.target_id)
         except PublicationEvidenceError:
             parser.error("Invalid publication target ID")
+        reader_dsn = os.environ.get("ONS_PAY_POSTGRES_READER_DSN")
+        if args.reader_env_file is not None:
+            if reader_dsn is not None:
+                parser.error("Unset ONS_PAY_POSTGRES_READER_DSN when using --reader-env-file")
+            try:
+                reader_dsn = _reader_file(args.reader_env_file)
+            except ValueError as exc:
+                parser.error(str(exc))
+        if not reader_dsn or not reader_dsn.strip():
+            parser.error("Set ONS_PAY_POSTGRES_READER_DSN or --reader-env-file for PostgreSQL")
         settings = {
             "backend": "postgresql",
             "postgres_dsn": reader_dsn,
             "target_id": args.target_id,
         }
-    elif args.target_id is not None:
-        parser.error("--target-id requires --backend postgresql")
+    elif args.target_id is not None or args.reader_env_file is not None:
+        parser.error("--target-id and --reader-env-file require --backend postgresql")
 
     # Optional serving dependencies are imported only when this command is run.
     try:

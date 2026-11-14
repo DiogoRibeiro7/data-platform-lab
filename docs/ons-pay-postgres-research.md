@@ -29,6 +29,92 @@ credentials. Operators can inject a dedicated reader's PostgreSQL URL, including
 a Neon reader URL, into this variable. The existing publishing configuration is
 unchanged. No hosted database is contacted by tests or app construction.
 
+### Restart from a private reader file
+
+`--reader-env-file` lets each new server process load its dedicated reader setting
+without a custom launcher or putting the credential in shell history. It accepts
+a deliberately narrow format: exactly one `ONS_PAY_POSTGRES_READER_DSN` assignment
+whose value is a **JSON string**, with optional blank lines and whole-line `#`
+comments. For example, a file that references an existing private libpq service:
+
+```text
+ONS_PAY_POSTGRES_READER_DSN="service=dpl_local_reader"
+```
+
+A full reader URL or libpq connection string is also supported. JSON quoting
+preserves spaces, quotes and backslashes; `$VARIABLE`, backticks and shell commands
+are never evaluated. This is not a general dotenv parser: unquoted values, shell
+`export`, extra keys and duplicate assignments are rejected. Do not pass the
+owner's `.env.local`. File loading never sets process environment variables.
+
+If a reader file was already provisioned, reuse it. To create a new one from an
+**existing reader credential**, run this once in Linux/WSL (standard library only):
+
+```bash
+python3 - <<'PY'
+import getpass
+import json
+import os
+from pathlib import Path
+
+directory = Path.home() / "dpl-neon"
+directory.mkdir(mode=0o700, exist_ok=True)
+path = directory / "neon-reader.env"
+value = getpass.getpass("Existing reader DSN (hidden): ")
+if not value.strip():
+    raise SystemExit("Reader DSN is required")
+with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as output:
+    output.write("ONS_PAY_POSTGRES_READER_DSN=" + json.dumps(value) + "\n")
+PY
+```
+
+This refuses to overwrite an existing file and does not create database roles.
+Keep the file outside Git in a private directory on native Linux storage. The
+loader bounds input to 64 KiB and requires a regular file. On POSIX it also checks
+that the current user owns the opened file and that group/other permissions are
+zero; Linux/WSL rejects a final symlink. On Windows, restrict access using the file
+ACL; POSIX mode checks do not establish Windows ACL privacy.
+
+After installing the serving extra in the chosen WSL Python environment, start
+the already provisioned Neon development reader from the repository's `python/`
+directory:
+
+```bash
+unset ONS_PAY_POSTGRES_READER_DSN
+poetry run data-platform-lab ons-pay-serve \
+  --backend postgresql --reader-env-file "$HOME/dpl-neon/neon-reader.env" \
+  --data-root "$HOME/dpl-neon/curated" --target-id neon-dev-ons \
+  --host 127.0.0.1 --port 8000
+```
+
+Select the same Python environment after a WSL restart. The command runs in the
+foreground; stop it with **Ctrl+C** and repeat it to restart. If the port is in
+use, identify the existing server or choose another loopback port. This does not
+install a background service or arrange startup when Windows/WSL boots. A defined
+`ONS_PAY_POSTGRES_READER_DSN`, even an empty one, conflicts with the file option;
+unset it explicitly. Writer/owner variables are never used as a fallback. The
+file option is valid only with `--backend postgresql`.
+
+In another terminal, verify discovery and an explicitly pinned data read using
+the existing standalone client (adjust the source pins for a different approved
+vintage):
+
+```bash
+python3 scripts/ons_pay_reader.py --base-url http://127.0.0.1:8000
+python3 scripts/ons_pay_reader.py --base-url http://127.0.0.1:8000 \
+  --target-id neon-dev-ons \
+  --registry-commit f407638aa9795b0a71d3bfe92eaf8b3dd344d7ba \
+  --source-sha256 285a76982afdfd38e9366535b43bf3e68c878ada7b819d722d2ec188c38eff17 \
+  --limit 2 --offset 0
+```
+
+Run the client commands from the repository root or use an absolute script path.
+`/health` alone proves only that the HTTP process is alive; a successful pinned
+page also verifies reader permissions, local provenance and the entire selected
+table against its accepted content. Restarting performs no publication, migration
+or repair. Missing credentials, artifacts or accepted data must be resolved through
+the corresponding existing workflow.
+
 Python embedders can call `create_app(data_root, backend="postgresql",
 postgres_dsn=reader_dsn, target_id="local-curated")`. Configuration validation is
 inert; the first data request opens a connection. `/health` reports process
