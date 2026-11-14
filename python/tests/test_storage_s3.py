@@ -44,7 +44,10 @@ class FakeS3Client:
         object_key = (str(kwargs["Bucket"]), str(kwargs["Key"]))
         if object_key not in self.objects:
             raise FakeS3Error("NoSuchKey", 404)
-        return {"Body": BytesIO(self.objects[object_key])}
+        return {
+            "Body": BytesIO(self.objects[object_key]),
+            "ContentLength": len(self.objects[object_key]),
+        }
 
     def head_object(self, **kwargs: object) -> dict[str, object]:
         object_key = (str(kwargs["Bucket"]), str(kwargs["Key"]))
@@ -116,6 +119,37 @@ def test_s3_key_validation_is_not_wrapped() -> None:
         store.get_bytes("")
     with pytest.raises(TypeError):
         store.exists(123)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("body", [None, b"data", object()])
+def test_s3_stream_rejects_missing_or_unmanaged_bodies(body: object) -> None:
+    client = FakeS3Client()
+    client.get_object = lambda **kwargs: {"ContentLength": 4, "Body": body}  # type: ignore[method-assign]
+    with (
+        pytest.raises(StorageError, match="S3 stream failed"),
+        S3BlobStore(client, "platform").open_reader("raw/data"),
+    ):
+        pytest.fail("invalid stream must not be exposed")
+
+
+def test_s3_stream_closes_when_caller_stops_reading_early() -> None:
+    client = FakeS3Client()
+    stream = BytesIO(b"data")
+    client.get_object = lambda **kwargs: {"ContentLength": 4, "Body": stream}  # type: ignore[method-assign]
+    with S3BlobStore(client, "platform").open_reader("raw/data") as (size, body):
+        assert size == 4 and body.read(1) == b"d"
+    assert stream.closed
+
+
+@pytest.mark.parametrize("response", [None, []])
+def test_s3_stream_rejects_non_mapping_responses(response: Any) -> None:
+    client = FakeS3Client()
+    client.get_object = lambda **kwargs: response  # type: ignore[method-assign]
+    with (
+        pytest.raises(StorageError, match="Invalid S3 response"),
+        S3BlobStore(client, "platform").open_reader("raw/data"),
+    ):
+        pytest.fail("invalid response must not be exposed")
 
 
 def test_s3_broken_config_factory_is_dependency_error(monkeypatch: pytest.MonkeyPatch) -> None:

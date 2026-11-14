@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from importlib import import_module
-from typing import Any, Protocol, cast
+from typing import Any, BinaryIO, Protocol, cast
 
 from dataexcept import DependencyError, StorageError
 
@@ -149,6 +150,47 @@ class S3BlobStore:
                 f"S3 metadata lookup failed: {exc}",
             ) from exc
         return True
+
+    @contextmanager
+    def open_reader(self, key: str) -> Iterator[tuple[int, BinaryIO]]:
+        """Open one GET's length and body, closing the response on every exit.
+
+        Callers control read sizes. Missing keys raise FileNotFoundError; service,
+        malformed-response and stream failures raise a sanitized StorageError.
+        This does not issue HEAD, list objects or modify storage.
+        """
+        normalized = normalize_key(key)
+        try:
+            response = self._client.get_object(
+                Bucket=self._bucket, Key=self._remote_key(normalized)
+            )
+        except Exception as exc:
+            details = getattr(exc, "response", {})
+            error = details.get("Error", {}) if isinstance(details, Mapping) else {}
+            code = error.get("Code") if isinstance(error, Mapping) else None
+            if code in ("NoSuchKey", "NotFound", "404"):
+                raise FileNotFoundError("S3 object is missing.") from None
+            raise StorageError(self._location(normalized), "read", "S3 read failed.") from None
+        if not isinstance(response, Mapping):
+            raise StorageError(self._location(normalized), "read", "Invalid S3 response.")
+        body = response.get("Body")
+        try:
+            try:
+                size = response.get("ContentLength")
+                if (
+                    type(size) is not int
+                    or size < 0
+                    or not callable(getattr(body, "read", None))
+                    or not callable(getattr(body, "close", None))
+                ):
+                    raise ValueError("Invalid S3 stream metadata.")
+                yield size, cast(BinaryIO, body)
+            finally:
+                close = getattr(body, "close", None)
+                if callable(close):
+                    close()
+        except Exception:
+            raise StorageError(self._location(normalized), "read", "S3 stream failed.") from None
 
     def list_objects(self, prefix: str = "") -> list[StoredObject]:
         if not isinstance(prefix, str):

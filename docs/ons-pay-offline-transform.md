@@ -46,7 +46,7 @@ execution, each ingestion receipt must still match its captured digest when cura
 reads it. Every raw object is independently verified before its model runs.
 
 Use [`ons-pay-load-verify`](ons-pay-load-verification.md) for a separate read-only
-check of the batch's local raw checksums, sizes and optional source age before
+check of the batch's local or S3 raw checksums, sizes and optional source age before
 transformation. It needs no analytics dependencies and does not create model outputs.
 
 Only a **successful whole raw-load batch** is accepted. A failed or incomplete batch,

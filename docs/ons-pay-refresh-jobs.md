@@ -207,7 +207,8 @@ Pass a successful load audit to [offline batch transformation](ons-pay-offline-t
 to curate all its sources without downloading again or editing the saved load job.
 To check retained raw objects without transformation, use
 [`ons-pay-load-verify`](ons-pay-load-verification.md) with that load audit and the
-job's local object root. It verifies stored bytes and optional source age without writes.
+job's local object root or S3 settings. It verifies stored bytes and optional source age
+without writes.
 Change the saved field to `false` for a subsequent full refresh, or use each
 ingestion receipt for [separate offline curation](ons-pay-refresh.md#load-raw-data-without-transformation).
 The latter needs the analytics extra; raw loading does not. Full refresh rechecks
