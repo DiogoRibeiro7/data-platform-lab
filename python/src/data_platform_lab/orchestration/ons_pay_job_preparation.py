@@ -25,6 +25,7 @@ from data_platform_lab.orchestration.ons_pay_refresh_job import (
     RefreshJobError,
     _parse_refresh_job,
 )
+from data_platform_lab.storage.config import S3Storage
 
 
 class RefreshJobWriteError(RefreshJobError):
@@ -52,6 +53,7 @@ def _protect_checkouts(path: Path, job: RefreshJob) -> None:
         if isinstance(source, RefreshSource) and any(
             target.is_relative_to(source.registry_root)
             for target in (path, job.object_root, job.output_root)
+            if target is not None
         ):
             raise RefreshJobError(
                 "Job and destination paths must remain outside canonical checkouts."
@@ -71,11 +73,12 @@ def prepare_refresh_job(
     *,
     path: Path,
     sources: Sequence[RefreshInput],
-    object_root: Path,
+    object_root: Path | None,
     output_root: Path,
     max_source_age_days: int | None = None,
     load_only: bool = False,
     as_of: date | None = None,
+    object_store: S3Storage | None = None,
 ) -> PreparedRefreshJob:
     """Validate handoffs and construct a v1 job, without network or filesystem writes.
 
@@ -84,6 +87,8 @@ def prepare_refresh_job(
     Source bytes, checkout commits and destination integrity are checked at execution.
     """
     try:
+        if (object_root is None) == (object_store is None):
+            raise RefreshJobError("Choose exactly one local object_root or S3 object_store.")
         target = _target_path(path)
         if target.exists() or target.is_symlink():
             raise RefreshJobError("Job destination already exists; choose a new file.")
@@ -123,7 +128,13 @@ def prepare_refresh_job(
         document = {
             "schema_version": 1,
             "sources": entries,
-            "object_root": _relative_path(object_root, target.parent),
+            **(
+                {"object_store": object_store.to_dict()}
+                if object_store is not None
+                else {"object_root": _relative_path(object_root, target.parent)}
+                if object_root is not None
+                else {}
+            ),
             "output_root": _relative_path(output_root, target.parent),
             "max_source_age_days": max_source_age_days,
             "load_only": load_only,

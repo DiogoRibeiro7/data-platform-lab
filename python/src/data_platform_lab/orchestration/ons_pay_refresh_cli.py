@@ -24,7 +24,12 @@ from data_platform_lab.orchestration.ons_pay_refresh import (
 )
 from data_platform_lab.orchestration.ons_pay_refresh_job import RefreshJobError, load_refresh_job
 from data_platform_lab.serving.publish_cli import _ArgumentError, _Parser
-from data_platform_lab.storage import LocalBlobStore
+from data_platform_lab.storage import BlobStore, LocalBlobStore
+from data_platform_lab.storage.config import (
+    StorageConfigurationError,
+    add_s3_arguments,
+    s3_from_arguments,
+)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -81,6 +86,7 @@ def main(argv: list[str] | None = None) -> None:
         help="Verify existing raw objects and fetch only missing ones (requires --fetch-source).",
     )
     parser.add_argument("--object-root", type=Path, help="Default: ../data/object-store")
+    add_s3_arguments(parser)
     parser.add_argument("--output-root", type=Path, help="Default: ../data")
     parser.add_argument(
         "--max-source-age-days",
@@ -103,7 +109,8 @@ def main(argv: list[str] | None = None) -> None:
         args = parser.parse_args(argv)
         sources: list[RefreshInput]
         job_sha256 = None
-        object_root = (
+        object_store = None
+        object_root: Path | None = (
             args.object_root if args.object_root is not None else Path("../data/object-store")
         )
         output_root = args.output_root if args.output_root is not None else Path("../data")
@@ -127,6 +134,11 @@ def main(argv: list[str] | None = None) -> None:
                     args.max_source_age_days,
                     args.load_only,
                     args.save_job,
+                    args.backend,
+                    args.bucket,
+                    args.endpoint_url,
+                    args.region,
+                    args.key_prefix,
                 )
             ):
                 raise _ArgumentError("Saved job settings cannot be overridden; edit the job file.")
@@ -135,6 +147,7 @@ def main(argv: list[str] | None = None) -> None:
             object_root, output_root = job.object_root, job.output_root
             max_source_age_days, job_sha256 = job.max_source_age_days, job.sha256
             load_only = job.load_only
+            object_store = job.object_store
         elif args.fetch_source:
             sources = [
                 RemoteRefreshSource(
@@ -165,14 +178,20 @@ def main(argv: list[str] | None = None) -> None:
             if any(value is not None for value in fetch_settings):
                 raise _ArgumentError("Fetch limits require --fetch-source.")
             sources = [RefreshSource(manifest, checkout) for manifest, checkout in args.source]
+        if args.job is None:
+            object_store = s3_from_arguments(args)
+            if object_store is not None:
+                object_root = None
         for destination in (object_root, output_root):
+            if destination is None:
+                continue
             if any(
                 destination.resolve().is_relative_to(source.registry_root.resolve())
                 for source in sources
                 if isinstance(source, RefreshSource)
             ):
                 parser.error("object and output roots must remain outside canonical Git checkouts")
-    except (_ArgumentError, RefreshJobError) as exc:
+    except (_ArgumentError, RefreshJobError, StorageConfigurationError) as exc:
         parser.exit(2, f"{exc}\n")
 
     if args.save_job is not None:
@@ -180,7 +199,8 @@ def main(argv: list[str] | None = None) -> None:
             prepared = prepare_refresh_job(
                 path=args.save_job,
                 sources=sources,
-                object_root=object_root.expanduser(),
+                object_root=object_root.expanduser() if object_root is not None else None,
+                object_store=object_store,
                 output_root=output_root,
                 max_source_age_days=max_source_age_days,
                 load_only=load_only,
@@ -219,11 +239,15 @@ def main(argv: list[str] | None = None) -> None:
                     "max_source_age_days": max_source_age_days,
                     **(
                         {
-                            "job_sha256": job_sha256,
-                            "object_root": str(object_root),
+                            **({"job_sha256": job_sha256} if job_sha256 is not None else {}),
+                            **(
+                                {"object_store": object_store.to_dict()}
+                                if object_store is not None
+                                else {"object_root": str(object_root)}
+                            ),
                             "output_root": str(output_root),
                         }
-                        if job_sha256 is not None
+                        if job_sha256 is not None or object_store is not None
                         else {}
                     ),
                     "vintages": [
@@ -262,9 +286,15 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     try:
+        store: BlobStore
+        if object_store is not None:
+            store = object_store.open()
+        else:
+            assert object_root is not None
+            store = LocalBlobStore(object_root)
         result = refresh_ons_pay(
             sources=sources,
-            store=LocalBlobStore(object_root),
+            store=store,
             output_root=output_root,
             max_source_age_days=max_source_age_days,
             job_sha256=job_sha256,
@@ -274,6 +304,8 @@ def main(argv: list[str] | None = None) -> None:
         parser.exit(3, f"{exc}\n")
     except RefreshError as exc:
         parser.exit(1, f"{exc}\n")
+    except Exception:
+        parser.exit(1, "Unable to access ONS refresh storage.\n")
     print(
         json.dumps(
             {

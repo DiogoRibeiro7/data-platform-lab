@@ -3,7 +3,8 @@
 This workflow connects the existing [SHA-pinned canonical ingestion](registry-handoff-ingestion.md),
 [DuckDB Silver/Gold curation](ons-pay-analytics.md), and
 [read-only analytical API](ons-pay-serving.md) behind one repeatable command.
-Outputs use local storage; no hosted database or cloud account is required.
+Curated outputs and audits use local storage. Raw objects can use local storage or
+an [S3-compatible bucket](ons-pay-s3-storage.md); no hosted database or cloud account is required.
 
 The refresh process runs **explicitly pinned handoffs**, not a floating
 `main` branch or an implicit latest ONS download. Each handoff is paired with
@@ -288,9 +289,9 @@ The process enforces one cooperating refresh writer per local destination. It do
 distributed locking, rollback across multiple sources, concurrent publication,
 automatic registry-version discovery, or signed attestations against a local
 actor who can rewrite both receipts and files. Core orchestration accepts a
-`BlobStore` implementation, but the current CLI chooses `LocalBlobStore` for
-local output; an S3-compatible backend can be added without changing the
-ingestion/curation contracts or selecting a database supplier.
+`BlobStore` implementation. The CLI also supports [S3 raw storage](ons-pay-s3-storage.md)
+through `--backend s3` or saved-job `object_store` settings. Parquet and audit output
+remain local, and the output-root guard does not provide remote storage locking.
 
 ## Offline verification
 

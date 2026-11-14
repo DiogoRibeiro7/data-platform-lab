@@ -20,6 +20,7 @@ from data_platform_lab.orchestration.ons_pay_refresh import (
     RefreshSource,
     RemoteRefreshSource,
 )
+from data_platform_lab.storage.config import S3Storage
 
 _MAX_JOB_BYTES = 256 * 1024
 _MAX_SOURCES = 256
@@ -42,11 +43,12 @@ class RefreshJob:
     """One in-memory configuration snapshot with paths resolved against its file."""
 
     sources: tuple[RefreshInput, ...]
-    object_root: Path
+    object_root: Path | None
     output_root: Path
     max_source_age_days: int | None
     sha256: str
     load_only: bool = False
+    object_store: S3Storage | None = None
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -90,9 +92,23 @@ def _parse_refresh_job(path: Path, raw: bytes) -> RefreshJob:
                 object_pairs_hook=_unique_object,
                 parse_constant=_reject_constant,
             ),
-            {"schema_version", "sources", "object_root", "output_root"},
-            {"fetch", "max_source_age_days", "load_only"},
+            {"schema_version", "sources", "output_root"},
+            {"object_root", "object_store", "fetch", "max_source_age_days", "load_only"},
         )
+        if ("object_root" in document) == ("object_store" in document):
+            raise RefreshJobError("Choose exactly one local object_root or S3 object_store.")
+        object_store = None
+        if "object_store" in document:
+            storage = _fields(
+                document["object_store"],
+                {"backend", "bucket"},
+                {"endpoint_url", "region", "key_prefix"},
+            )
+            if storage["backend"] != "s3":
+                raise RefreshJobError("Refresh job object_store requires backend s3.")
+            object_store = S3Storage(
+                **{key: value for key, value in storage.items() if key != "backend"}
+            )
         if type(document["schema_version"]) is not int or document["schema_version"] != 1:
             raise RefreshJobError("Refresh job requires schema_version 1.")
         load_only = document.get("load_only", False)
@@ -146,11 +162,14 @@ def _parse_refresh_job(path: Path, raw: bytes) -> RefreshJob:
             raise RefreshJobError("Refresh job fetch settings require an HTTPS source.")
         return RefreshJob(
             sources=tuple(sources),
-            object_root=_path(document["object_root"], directory),
+            object_root=_path(document["object_root"], directory)
+            if "object_root" in document
+            else None,
             output_root=_path(document["output_root"], directory),
             max_source_age_days=max_age,
             sha256=hashlib.sha256(raw).hexdigest(),
             load_only=load_only,
+            object_store=object_store,
         )
     except RefreshJobError:
         raise

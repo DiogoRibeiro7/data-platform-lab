@@ -142,7 +142,9 @@ outside every selected canonical checkout, including in a mixed batch.
 | --- | --- |
 | `schema_version` | Required integer `1`. |
 | `sources` | Required ordered list of pinned handoffs. |
-| `object_root`, `output_root` | Required local destinations; no implicit destination defaults in jobs. |
+| `output_root` | Required local destination for Parquet and audits. |
+| `object_root` | Required local raw destination unless `object_store` is selected. |
+| `object_store` | Alternative S3 raw location; mutually exclusive with `object_root`. See [S3 storage](ons-pay-s3-storage.md). |
 | `max_source_age_days` | Optional non-negative integer; omit or use `null` for historical backfills. |
 | `fetch` | Optional settings shared by HTTPS sources; omit when all sources use checkouts. |
 | `load_only` | Optional boolean, default `false`; `true` skips transformation and writes a separate raw-load batch audit. |
@@ -152,6 +154,12 @@ ingestion. `max_source_bytes` resets per handoff and counts partial retry bodies
 Omitting `max_attempts` preserves the default of one attempt. See the
 [retry policy and limits](registry-handoff-ingestion.md#retry-temporary-extraction-failures).
 The socket timeout is not a deadline for the whole batch.
+
+For S3 raw storage, prepare with `--backend s3 --bucket BUCKET` and optional
+`--endpoint-url`, `--region` and `--key-prefix`. The generated job records a validated
+`object_store` location in place of `object_root`. Authentication remains in the
+SDK's runtime credential chain. Storage options cannot override a saved job, and
+neither preparation nor dry-run opens an S3 client. Existing local job bytes are unchanged.
 
 `fetch.reuse_verified` is an optional boolean, default `false`. With `true`, HTTPS
 sources first verify existing stored bytes against the handoff's checksum and size,
