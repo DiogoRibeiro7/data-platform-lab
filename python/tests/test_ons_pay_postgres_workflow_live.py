@@ -69,9 +69,15 @@ def test_apply_replay_restart_and_independent_reader(
     tmp_path: Path, service_target: Any, monkeypatch: Any, capsys: Any
 ) -> None:
     writer, reader = _setup(service_target)
-    monkeypatch.setenv("ONS_PAY_POSTGRES_DSN", writer)
+    # Exercise the same explicit --env-file path used with Neon, without
+    # exposing the generated fixture password through CLI output.
+    monkeypatch.delenv("ONS_PAY_POSTGRES_DSN", raising=False)
+    monkeypatch.delenv("DATABASE_URL_UNPOOLED", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    env_file = tmp_path / ".env.local"
+    env_file.write_text(f"DATABASE_URL_UNPOOLED={writer}\n", encoding="utf-8")
     source = _source(tmp_path)
-    argv = arguments(tmp_path, source)
+    argv = [*arguments(tmp_path, source), "--env-file", str(env_file)]
     root = tmp_path / "curated"
     main([*argv, "--apply"])
     result = json.loads(capsys.readouterr().out)

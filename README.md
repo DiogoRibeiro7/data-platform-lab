@@ -101,6 +101,8 @@ reader/writer roles, and `--verify` for read-only readiness. ONS publishing reta
 its current table contracts and acceptance checks.
 Use the [pinned ONS PostgreSQL workflow](docs/ons-pay-postgres-workflow.md) to preview
 or explicitly ingest, curate, publish and independently verify both Gold tables.
+For an isolated Neon development branch, follow the
+[ONS-to-Neon operator runbook](docs/neon-ons-pay-runbook.md) before enabling writes.
 
 ## What is implemented
 

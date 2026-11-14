@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping
+from pathlib import Path
 
 from data_platform_lab.serving.postgres_service import (
     PostgresServiceError,
@@ -12,12 +13,22 @@ from data_platform_lab.serving.postgres_service import (
     preview_service,
     verify_service,
 )
-from data_platform_lab.serving.publish_cli import _ArgumentError, _Parser
+from data_platform_lab.serving.publish_cli import (
+    _ArgumentError,
+    _ConfigurationError,
+    _neon_connection_urls,
+    _Parser,
+)
 
 
 def main(argv: list[str] | None = None, *, environ: Mapping[str, str] | None = None) -> None:
     """Return 0 for success, 1 for an unavailable/unready service, 2 for invalid input."""
     parser = _Parser(prog="data-platform-lab postgres-service", allow_abbrev=False)
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        help="Explicit Neon .env.local for direct admin access during --apply/--verify.",
+    )
     operation = parser.add_mutually_exclusive_group()
     operation.add_argument("--apply", action="store_true", help="Apply pending schema migrations.")
     operation.add_argument(
@@ -34,7 +45,19 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] | None = N
             settings = os.environ if environ is None else environ
             dsn = settings.get("DPL_POSTGRES_SERVICE_DSN")
             if not isinstance(dsn, str) or not dsn.strip():
-                parser.exit(2, "DPL_POSTGRES_SERVICE_DSN is required.\n")
+                if args.env_file is not None:
+                    try:
+                        # Administrative DDL and migration SET commands must
+                        # not use Neon's transaction-pooled DATABASE_URL.
+                        dsn = _neon_connection_urls(args.env_file).get("DATABASE_URL_UNPOOLED")
+                    except _ConfigurationError:
+                        parser.exit(2, "Cannot read the Neon PostgreSQL environment file.\n")
+                if not isinstance(dsn, str) or not dsn.strip():
+                    parser.exit(
+                        2,
+                        "Set DPL_POSTGRES_SERVICE_DSN or provide an unpooled "
+                        "Neon URL with --env-file.\n",
+                    )
             import psycopg
 
             with psycopg.connect(dsn, autocommit=False, connect_timeout=10) as connection:
