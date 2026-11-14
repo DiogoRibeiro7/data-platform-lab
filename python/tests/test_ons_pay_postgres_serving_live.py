@@ -294,3 +294,45 @@ def test_pagination_uses_the_reconciled_read_only_snapshot(
     assert response.json() == expected
     monkeypatch.setattr(postgres_catalog, "reconcile_postgres", original)
     assert client.get("/v1/ons-pay/geography-year", params=result["vintage"]).status_code == 503
+
+
+def test_new_acceptance_does_not_hide_legacy_evidence_paths(
+    tmp_path: Path,
+    service_target: Any,
+    monkeypatch: Any,
+    capsys: Any,
+) -> None:
+    _, reader, original, argv = _published(tmp_path, service_target, monkeypatch, capsys)
+    root = tmp_path / "curated"
+    with _connect(service_target.dsn) as admin:
+        references = admin.execute(
+            "SELECT attempt_id, evidence_path FROM dpl_curated.publications ORDER BY table_name"
+        ).fetchall()
+        for attempt, path in references:
+            admin.execute(
+                "UPDATE dpl_curated.publications SET evidence_path=%s WHERE attempt_id=%s",
+                (path.replace("ons_pay_publication/", "ons_pay_publish/"), attempt),
+            )
+
+    argv[argv.index("--attempt-id") + 1] = str(uuid4())
+    publish([*argv, "--apply"])
+    assert json.loads(capsys.readouterr().out)["status"] == "published"
+    client = _client(root, reader)
+    before = _snapshot(root)
+    assert client.get("/v1/ons-pay/vintages").status_code == 503
+    assert client.get("/v1/ons-pay/geography-year", params=original["vintage"]).status_code == 503
+
+    # A reviewed correction of only the original index paths restores all references.
+    with _connect(service_target.dsn) as admin:
+        for attempt, path in references:
+            admin.execute(
+                "UPDATE dpl_curated.publications SET evidence_path=%s "
+                "WHERE attempt_id=%s AND evidence_path=%s",
+                (path, attempt, path.replace("ons_pay_publication/", "ons_pay_publish/")),
+            )
+    discovered = client.get("/v1/ons-pay/vintages")
+    assert discovered.status_code == 200
+    assert len(discovered.json()["vintages"]) == 1
+    assert all(len(table["evidence"]) == 2 for table in discovered.json()["vintages"][0]["tables"])
+    assert client.get("/v1/ons-pay/geography-year", params=original["vintage"]).status_code == 200
+    assert _snapshot(root) == before

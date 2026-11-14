@@ -170,7 +170,9 @@ Earlier `ons-pay-postgres` indexes could record the incorrect directory
 `manifests/ons_pay_publish` while the archive correctly used
 `manifests/ons_pay_publication`. New publications derive their reference from the
 archive itself. The reader rejects old incorrect paths. For an existing affected
-index, first verify each exact accepted attempt using `ons-pay-publish --verify
+index, publishing another accepted attempt does not restore discovery: the reader
+validates every reference for the selected target and vintage. First verify each
+exact affected attempt using `ons-pay-publish --verify
 --baseline-attempt-id`; then have the administrator correct only that verified
 row's `evidence_path` to its actual relative archive path. Do not rewrite evidence,
 drop rows, or bypass checks. The reader and writer never silently repair old references.
